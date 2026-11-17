@@ -62,8 +62,8 @@ class AutomationMemorySelectionTests(unittest.TestCase):
                 def update_with_cli_edits(context):
                     report = update(context)
                     applied.append(step.plugin_ids)
-                    plugins = (report or {}).get("plugins") or []
-                    outputs.append(plugins[-1]["plugin_id"] if plugins else None)
+                    plugins = report.plugins
+                    outputs.append(plugins[-1].plugin_id if plugins else None)
                     if len(applied) <= len(actions):
                         plugin_id, enabled = actions[len(applied) - 1]
                         edits.append(edit_staged_selection(path, plugin_id, enabled))

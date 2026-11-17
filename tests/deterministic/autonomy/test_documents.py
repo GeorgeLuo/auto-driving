@@ -24,18 +24,22 @@ from copy import deepcopy
 from dataclasses import dataclass
 from pathlib import Path
 
+from autonomy.decision_cycle.action.result import ActionResult
+from autonomy.decision_cycle.action.values import AuthorityResult
+from autonomy.decision_cycle.memory.interface import MemoryReport, MemoryPluginReport
+from autonomy.decision_cycle.plan.values import ActionPlan, PlanContribution
+from autonomy.decision_cycle.proposal.result import ProposalResult
 from autonomy.decision_cycle.memory.beliefs import Belief, Check, Trial
 from autonomy.decision_cycle.memory.evidence import MemoryOrigin, RetainedEvidence
 from implementations.decision_cycle.memory.shared.evidence_ledger.ledger import EvidenceLedger, LedgerBounds
 from implementations.decision_cycle.perception.shared.image.stored import StoredImage
-from autonomy.decision_cycle.cycle import CYCLE_RECORD_KEYS
 from autonomy.decision_cycle.observation.values import Observation
 from autonomy.decision_cycle.perception.evidence.values import PerceivedThing, PerceptionSignal, ViewLocation
 from autonomy.decision_cycle.perception.interface import PerceptionPluginRun, PerceptionText
 from autonomy.decision_cycle.proposal.values import ActionProposal, ProposedVehicleCommand, SourceRef
 from autonomy.fields import ROOT, FieldError
 from autonomy.runtime.frame_loop import FramePublication
-from autonomy.runtime.report import HostReport, ReportActivation, ReportApplication, ReportValues
+from autonomy.runtime.report import HostReport, ReportCycle, ReportActivation, ReportApplication, ReportValues
 from autonomy.runtime.control import AutonomyControl
 from autonomy.runtime.execution import ControlApplication
 from autonomy.runtime.session import RunConfiguration
@@ -79,7 +83,7 @@ def _report(**fields: object) -> HostReport:
     return HostReport(**{
         "host_name": "fixture", "run_id": "run-1", "generation_id": "decision-1", "frame_id": "frame-1",
         "frame_index": 3, "timestamp_ms": 1000, "published_at_ms": 1010,
-        "cycle": dict.fromkeys(CYCLE_RECORD_KEYS), "application": _application(),
+        "cycle": ReportCycle(), "application": _application(),
         "values": _values_null(),
         **fields,
     })
@@ -142,7 +146,59 @@ def _belief(full: bool = False) -> Belief:
                   (Trial("trial-1", "arrival", 100, {"row": 12} if full else None, {"frame": "frame-1"}),), {"samples": 3})
 
 
+def _proposal() -> ActionProposal:
+    return ActionProposal("fixture", "frame-1", "fresh", "fresh", 0.75, "drive", ProposedVehicleCommand(0.25, -0.5),
+                          source_refs=(SourceRef("observation", "frame-1"),), available=True)
+
+
+def _plan(full: bool = False) -> ActionPlan:
+    candidate = _proposal()
+    if not full:
+        return ActionPlan("frame-1", 100, "idle", (), "selector")
+    return ActionPlan("frame-1", 100, "selected", (candidate,), "selector", candidate.proposal_id,
+                      (PlanContribution(candidate.proposal_id, candidate.plugin_id),), candidate.command,
+                      candidate.reason, candidate.confidence, {"trace": [1, 2]})
+
+
+def _authority(full: bool = False) -> AuthorityResult:
+    return AuthorityResult("frame-1", "gate", _proposal().command if full else None, "ok" if full else "error",
+                           {"steering": 0 if full else 0.25, "throttle": 0 if full else -0.5, "confidence": 0.75 if full else None, "reason": "hold"},
+                           cycle_reason="" if full else "step_internal_error",
+                           drive_mode_gate="autonomy" if full else None)
+
+
+def _memory(full: bool = False) -> MemoryReport:
+    return MemoryReport("memory_report", (MemoryPluginReport("fixture", {"records": []} if full else None),),
+                        "fixture" if full else None, {"fixture.row": {"value": 1}} if full else None)
+
+
+def _cycle(full: bool = False) -> ReportCycle:
+    if not full:
+        return ReportCycle()
+    return ReportCycle(_perception(True), Observation("frame-1", 100, {}, things=(_thing(True),)),
+                       _memory(True), ProposalResult("frame-1", "ok", (_proposal(),)), _plan(True),
+                       ActionResult("frame-1", "ok", _authority(True)))
+
+
+CYCLE_OPAQUE = ("perception.measurements", "observation.sensor_frame", "observation.metadata", "memory.beliefs", "plan.metadata")
+
+
 DOCUMENTS = {
+    "autonomy.decision_cycle.proposal.result.ProposalResult": Document(lambda: [
+        ProposalResult("frame-1", "ok", (_proposal(),)), ProposalResult("frame-1", "error", reason="step_internal_error"),
+    ]),
+    "autonomy.decision_cycle.plan.values.PlanContribution": Document(lambda: [PlanContribution("fixture:frame-1", "fixture")]),
+    "autonomy.decision_cycle.plan.values.ActionPlan": Document(lambda: [_plan(), _plan(True)], opaque=("metadata",)),
+    "autonomy.decision_cycle.action.values.AuthorityResult": Document(lambda: [_authority(), _authority(True)]),
+    "autonomy.decision_cycle.action.result.ActionResult": Document(lambda: [
+        ActionResult("frame-1", "error", _authority(), reason="step_internal_error"), ActionResult("frame-1", "ok", _authority(True)),
+    ]),
+    "autonomy.decision_cycle.memory.interface.MemoryPluginReport": Document(lambda: [
+        # State is polymorphic JSON, like Belief.value; full shapes are tested in test_interface.
+        MemoryPluginReport("fixture"),
+    ], opaque=("state",)),
+    "autonomy.decision_cycle.memory.interface.MemoryReport": Document(
+        lambda: [_memory(), _memory(True)], opaque=("beliefs",)),
     # Null samples keep polymorphic JSON fields free of a single-kind claim; full values are tested in test_beliefs.
     "autonomy.decision_cycle.memory.beliefs.Check": Document(lambda: [
         Check(100, "arrival", "support"), Check(100, "arrival", "contradict"),
@@ -223,15 +279,18 @@ DOCUMENTS = {
         lambda: [_values_null(), _values_set()],
         opaque=("activation.steps", "receipt", "timing"),
     ),
+    "autonomy.runtime.report.ReportCycle": Document(lambda: [_cycle(), _cycle(True)], opaque=CYCLE_OPAQUE),
     "autonomy.runtime.report.HostReport": Document(
-        lambda: [_report(), _report(status="error", error="cycle raised")],
-        opaque=("values.activation.steps", "values.receipt", "values.timing"),
+        lambda: [_report(), _report(cycle=_cycle(True)), _report(status="error", error="cycle raised")],
+        opaque=("values.activation.steps", "values.receipt", "values.timing", *(f"cycle.{path}" for path in CYCLE_OPAQUE)),
     ),
     "autonomy.runtime.frame_loop.FramePublication": Document(lambda: [
         FramePublication(health="healthy", read_at_ms=1100, result_age_ms=90, stale_after_ms=1000, report=_report()),
+        FramePublication(health="healthy", read_at_ms=1100, result_age_ms=90, stale_after_ms=1000, report=_report(cycle=_cycle(True))),
         FramePublication(health="warming", read_at_ms=1100, result_age_ms=None, stale_after_ms=1000, report=None),
     ], opaque=(
         "report.values.activation.steps", "report.values.receipt", "report.values.timing",
+        *(f"report.cycle.{path}" for path in CYCLE_OPAQUE),
     )),
 }
 # Documents that predate the field rules. Remove a name when its class follows autonomy.fields and registers above.

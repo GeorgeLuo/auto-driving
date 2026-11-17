@@ -86,7 +86,7 @@ class ObservationAdaptationTests(unittest.TestCase):
         self.assertEqual(observation.summary, ())
         self.assertEqual(observation.signals[0].signal_id, "path_clear")
         self.assertEqual(observation.things[0].thing_id, "region_1")
-        self.assertEqual(observation.metadata["limits"], list(perception.limits))
+        self.assertEqual(observation.metadata["limits"], perception.limits)
         self.assertEqual(observation.metadata["source"], "test-observe-step")
 
         camera = observation.sensor_frame["readings"][FRONT_CAMERA_SENSOR_ID]

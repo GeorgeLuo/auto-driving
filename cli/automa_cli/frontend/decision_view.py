@@ -113,15 +113,13 @@ def _evidence_projection(
 
 
 def report_evidence(report: HostReport) -> dict[str, object]:
-    """Parse the host frame's evidence once, then associate typed values."""
+    """Associate the typed observation with evidence in the plugin's JSON summary."""
     cycle = report.cycle
-    observation = cycle["observation"]
-    records = evidence_records(cycle["memory"]) or []
+    observation = cycle.observation
+    records = evidence_records(cycle.memory) or []
     return _evidence_projection(
         frame_id=report.frame_id,
-        observation=None if observation is None else require_nested(
-            Observation.from_dict, observation, field_name="observation",
-        ),
+        observation=observation,
         evidence_input=tuple(require_nested(RetainedEvidence.from_dict, record, field_name=f"records.{index}")
                              for index, record in enumerate(records)),
     )

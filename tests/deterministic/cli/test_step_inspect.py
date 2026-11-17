@@ -11,6 +11,11 @@ from unittest.mock import patch
 
 from PIL import Image
 
+from autonomy.decision_cycle.cycle import DecisionCycleResult
+from autonomy.decision_cycle.proposal.result import ProposalResult
+from autonomy.decision_cycle.proposal.values import ActionProposal
+from autonomy.decision_cycle.observation.values import Observation
+from autonomy.decision_cycle.memory.interface import MemoryReport, MemoryPluginReport
 from autonomy.decision_cycle.activation import DECISION_STEPS, STEPS, StepActivation, step_activation
 from autonomy.decision_cycle.perception.evidence.values import PerceptionEvidenceBatch, PerceptionSignal
 from autonomy.decision_cycle.perception.plugin import PerceptionPluginContract
@@ -111,23 +116,31 @@ class StepInspectTests(unittest.TestCase):
                 self.assertIn(f"{step.capitalize()} inspect", text)
                 self.assertIn("Memory: plugin=" if step == "memory" else f"{step.capitalize()}: status=", text)
 
+    def test_inspect_text_keeps_the_cycle_typed_for_every_step(self) -> None:
+        with (
+            patch.object(DecisionCycleResult, "to_dict", side_effect=AssertionError("cycle exported for rendering")),
+            patch.object(ActionProposal, "from_dict", side_effect=AssertionError("candidate reparsed for rendering")),
+        ):
+            for step in INSPECT_STEPS:
+                with self.subTest(step=step):
+                    result = inspect_step(step, source=self.frames)
+                    self.assertEqual(result.exit_code, 0, result.message)
+                    self.assertIn(f"{step.capitalize()} inspect", result.message)
+
     def test_proposal_lines_show_observation_each_plugin_and_only_publisher_evidence(self) -> None:
         retained = [
             {"record_id": f"r-{index}", "kind": "obstacle", "confidence": None,
              "origin": {"frame_id": "frame-0"}}
             for index in range(13)
         ]
-        memory = {
-            "plugins": [
-                {"plugin_id": "model", "state": {"health": "healthy", "records": [{"record_id": "wrong"}]}},
-                {"plugin_id": "ledger", "state": {
-                    "health": "healthy", "record_count": 13, "epoch_id": "epoch-1", "records": retained,
-                }},
-            ],
-            "evidence_publisher": "ledger",
-        }
+        memory = MemoryReport("memory_report", (
+            MemoryPluginReport("model", {"health": "healthy", "records": [{"record_id": "wrong"}]}),
+            MemoryPluginReport("ledger", {
+                "health": "healthy", "record_count": 13, "epoch_id": "epoch-1", "records": retained,
+            }),
+        ), evidence_publisher="ledger")
         lines = format_step_record(
-            "proposal", {"status": "ready"}, observation={"observation_id": "obs-1"}, memory=memory,
+            "proposal", ProposalResult("frame-1", "ok"), observation=Observation("obs-1", 100, {}), memory=memory,
         )
         self.assertIn("Observation: obs-1", lines)
         self.assertIn("Memory: plugin=model health=healthy records=0 epoch=None", lines)
@@ -136,7 +149,7 @@ class StepInspectTests(unittest.TestCase):
         self.assertEqual(len([line for line in lines if line.startswith("Retained:")]), 12)
         self.assertIn("Retained: record_id=r-0 kind=obstacle confidence=none frame_id=frame-0", lines)
         self.assertNotIn("wrong", "\n".join(lines))
-        absent = format_step_record("proposal", {"status": "ready"})
+        absent = format_step_record("proposal", ProposalResult("frame-1", "ok"))
         self.assertIn("Observation: none", absent)
         self.assertIn("Memory: publisher=none", absent)
 

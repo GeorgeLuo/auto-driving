@@ -4,6 +4,7 @@ import unittest
 
 from dataclasses import replace
 
+from autonomy.decision_cycle.memory.interface import MemoryReport, MemoryPluginReport
 from autonomy.decision_cycle.observation.publication import OBSERVATION_KEY
 from autonomy.decision_cycle.cycle import DecisionCycle, DecisionSteps
 from autonomy.decision_cycle.memory.errors import MemoryUpdateError
@@ -142,7 +143,7 @@ class DecisionCycleTests(unittest.TestCase):
         self.assertEqual(result.to_dict()["action"]["authority"]["authorized_output"]["reason"], "test-action")
 
     def test_memory_step_report_is_recorded_and_keeps_idle(self) -> None:
-        report = {"schema": "memory_report", "plugins": [{"state": {"record_count": 0}}]}
+        report = MemoryReport("memory_report", (MemoryPluginReport("fixture", {"record_count": 0}),))
 
         result = DecisionCycle(
             DecisionSteps(memory=lambda context: report)
@@ -150,9 +151,9 @@ class DecisionCycleTests(unittest.TestCase):
 
         self.assertIs(result.memory, report)
         self.assertEqual(result.control.reason, "decision-cycle-idle")
-        self.assertEqual(result.to_dict()["memory"], report)
+        self.assertEqual(result.to_dict()["memory"], report.to_dict())
         result.to_dict()["memory"]["plugins"][0]["state"]["record_count"] = 9
-        self.assertEqual(report["plugins"][0]["state"]["record_count"], 0)
+        self.assertEqual(report.plugins[0].state["record_count"], 0)
 
     def test_memory_callable_failures_stop_the_cycle_with_memory_diagnostics(self) -> None:
         for failure, diagnostic in (

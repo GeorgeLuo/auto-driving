@@ -82,8 +82,7 @@ def stream_perception(
 def _perception_record(report: HostReport | None) -> PerceptionText | None:
     if report is None:
         return None
-    perception = report.cycle["perception"]
-    return None if perception is None else PerceptionText.from_dict(perception)
+    return report.cycle.perception
 
 
 def perception_publication(publication: FramePublication | None) -> PerceptionPublication:

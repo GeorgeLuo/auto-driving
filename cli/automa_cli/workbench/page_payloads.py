@@ -8,6 +8,7 @@ from __future__ import annotations
 
 from typing import Any
 
+from autonomy.decision_cycle.memory.interface import MemoryReport
 from autonomy.decision_cycle.observation.values import Observation
 from autonomy.decision_cycle.perception.interface import PerceptionText
 
@@ -18,7 +19,7 @@ def frame_summary(
     *,
     perception: PerceptionText | None = None,
     observation: Observation | None = None,
-    memory: Any = None,
+    memory: MemoryReport | None = None,
     duration_ms: int | float | None = None,
     frames_completed: int,
     frames_total: int,

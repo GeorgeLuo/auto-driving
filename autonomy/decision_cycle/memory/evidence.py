@@ -7,9 +7,11 @@
 
 from __future__ import annotations
 
+from collections.abc import Mapping
 from dataclasses import asdict, dataclass, field
 from typing import Any
 
+from autonomy.serialization import frozen_mapping_to_dict
 from autonomy.decision_cycle.confidence import optional_confidence
 from autonomy.fields import (
     FieldError, require_ascii_id as require_identifier, require_keys, require_nested,
@@ -101,20 +103,21 @@ class RetainedEvidence:
             "confidence": self.confidence,
             "origin": self.origin.to_dict(),
             "location": self.location.to_dict() if self.location is not None else None,
-            "properties": self.properties,
+            "properties": frozen_mapping_to_dict(self.properties),
         }
 
     @classmethod
     def from_dict(cls, data: dict[str, Any]) -> "RetainedEvidence":
         document = require_keys(data, ("record_id", "kind", "label", "origin", "confidence", "location", "properties"))
-        if not isinstance(document["properties"], dict):
+        if not isinstance(document["properties"], Mapping):
             raise FieldError("properties", "must be an object")
         confidence = document["confidence"]
         if confidence is not None:
             confidence = require_number(confidence, field_name="confidence", bounds=(0, 1))
         location = document["location"]
-        if location is not None and (not isinstance(location, dict) or not location):
-            raise FieldError("location", "must be a nonempty object or null")
+        if location is not None:
+            if not isinstance(location, Mapping) or not location:
+                raise FieldError("location", "must be a nonempty object or null")
         return cls(
             record_id=document["record_id"], kind=document["kind"], label=document["label"],
             confidence=confidence,

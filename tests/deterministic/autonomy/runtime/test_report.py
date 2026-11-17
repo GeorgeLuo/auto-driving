@@ -6,7 +6,7 @@ import unittest
 from autonomy.decision_cycle.cycle import CYCLE_RECORD_KEYS
 from autonomy.decision_cycle.perception.interface import PerceptionText
 from autonomy.fields import FieldError
-from autonomy.runtime.report import HostReport, ReportValues, error_application, source_id_for
+from autonomy.runtime.report import HostReport, ReportCycle, ReportValues, error_application, source_id_for
 
 
 class HostReportTests(unittest.TestCase):
@@ -14,7 +14,7 @@ class HostReportTests(unittest.TestCase):
         return HostReport(
             host_name="fixture", run_id="run", generation_id="decision-test",
             frame_id="frame", frame_index=0, timestamp_ms=100, published_at_ms=110,
-            cycle={step: None for step in CYCLE_RECORD_KEYS},
+            cycle=ReportCycle(),
             application=error_application("observe_only"),
             values=ReportValues.from_dict({
                 "source_id": "fixture", "activation": {"steps": {}}, "stale_after_ms": 1000,

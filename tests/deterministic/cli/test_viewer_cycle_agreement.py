@@ -59,7 +59,8 @@ class ViewerCycleAgreementTests(unittest.TestCase):
             self.assertIsNone(cycle["plan"])
             self.assertIsNone(cycle["action"])
 
-            result.observation.metadata["injected"] = "source"
+            with self.assertRaises(TypeError):
+                result.observation.metadata["injected"] = "source"
             cycle["observation"]["metadata"]["injected"] = "caller"
             retained = result.export_cycle()
             self.assertNotIn("injected", retained["observation"]["metadata"])
@@ -129,7 +130,8 @@ class ViewerCycleAgreementTests(unittest.TestCase):
                 host_telemetry={"status": "unavailable", "reason": "publisher_missing"},
                 frame_bytes=None,
             )
-            report.cycle["observation"]["metadata"]["labels"].append("source")
+            with self.assertRaises(AttributeError):
+                report.cycle.observation.metadata["labels"].append("source")
             payload = json.loads(view.latest_json())
             cycle = payload["report"]["cycle"]
             self.assertEqual(set(cycle), set(CYCLE_RECORD_KEYS))

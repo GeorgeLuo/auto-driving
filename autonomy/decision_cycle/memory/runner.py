@@ -2,7 +2,7 @@
 
 ``MemoryRunner`` is a ``StepRunner`` whose ``load_plugin`` wraps each
 selected plugin in a ``MemoryPluginRuntime``; it runs them in selection order.
-Its return value is the ``MemoryReport`` dict from ``interface``: each
+Its return value is the typed ``MemoryReport`` from ``interface``: each
 plugin's own state summary for diagnostics, the evidence publisher, the
 plugin whose value ``EVIDENCE_KEY`` holds, and the published beliefs.
 Decisions read plugin-published keys in the host map, not the report.
@@ -197,12 +197,12 @@ class MemoryRunner(StepRunner[MemoryPluginRuntime]):
 
     def __call__(
         self, context: DecisionFrameContext,
-    ) -> dict[str, object]:
+    ) -> MemoryReport:
         return self.update(context)
 
     def update(
         self, context: DecisionFrameContext,
-    ) -> dict[str, object]:
+    ) -> MemoryReport:
         """Run each selected plugin in order and return the memory report.
 
         A selection that cannot load raises here, before any plugin runs, and
@@ -290,13 +290,13 @@ class MemoryRunner(StepRunner[MemoryPluginRuntime]):
                 return None
             return self._publisher
 
-    def report(self) -> dict[str, object]:
+    def report(self) -> MemoryReport:
         """Each applied plugin's own state summary, as the cycle records it."""
 
         with self._runtime_lock:
             return self._report()
 
-    def _report(self) -> dict[str, object]:
+    def _report(self) -> MemoryReport:
         return MemoryReport(
             schema=MEMORY_REPORT_SCHEMA,
             plugins=tuple(
@@ -308,7 +308,7 @@ class MemoryRunner(StepRunner[MemoryPluginRuntime]):
             ),
             evidence_publisher=self.evidence_publisher,
             beliefs={key: belief.summary() for key, belief in _published_beliefs(self._shared_memory).items()},
-        ).to_dict()
+        )
 
     def status(self) -> dict[str, object]:
         with self._runtime_lock:

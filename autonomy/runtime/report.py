@@ -24,9 +24,15 @@ compares this id with the telemetry record's source id.
 from __future__ import annotations
 
 import time
-from dataclasses import dataclass, replace
+from dataclasses import dataclass, field, replace
 from typing import Any
 
+from autonomy.decision_cycle.action.result import ActionResult
+from autonomy.decision_cycle.memory.interface import MemoryReport
+from autonomy.decision_cycle.observation.values import Observation
+from autonomy.decision_cycle.perception.interface import PerceptionText
+from autonomy.decision_cycle.plan.values import ActionPlan
+from autonomy.decision_cycle.proposal.result import ProposalResult
 from autonomy.decision_cycle.cycle import CYCLE_RECORD_KEYS, DecisionCycleResult
 from autonomy.fields import (
     FieldError,
@@ -111,14 +117,61 @@ def _object_or_null(value: object, *, field_name: str) -> dict[str, object] | No
     return _object(value, field_name=field_name)
 
 
-def _cycle_record(record: object, *, key: str) -> Any:
-    """One cycle record. Every step may be null."""
+@dataclass(frozen=True)
+class ReportCycle:
+    """The six typed records of a completed or partial cycle."""
 
-    if record is None:
-        return None
-    if type(record) is not dict:
-        raise FieldError(f"cycle.{key}", "must be an object or null")
-    return record
+    perception: PerceptionText | None = None
+    observation: Observation | None = None
+    memory: MemoryReport | None = None
+    proposal: ProposalResult | None = None
+    plan: ActionPlan | None = None
+    action: ActionResult | None = None
+    # Local reports reuse the result's serialization cache only when writing JSON.
+    # replace() clears this reference when any typed record changes.
+    _result: DecisionCycleResult | None = field(default=None, init=False, repr=False, compare=False)
+
+    def __post_init__(self) -> None:
+        for name, record_type in (("perception", PerceptionText), ("observation", Observation), ("memory", MemoryReport),
+                                  ("proposal", ProposalResult), ("plan", ActionPlan), ("action", ActionResult)):
+            record = getattr(self, name)
+            if record is not None and not isinstance(record, record_type):
+                raise FieldError(name, f"must be {record_type.__name__} or null")
+
+    def record(self, step: str) -> PerceptionText | Observation | MemoryReport | ProposalResult | ActionPlan | ActionResult | None:
+        """The typed record for a named step stream."""
+        require_choice(step, CYCLE_RECORD_KEYS, field_name="step")
+        return getattr(self, step)
+
+    def to_dict(self) -> dict[str, object]:
+        if self._result is not None:
+            return _json_copy(self._result.export_cycle(), field="cycle")
+        return _json_copy({
+            name: None if self.record(name) is None else self.record(name).to_dict()
+            for name in CYCLE_RECORD_KEYS
+        }, field="cycle")
+
+    @classmethod
+    def from_result(cls, result: DecisionCycleResult) -> ReportCycle:
+        cycle = cls(
+            perception=result.perception, observation=result.observation, memory=result.memory,
+            proposal=result.proposal, plan=result.plan, action=result.action,
+        )
+        object.__setattr__(cycle, "_result", result)
+        return cycle
+
+    @classmethod
+    def from_dict(cls, payload: object) -> ReportCycle:
+        document = require_keys(payload, CYCLE_EXACT_KEYS)
+        parsed = {}
+        for name, parse in (("perception", PerceptionText.from_dict), ("observation", Observation.from_dict),
+                            ("memory", MemoryReport.from_dict), ("proposal", ProposalResult.from_dict),
+                            ("plan", ActionPlan.from_dict), ("action", ActionResult.from_dict)):
+            record = document[name]
+            if record == {}:
+                raise FieldError(name, "must be a nonempty step record or null")
+            parsed[name] = None if record is None else require_nested(parse, record, field_name=name)
+        return cls(**parsed)
 
 
 @dataclass(frozen=True)
@@ -246,7 +299,7 @@ class HostReport:
     frame_index: int
     timestamp_ms: int
     published_at_ms: int
-    cycle: dict[str, Any]
+    cycle: ReportCycle
     application: ReportApplication
     values: ReportValues
     status: str = "ok"
@@ -274,15 +327,8 @@ class HostReport:
             "published_at_ms",
             require_safe_int(self.published_at_ms, field_name="published_at_ms"),
         )
-        require_keys(self.cycle, CYCLE_EXACT_KEYS, field_name="cycle")
-        cycle = {
-            key: _cycle_record(
-                _json_copy(self.cycle[key], field=f"cycle.{key}"),
-                key=key,
-            )
-            for key in CYCLE_RECORD_KEYS
-        }
-        object.__setattr__(self, "cycle", cycle)
+        if not isinstance(self.cycle, ReportCycle):  # pyright: ignore[reportUnnecessaryIsInstance] - validate runtime callers
+            raise TypeError("cycle must be ReportCycle")
         if not isinstance(self.application, ReportApplication):
             raise TypeError("application must be ReportApplication")
         require_choice(self.status, FRAME_STATUSES, field_name="status")
@@ -302,7 +348,7 @@ class HostReport:
             "frame_index": self.frame_index,
             "timestamp_ms": self.timestamp_ms,
             "published_at_ms": self.published_at_ms,
-            "cycle": _json_copy(self.cycle, field="cycle"),
+            "cycle": self.cycle.to_dict(),
             "application": self.application.to_dict(),
             "values": self.values.to_dict(),
             "status": self.status,
@@ -321,7 +367,7 @@ class HostReport:
             frame_index=document["frame_index"],
             timestamp_ms=document["timestamp_ms"],
             published_at_ms=document["published_at_ms"],
-            cycle=document["cycle"],
+            cycle=require_nested(ReportCycle.from_dict, document["cycle"], field_name="cycle"),
             application=require_nested(
                 ReportApplication.from_dict, document["application"], field_name="application",
             ),
@@ -434,7 +480,7 @@ def report_from_host_result(
         throttle=control.throttle,
     )
     values = replace(values, timing=result.timing)
-    cycle = result.export_cycle()
+    cycle = ReportCycle.from_result(result)
     return HostReport(
         host_name=host_name,
         run_id=run_id,

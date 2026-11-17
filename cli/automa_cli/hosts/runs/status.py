@@ -13,6 +13,9 @@ from collections.abc import Mapping
 from concurrent.futures import ThreadPoolExecutor
 from pathlib import Path
 
+from autonomy.fields import require_nested
+from autonomy.runtime.session import RunConfiguration
+
 from ...frontend.perception_view import get_perception_view_status
 from ...providers.models import DEFAULT_READINESS_TIMEOUT_S
 from ...releases.errors import ReleaseError
@@ -30,8 +33,8 @@ from ..step_activations import (
     staged_selections,
 )
 from ..views.view_discovery import runtime_view_dir
-from .models import AppliedStep, ComparedSteps, HostRun, RunRelease, RunSection, RunState, WorkerProcess, status_reason
-from .store import latest_frame, read_process_record, read_run_state
+from .models import AppliedStep, ComparedSteps, HostRun, RunRelease, RunSection, RunState, UnreadableRun, WorkerProcess, status_reason
+from .store import RunRecordError, latest_frame, read_process_record, read_run_state
 
 def hosts_status(
     *,
@@ -58,10 +61,12 @@ def hosts_status(
             runs = list(pool.map(_run_status, hosts, [read for _, read in reads]))
         for host, run in zip(hosts, runs, strict=False):
             host["run"] = run
+            if host_name is not None and run is not None and "error" in run:
+                exit_code = 1
     return exit_code, {"schema": "automa_hosts_status", "host_name": host_name, "hosts": hosts}
 
 
-def _run_status(host: Mapping[str, object], read: Mapping[str, object] | None) -> HostRun | None:
+def _run_status(host: Mapping[str, object], read: Mapping[str, object] | None) -> HostRun | UnreadableRun | None:
     """A host's deployment and steps, and its run as its monitor or, without one, its host reports it.
 
     ``read`` is the host's ``host_state`` that ``read_hosts`` collected. The
@@ -75,8 +80,11 @@ def _run_status(host: Mapping[str, object], read: Mapping[str, object] | None) -
     name = host["host_name"]
     bundle = bundle_paths(name)
     automation_dir = Path(bundle["runtime_dir"]) / "automation"
-    process = read_process_record(automation_dir) or WorkerProcess()
-    state = read_run_state(automation_dir) or RunState()
+    try:
+        process = read_process_record(automation_dir) or WorkerProcess()
+        state = read_run_state(automation_dir) or RunState()
+    except RunRecordError as exc:
+        return {"host_name": name, "status": "unreadable", "error": str(exc)}
     process_pid, state_pid = process.pid, state.pid
     pid = process_pid if process_pid is not None else state_pid
     alive = pid is not None and pid_alive(pid)
@@ -178,6 +186,12 @@ def _host_run(
     endpoint = f"{base_url}/host/status"
     autonomy = _dict((read["reply"] or {}).get("host"))
     observation = observation_component(autonomy)
+    session = _dict(autonomy.get("session"))
+    configuration = None
+    if "configuration" in session:
+        configuration = require_nested(
+            RunConfiguration.from_dict, session["configuration"], field_name="session.configuration",
+        )
     error = read["error"] if read["state"] in {"not answering", "error"} else None
     status = "error" if error is not None else read["state"]
     run: RunSection = {
@@ -199,7 +213,7 @@ def _host_run(
             "frames_received": observation.get("frames_received", 0),
             "frames_dropped": observation.get("frames_dropped"),
             "processed_count": observation.get("processed_count", 0),
-            "num_decisions": _dict(_dict(autonomy.get("session")).get("configuration")).get("num_decisions"),
+            "num_decisions": configuration.num_decisions if configuration is not None else None,
             "recording": False,
             "control_source": "runtime_host",
             "action_policy": _dict(autonomy.get("execution")).get("mode"),

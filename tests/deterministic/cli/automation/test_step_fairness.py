@@ -1,6 +1,8 @@
 """Host run and status treat every decision-cycle step by one rule."""
 
 from __future__ import annotations
+from cli.automa_cli.hosts.runs.models import WorkerProcess
+from cli.automa_cli.hosts.runs.models import RunState
 from cli.automa_cli.hosts.runs.models import RunResult
 
 import contextlib
@@ -112,8 +114,8 @@ class StepFairnessTests(unittest.TestCase):
         }
         with self._runtime("perception", "proposal") as root:
             automation = root / VEHICLE / "bundle/runtime/automation"
-            write_json(automation / "process.json", {"pid": os.getpid()})
-            write_json(automation / "state.json", {"pid": os.getpid(), "status": "running", "steps": {**applied, "cycle_count": 3}})
+            write_json(automation / "process.json", WorkerProcess(pid=os.getpid()).to_dict())
+            write_json(automation / "state.json", RunState(pid=os.getpid(), status="running", steps={**applied, "cycle_count": 3}).to_dict())
             status = self._status()
             code, human = _invoke("hosts", "status", "--long")
 
@@ -139,7 +141,7 @@ class StepFairnessTests(unittest.TestCase):
             staged = self._status()["steps"]["memory"]
             (plugin,) = staged["plugins"]
             automation = root / VEHICLE / "bundle/runtime/automation"
-            write_json(automation / "process.json", {"pid": os.getpid()})
+            write_json(automation / "process.json", WorkerProcess(pid=os.getpid()).to_dict())
             for configs, label in (
                 (staged["plugin_configs"], "as staged"),
                 ({plugin: {**staged["plugin_configs"][plugin], "max_age_ms": 1}}, f"staged plugins, configs differ ({plugin})"),
@@ -149,9 +151,9 @@ class StepFairnessTests(unittest.TestCase):
                     report = {"plugin_ids": staged["plugins"], "preset": staged["preset"], "run_count": 2, "failure_count": 0}
                     if configs is not None:
                         report["plugin_configs"] = configs
-                    write_json(automation / "state.json", {
-                        "pid": os.getpid(), "status": "running", "steps": step_status({"steps": {"memory": report}}),
-                    })
+                    write_json(automation / "state.json", RunState(
+                        pid=os.getpid(), status="running", steps=step_status({"steps": {"memory": report}}),
+                    ).to_dict())
                     applied = self._status()["steps"]["memory"]["applied"]
                     code, human = _invoke("hosts", "status", "--long")
                     self.assertEqual(code, 0, human)
@@ -162,8 +164,8 @@ class StepFairnessTests(unittest.TestCase):
         reports = {"memory": {"status": "error", "error": "status() raised"}}
         with self._runtime("memory") as root:
             automation = root / VEHICLE / "bundle/runtime/automation"
-            write_json(automation / "process.json", {"pid": os.getpid()})
-            write_json(automation / "state.json", {"pid": os.getpid(), "status": "running", "steps": step_status({"steps": reports})})
+            write_json(automation / "process.json", WorkerProcess(pid=os.getpid()).to_dict())
+            write_json(automation / "state.json", RunState(pid=os.getpid(), status="running", steps=step_status({"steps": reports})).to_dict())
             status = self._status()
             code, human = _invoke("hosts", "status", "--long")
 

@@ -44,6 +44,7 @@ from autonomy.decision_cycle.action.publication import (
     read_mode, read_user_steering, read_user_throttle,
 )
 from autonomy.decision_cycle.cycle import DecisionCycleResult
+from autonomy.fields import FieldError, require_nested
 from autonomy.plugins import uploaded_source
 from autonomy.runtime.execution import ControlApplication
 from autonomy.vehicle import FRONT_CAMERA_SENSOR_ID
@@ -81,7 +82,13 @@ def control_application_windows(changes: list[object]) -> list[tuple[ControlAppl
             if not isinstance(added, list):
                 raise ValueError("added must be a list")
             retained = previous[-kept:] if kept else ()
-            previous = retained + tuple(ControlApplication.from_dict(item) for item in added)
+            previous = retained + tuple(
+                require_nested(ControlApplication.from_dict, item,
+                               field_name=f"frames.{position}.control_application_change.added.{index}")
+                for index, item in enumerate(added)
+            )
+        except FieldError:
+            raise
         except (TypeError, ValueError) as exc:
             raise ValueError(f"frame {position} has invalid control applications: {exc}") from exc
         windows.append(previous)

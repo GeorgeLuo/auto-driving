@@ -8,15 +8,19 @@ come from ``render``.
 """
 from __future__ import annotations
 
+import json
 import os
 from collections.abc import Mapping
 from pathlib import Path
+from typing import Literal
 
+from autonomy.fields import FieldError
 from autonomy.runtime.session import RunConfiguration
 
 from ...shared.io.json_files import read_json, write_json_atomically
 from ...shared.paths import display_path
 from ...shared.timestamps import timestamp_ms
+from ..errors import RuntimeHostError
 from ..host_formatting import perception_stream_command
 from ..publications.host_publications import observation_component
 from ..staging import automation_dir as host_automation_dir
@@ -27,6 +31,16 @@ RUN_STATE_SCHEMA = "automa_automation_run_state"
 
 # Every run's host applies its own wheel commands.
 CONTROL_SOURCE = "runtime_host"
+
+
+class RunRecordError(RuntimeHostError):
+    """A persisted run record is unreadable; the message names its recovery."""
+
+    def __init__(self, path: Path, problem: Exception) -> None:
+        super().__init__(
+            f"Could not read run record {path}: {problem}. "
+            f"Recovery: once no worker is running, remove {path} and retry."
+        )
 
 
 def control_application(configuration: RunConfiguration) -> str:
@@ -252,7 +266,12 @@ def run_directory(host_name: str, *, create: bool = False) -> Path:
 
 
 def read_process_record(automation_dir: Path) -> WorkerProcess | None:
-    return WorkerProcess.from_dict(read_json(automation_dir / "process.json"))
+    path = automation_dir / "process.json"
+    try:
+        payload = _read_record(path)
+        return None if payload is None else WorkerProcess.from_dict(payload)
+    except (FieldError, OSError, UnicodeError) as exc:
+        raise RunRecordError(path, exc) from exc
 
 
 def read_stop_count(automation_dir: Path) -> int:
@@ -268,7 +287,47 @@ def write_stop_count(automation_dir: Path, stops: int) -> None:
 
 
 def read_run_state(automation_dir: Path) -> RunState | None:
-    return RunState.from_dict(read_json(automation_dir / "state.json"))
+    path = automation_dir / "state.json"
+    try:
+        payload = _read_record(path)
+        return None if payload is None else RunState.from_dict(payload)
+    except (FieldError, OSError, UnicodeError) as exc:
+        raise RunRecordError(path, exc) from exc
+
+
+def _read_record(path: Path) -> dict | None:
+    try:
+        text = path.read_text(encoding="utf-8")
+    except FileNotFoundError:
+        return None
+    try:
+        payload = json.loads(text)
+    except json.JSONDecodeError as exc:
+        raise FieldError("$", f"{path.name} must contain valid JSON") from exc
+    if not isinstance(payload, dict):
+        raise FieldError("$", f"{path.name} must contain an object")
+    return convert_legacy_run_record(payload, record_name=path.name)
+
+
+def convert_legacy_run_record(
+    payload: dict[str, object], *, record_name: Literal["state.json", "process.json"],
+) -> dict[str, object]:
+    """Restore only fields omitted by main build 5f0cf136's run-record writers.
+
+    That build omits later fields equal to None or {}. Absent nullable fields
+    recover their default None; selections, decision and last_frame recover {}.
+    Present values and all other keys are left for the strict document parser.
+    """
+
+    if record_name == "state.json":
+        defaults: dict[str, object] = dict.fromkeys((
+            "completed_at_ms", "stop_reason", "error", "exit_code", "activation_problems",
+            "session", "execution", "steps", "arming",
+        ))
+        defaults.update(selections={}, decision={}, last_frame={})
+    else:
+        defaults = dict.fromkeys(("startup", "status", "stopped_by", "stopped_at_ms"))
+    return defaults | payload
 
 
 def record_background_worker(

@@ -1,5 +1,6 @@
 from __future__ import annotations
 import unittest
+from unittest.mock import patch
 from autonomy.decision_cycle.proposal.values import (
     ActionProposal,
 )
@@ -66,6 +67,60 @@ class RunnerBoundaryTests(unittest.TestCase):
             if candidate.plugin_id == "avoid_recent_obstruction"
         ]
         self.assertEqual(admitted.metadata["pad"], "x" * 5000)
+
+    def test_admission_keeps_the_typed_candidate_and_immutable_nested_fields(self) -> None:
+        from autonomy.decision_cycle.context import DecisionFrameContext
+        from autonomy.decision_cycle.proposal.runner import ProposalRunner
+
+        metadata = {"nested": {"choices": [1, {}]}}
+        refs = list(_active_proposal().source_refs)
+        assumptions = ["image_relative"]
+        candidate = ActionProposal(
+            plugin_id="avoid_recent_obstruction", frame_id="frame_001", lifecycle="fresh", freshness="fresh",
+            confidence=0.5, reason="drive", command=_active_proposal().command,
+            source_refs=refs, assumptions=assumptions, metadata=metadata, available=True,
+        )
+        class Plugin:
+            plugin_id = "avoid_recent_obstruction"
+
+            def propose(self, context):
+                return candidate
+
+        runner = ProposalRunner.from_plugins({"avoid_recent_obstruction": Plugin()})
+        metadata["nested"]["choices"].append(99)
+        refs.clear()
+        assumptions.clear()
+        with patch.object(ActionProposal, "to_dict", side_effect=AssertionError("admission exported candidate")), \
+             patch.object(ActionProposal, "from_dict", side_effect=AssertionError("admission parsed candidate")):
+            result = runner(DecisionFrameContext("frame_001", 0, 1))
+        self.assertEqual(result.status, "ok")
+        self.assertIs(result.candidates[0], candidate)
+        self.assertEqual(candidate.metadata["nested"]["choices"], (1, {}))
+        self.assertEqual(len(candidate.source_refs), 1)
+        self.assertEqual(candidate.assumptions, ("image_relative",))
+        with self.assertRaises(TypeError):
+            candidate.metadata["nested"]["choices"] = ()
+
+    def test_admission_rejects_corrupted_nested_values(self) -> None:
+        from autonomy.serialization import FrozenJsonObject
+
+        for target, field, value in (
+            ("command", "steering", True), ("command", "throttle", 2),
+            ("source", "frame_id", " padded "), ("source", "kind", "unknown"),
+            ("proposal", "metadata", {"mutable": []}),
+            ("proposal", "metadata", FrozenJsonObject({"mutable": []})),
+        ):
+            def corrupt(context):
+                candidate = _active_proposal(frame_id=context.frame_id)
+                nested = {"proposal": candidate, "command": candidate.command, "source": candidate.source_refs[0]}[target]
+                object.__setattr__(nested, field, value)
+                return candidate
+
+            with self.subTest(target=target, field=field, value=value):
+                result = decision_chain(plugins={"avoid_recent_obstruction": corrupt}).run(
+                    frame_id="frame_001", frame_index=0, timestamp_ms=1,
+                )
+                self.assertEqual((result.status, result.reason), ("error", "action_proposal_matrix_violated"))
 
     def test_select_action_plan_failure_is_plan_invariant(self) -> None:
         class BrokenPlan:

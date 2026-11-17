@@ -103,7 +103,7 @@ def inspect_step(
     )
     if result.report is None:
         return CommandResult(result.exit_code, result.error or "")
-    return CommandResult(0, render_inspect(result.report, json_output=json_output))
+    return CommandResult(0, render_inspect(result.report, json_output=json_output, records=result.records))
 
 
 def _handle_plugins_inspect_help(args: argparse.Namespace) -> int:

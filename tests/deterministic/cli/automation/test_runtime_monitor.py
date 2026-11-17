@@ -120,7 +120,7 @@ class RuntimeMonitorTests(unittest.TestCase):
             "num_decisions": 2,
             "run_dir": None,
         }
-        typed = RunState.from_dict(state)
+        typed = RunState(**state)
         output = io.StringIO()
         startup_printer(output)(typed)
         code, message = run_exit_code(typed), render_run_result(typed, state_path="automation/state.json")
@@ -244,7 +244,7 @@ class RuntimeMonitorTests(unittest.TestCase):
             self.assertNotIn(removed, state)
         self.assertEqual(files, ["state.json"])
 
-    def test_a_host_without_a_latest_frame_leaves_it_absent(self) -> None:
+    def test_a_host_without_a_latest_frame_writes_an_empty_frame(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:
             _client, code, _message, _lines, state = self._monitor(
                 Path(tmp) / "automation",
@@ -253,7 +253,7 @@ class RuntimeMonitorTests(unittest.TestCase):
             )
 
         self.assertEqual(code, 0)
-        self.assertNotIn("last_frame", state)
+        self.assertEqual(state["last_frame"], {})
 
     def test_a_host_cycle_error_fails_the_run_with_the_host_error(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:

@@ -39,6 +39,7 @@ from .process import (
     worker_command,
 )
 from .store import (
+    RunRecordError,
     control_application,
     decision_record,
     initialize_automation_startup,
@@ -214,28 +215,31 @@ def start_host_automation_background(
     if problems:
         return StartResult(2, "activation_invalid", problems=problems)
 
-    begun, started_at_ms, existing = _begin_start(
-        automation_dir, host_name=host_name, configuration=configuration, record=record, log_path=log_path,
-    )
-    if existing is not None:
-        return existing
-    return _launch_start(
-        automation_dir,
-        host_name=host_name,
-        command=worker_command(
+    try:
+        begun, started_at_ms, existing = _begin_start(
+            automation_dir, host_name=host_name, configuration=configuration, record=record, log_path=log_path,
+        )
+        if existing is not None:
+            return existing
+        return _launch_start(
+            automation_dir,
             host_name=host_name,
-            host_url=host_url,
-            timeout_s=timeout_s,
-            configuration=configuration,
-            take_control=take_control,
-            record=record,
-        ),
-        begun=begun,
-        started_at_ms=started_at_ms,
-        log_to_disk=log_to_disk,
-        log_path=log_path,
-        startup_wait_s=startup_wait_s,
-    )
+            command=worker_command(
+                host_name=host_name,
+                host_url=host_url,
+                timeout_s=timeout_s,
+                configuration=configuration,
+                take_control=take_control,
+                record=record,
+            ),
+            begun=begun,
+            started_at_ms=started_at_ms,
+            log_to_disk=log_to_disk,
+            log_path=log_path,
+            startup_wait_s=startup_wait_s,
+        )
+    except RunRecordError as exc:
+        return StartResult(2, "error", host_name=host_name, error=str(exc))
 
 
 def restart_host_automation(
@@ -306,10 +310,15 @@ def stop_host_automation(
     if failed is not None:
         return failed
     automation_dir = run_directory(host_name)
-    with section(automation_dir) as run:
-        claim = run.claim()
-    result = _stop_claimed(host_name, automation_dir, claim, wait_s)
-    if result.exit_code != 0:
+    claim = None
+    try:
+        with section(automation_dir) as run:
+            read_run_state(automation_dir)
+            claim = run.claim()
+        result = _stop_claimed(host_name, automation_dir, claim, wait_s)
+    except RunRecordError as exc:
+        result = StopResult(2, "error", host_name, error=str(exc))
+    if result.exit_code != 0 and claim is not None:
         with section(automation_dir) as run:
             run.release(claim)
     return result
@@ -348,10 +357,10 @@ def _existing_start(
     log_path: Path,
 ) -> StartResult | None:
     existing = read_process_record(automation_dir)
+    state = read_run_state(automation_dir) or RunState()
     existing_pid = existing.pid if existing is not None else None
     if existing_pid is None or not pid_alive(existing_pid):
         return None
-    state = read_run_state(automation_dir) or RunState()
     session_status = (state.session or {}).get("status")
     state_path = automation_dir / "state.json"
     if state.status == "starting" or session_status == "starting":

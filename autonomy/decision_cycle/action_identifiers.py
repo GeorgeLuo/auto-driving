@@ -25,9 +25,3 @@ def proposal_id_for(plugin_id: str, frame_id: str) -> str:
 
 def plan_id_for(frame_id: str) -> str:
     return f"action-plan:{frame_id}"
-
-
-def require_code_point_len(value: str, *, field_name: str, max_len: int) -> str:
-    if len(value) > max_len:
-        raise ValueError(f"{field_name} exceeds {max_len} code points")
-    return value

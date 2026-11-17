@@ -6,22 +6,22 @@ and supporting evidence.
 
 from __future__ import annotations
 
-import math
 from collections.abc import Mapping
-from dataclasses import dataclass, field
+from dataclasses import dataclass, field, fields
 from typing import Literal
 
 from autonomy.decision_cycle.action_identifiers import (
     proposal_id_for,
-    require_code_point_len,
 )
-from autonomy.fields import require_ascii_id
-from autonomy.decision_cycle.confidence import optional_confidence
+from autonomy.fields import (
+    FieldError, require_ascii_id, require_choice, require_keys, require_nested,
+    require_number, require_schema, require_text,
+)
 from autonomy.serialization import (
+    FrozenJsonObject,
     deep_freeze,
     frozen_mapping_to_dict,
 )
-from autonomy.vehicle import clamp_unit
 
 ACTION_PROPOSAL_SCHEMA = "action_proposal"
 PROPOSED_VEHICLE_COMMAND_SCHEMA = "proposed_vehicle_command"
@@ -84,18 +84,14 @@ class ProposedVehicleCommand:
     schema: str = PROPOSED_VEHICLE_COMMAND_SCHEMA
 
     def __post_init__(self) -> None:
-        try:
-            steering = float(self.steering)
-            throttle = float(self.throttle)
-        except (TypeError, ValueError) as exc:
-            raise ValueError("steering and throttle must be numeric") from exc
-        if not math.isfinite(steering) or not math.isfinite(throttle):
-            raise ValueError("steering and throttle must be finite")
-        object.__setattr__(self, "steering", clamp_unit(steering))
-        object.__setattr__(self, "throttle", clamp_unit(throttle))
-        object.__setattr__(self, "normalized", True)
-        if self.schema != PROPOSED_VEHICLE_COMMAND_SCHEMA:
-            raise ValueError("invalid ProposedVehicleCommand schema")
+        self.validate()
+
+    def validate(self) -> None:
+        require_number(self.steering, field_name="steering", bounds=(-1, 1))
+        require_number(self.throttle, field_name="throttle", bounds=(-1, 1))
+        if self.normalized is not True:
+            raise FieldError("normalized", "must be true")
+        require_choice(self.schema, (PROPOSED_VEHICLE_COMMAND_SCHEMA,), field_name="schema")
 
     @property
     def gear(self) -> str:
@@ -115,18 +111,16 @@ class ProposedVehicleCommand:
         }
 
     @classmethod
-    def from_dict(cls, data: Mapping[str, object]) -> "ProposedVehicleCommand":
-        steering, throttle = data.get("steering") or 0.0, data.get("throttle") or 0.0
-        if not isinstance(steering, (int, float)) or not isinstance(throttle, (int, float)):
-            raise ValueError("steering and throttle must be numeric")
+    def from_dict(cls, payload: object) -> ProposedVehicleCommand:
+        document = require_schema(payload, PROPOSED_VEHICLE_COMMAND_SCHEMA,
+                                  {"schema", "steering", "throttle", "gear", "normalized"})
         command = cls(
-            steering=float(steering),
-            throttle=float(throttle),
-            schema=str(data.get("schema") or PROPOSED_VEHICLE_COMMAND_SCHEMA),
+            steering=document["steering"], throttle=document["throttle"],
+            normalized=document["normalized"], schema=document["schema"],
         )
-        gear = data.get("gear")
-        if gear is not None and gear != command.gear:
-            raise ValueError(f"gear {gear!r} contradicts throttle {command.throttle}")
+        gear = require_choice(document["gear"], ("forward", "reverse", "hold"), field_name="gear")
+        if gear != command.gear:
+            raise FieldError("gear", f"{gear!r} contradicts throttle {command.throttle}")
         return command
 
 
@@ -140,24 +134,17 @@ class SourceRef:
     note: str = ""
 
     def __post_init__(self) -> None:
-        allowed = {
-            "observation",
-            "memory_record",
-        }
-        if self.kind not in allowed:
-            raise ValueError(f"invalid SourceRef.kind {self.kind!r}")
-        object.__setattr__(
-            self,
-            "id",
-            require_code_point_len(str(self.id), field_name="id", max_len=MAX_SOURCE_REF_ID),
-        )
-        object.__setattr__(
-            self,
-            "note",
-            require_code_point_len(
-                str(self.note), field_name="note", max_len=MAX_SOURCE_REF_NOTE
-            ),
-        )
+        self.validate()
+
+    def validate(self) -> None:
+        require_choice(self.kind, ("observation", "memory_record"), field_name="kind")
+        # Memory record IDs are composite ledger keys, not 64-character plugin IDs.
+        _bounded_text(self.id, field_name="id", max_len=MAX_SOURCE_REF_ID)
+        for name in ("frame_id", "observation_id", "plugin_id"):
+            value = getattr(self, name)
+            if value is not None:
+                require_ascii_id(value, field_name=name)
+        _bounded_text(self.note, field_name="note", max_len=MAX_SOURCE_REF_NOTE, empty=True)
 
     def to_dict(self) -> dict[str, object]:
         return {
@@ -170,22 +157,11 @@ class SourceRef:
         }
 
     @classmethod
-    def from_dict(cls, data: Mapping[str, object]) -> "SourceRef":
+    def from_dict(cls, payload: object) -> SourceRef:
+        document = require_keys(payload, {item.name for item in fields(cls)})
         return cls(
-            kind=str(data.get("kind") or ""),
-            id=str(data.get("id") or ""),
-            frame_id=(
-                str(data["frame_id"]) if data.get("frame_id") is not None else None
-            ),
-            observation_id=(
-                str(data["observation_id"])
-                if data.get("observation_id") is not None
-                else None
-            ),
-            plugin_id=(
-                str(data["plugin_id"]) if data.get("plugin_id") is not None else None
-            ),
-            note=str(data.get("note") or ""),
+            kind=document["kind"], id=document["id"], frame_id=document["frame_id"],
+            observation_id=document["observation_id"], plugin_id=document["plugin_id"], note=document["note"],
         )
 
 
@@ -208,95 +184,85 @@ class ActionProposal:
     schema: str = ACTION_PROPOSAL_SCHEMA
 
     def __post_init__(self) -> None:
-        self._assign_identity()
-        self._assign_status()
-        self._assign_matrix()
-        self._assign_assumptions()
-        self._assign_source_refs()
-        self._assign_metadata()
+        if self.proposal_id == "":
+            object.__setattr__(self, "proposal_id", proposal_id_for(self.plugin_id, self.frame_id))
+        # Plugin constructors and returns are runtime boundaries; annotations do not validate them.
+        if not isinstance(self.assumptions, (list, tuple)):  # pyright: ignore[reportUnnecessaryIsInstance]
+            raise FieldError("assumptions", "must be a list or tuple of strings")
+        object.__setattr__(self, "assumptions", tuple(self.assumptions))
+        if not isinstance(self.source_refs, (list, tuple)):  # pyright: ignore[reportUnnecessaryIsInstance]
+            raise FieldError("source_refs", "must be a list or tuple of SourceRef")
+        object.__setattr__(self, "source_refs", tuple(self.source_refs))
+        if isinstance(self.metadata, dict):
+            try:
+                object.__setattr__(self, "metadata", deep_freeze(self.metadata, field_name="metadata"))
+            except ValueError as exc:
+                raise FieldError("metadata", str(exc)) from exc
+        self.validate()
 
-    def _assign_identity(self) -> None:
+    def validate(self) -> None:
+        """Validate a plugin's typed return without exporting or copying it."""
+        self._validate_identity()
+        self._validate_status()
+        self._validate_matrix()
+        self._validate_assumptions()
+        self._validate_source_refs()
+        if not isinstance(self.metadata, FrozenJsonObject):
+            raise FieldError("metadata", "must be an immutable JSON object")
+        _validate_frozen_json(self.metadata, field_name="metadata")
+        require_choice(self.schema, (ACTION_PROPOSAL_SCHEMA,), field_name="schema")
+
+    def _validate_identity(self) -> None:
         plugin_id = require_ascii_id(self.plugin_id, field_name="plugin_id")
         frame_id = require_ascii_id(self.frame_id, field_name="frame_id")
-        object.__setattr__(self, "plugin_id", plugin_id)
-        object.__setattr__(self, "frame_id", frame_id)
         expected_id = proposal_id_for(plugin_id, frame_id)
-        proposal_id = self.proposal_id or expected_id
-        if proposal_id != expected_id:
-            raise ValueError(f"proposal_id must be {expected_id!r}; got {proposal_id!r}")
-        object.__setattr__(self, "proposal_id", proposal_id)
+        if self.proposal_id != expected_id:
+            raise FieldError("proposal_id", f"must be {expected_id!r}; got {self.proposal_id!r}")
 
-    def _assign_status(self) -> None:
-        if self.lifecycle not in LIFECYCLES:
-            raise ValueError(f"invalid lifecycle {self.lifecycle!r}")
-        if self.freshness not in FRESHNESS_VALUES:
-            raise ValueError(f"invalid freshness {self.freshness!r}")
-        object.__setattr__(
-            self,
-            "confidence",
-            optional_confidence(self.confidence, field_name="confidence", clamp=False),
-        )
-        reason = require_code_point_len(
-            str(self.reason), field_name="reason", max_len=MAX_REASON
-        )
+    def _validate_status(self) -> None:
+        require_choice(self.lifecycle, LIFECYCLES, field_name="lifecycle")
+        require_choice(self.freshness, FRESHNESS_VALUES, field_name="freshness")
+        if self.confidence is not None:
+            require_number(self.confidence, field_name="confidence", bounds=(0, 1))
+        reason = _bounded_text(self.reason, field_name="reason", max_len=MAX_REASON)
         if not reason.strip():
-            raise ValueError("reason must be a non-empty string")
-        object.__setattr__(self, "reason", reason)
+            raise FieldError("reason", "must contain non-whitespace text")
 
-    def _assign_matrix(self) -> None:
+    def _validate_matrix(self) -> None:
         allowed_freshness, available, command_required, _min_refs = _MATRIX[self.lifecycle]
         if self.freshness != allowed_freshness:
-            raise ValueError(
-                f"lifecycle {self.lifecycle} requires freshness {allowed_freshness}; "
-                f"got {self.freshness}"
-            )
-        # Exact boolean only — reject truthy/falsey coercions such as "false".
+            raise FieldError("freshness", f"lifecycle {self.lifecycle} requires {allowed_freshness}")
         if type(self.available) is not bool:
-            raise ValueError(f"available must be a bool; got {type(self.available).__name__}")
+            raise FieldError("available", "must be a bool")
         if self.available != available:
-            raise ValueError(f"lifecycle {self.lifecycle} requires available={available}")
-        object.__setattr__(self, "available", available)
+            raise FieldError("available", f"lifecycle {self.lifecycle} requires {available}")
         if command_required:
             if not isinstance(self.command, ProposedVehicleCommand):
-                raise ValueError(f"lifecycle {self.lifecycle} requires a ProposedVehicleCommand")
+                raise FieldError("command", f"lifecycle {self.lifecycle} requires a ProposedVehicleCommand")
+            require_nested(ProposedVehicleCommand.validate, self.command, field_name="command")
         elif self.command is not None:
-            raise ValueError(f"lifecycle {self.lifecycle} requires command=null")
+            raise FieldError("command", f"lifecycle {self.lifecycle} requires null")
 
-    def _assign_assumptions(self) -> None:
-        if type(self.assumptions) not in (list, tuple):
-            raise TypeError("assumptions must be a list or tuple of strings")
-        for item in self.assumptions:
-            if type(item) is not str:
-                raise TypeError(f"assumptions items must be strings; got {type(item).__name__}")
-        assumptions = tuple(self.assumptions)
-        if len(assumptions) > MAX_ASSUMPTIONS:
-            raise ValueError(f"assumptions exceed {MAX_ASSUMPTIONS}")
-        for item in assumptions:
-            require_code_point_len(item, field_name="assumption", max_len=MAX_ASSUMPTION)
-        object.__setattr__(self, "assumptions", assumptions)
+    def _validate_assumptions(self) -> None:
+        if not isinstance(self.assumptions, tuple):  # pyright: ignore[reportUnnecessaryIsInstance] - validate plugin returns
+            raise FieldError("assumptions", "must be an immutable tuple")
+        if len(self.assumptions) > MAX_ASSUMPTIONS:
+            raise FieldError("assumptions", f"exceeds {MAX_ASSUMPTIONS}")
+        for index, item in enumerate(self.assumptions):
+            _bounded_text(item, field_name=f"assumptions.{index}", max_len=MAX_ASSUMPTION, empty=True)
 
-    def _assign_source_refs(self) -> None:
-        _allowed_freshness, _available, _command_required, min_refs = _MATRIX[self.lifecycle]
-        # The field annotation is the stored tuple. Callers also pass a list,
-        # so the element check has to see the raw value.
-        refs = _source_refs(self.source_refs)
-        if len(refs) > MAX_SOURCE_REFS:
-            raise ValueError(f"source_refs exceed {MAX_SOURCE_REFS}")
-        if len(refs) < min_refs:
-            raise ValueError(
-                f"lifecycle {self.lifecycle} requires at least {min_refs} source_refs"
-            )
-        for ref in refs:
-            if not isinstance(ref, SourceRef):
-                raise TypeError("source_refs must contain SourceRef")
-        object.__setattr__(self, "source_refs", refs)
-
-    def _assign_metadata(self) -> None:
-        if type(self.metadata) is not dict:
-            raise TypeError("metadata must be a dict (JSON object)")
-        object.__setattr__(self, "metadata", deep_freeze(self.metadata))
-        if self.schema != ACTION_PROPOSAL_SCHEMA:
-            raise ValueError(f"schema must be {ACTION_PROPOSAL_SCHEMA!r}; got {self.schema!r}")
+    def _validate_source_refs(self) -> None:
+        _freshness, _available, _command_required, min_refs = _MATRIX[self.lifecycle]
+        if not isinstance(self.source_refs, tuple):  # pyright: ignore[reportUnnecessaryIsInstance] - validate plugin returns
+            raise FieldError("source_refs", "must be an immutable tuple")
+        if len(self.source_refs) > MAX_SOURCE_REFS:
+            raise FieldError("source_refs", f"exceeds {MAX_SOURCE_REFS}")
+        if len(self.source_refs) < min_refs:
+            raise FieldError("source_refs", f"lifecycle {self.lifecycle} requires at least {min_refs}")
+        for index, ref in enumerate(self.source_refs):
+            if not isinstance(ref, SourceRef):  # pyright: ignore[reportUnnecessaryIsInstance] - validate plugin returns
+                raise FieldError(f"source_refs.{index}", "must be a SourceRef")
+            require_nested(SourceRef.validate, ref, field_name=f"source_refs.{index}")
 
     def is_active(self, frame_id: str) -> bool:
         """Whether a plan may act on this candidate in the cycle for ``frame_id``.
@@ -325,52 +291,31 @@ class ActionProposal:
         }
 
     @classmethod
-    def from_dict(cls, data: Mapping[str, object]) -> "ActionProposal":
-        command_data = data.get("command")
-        command = (
-            ProposedVehicleCommand.from_dict(command_data)
-            if isinstance(command_data, dict)
-            else None
+    def from_dict(cls, payload: object) -> ActionProposal:
+        document = require_schema(payload, ACTION_PROPOSAL_SCHEMA, {item.name for item in fields(cls)})
+        lifecycle = require_choice(document["lifecycle"], LIFECYCLES, field_name="lifecycle")
+        command = document["command"]
+        if command is not None:
+            if not _MATRIX[lifecycle][2]:
+                raise FieldError("command", f"lifecycle {lifecycle} requires null")
+            command = require_nested(ProposedVehicleCommand.from_dict, command, field_name="command")
+        raw_refs = document["source_refs"]
+        if not isinstance(raw_refs, (list, tuple)):
+            raise FieldError("source_refs", "must be an array")
+        refs = tuple(
+            require_nested(SourceRef.from_dict, item, field_name=f"source_refs.{index}")
+            for index, item in enumerate(raw_refs)
         )
-        raw_refs = data.get("source_refs")
-        if raw_refs is None:
-            refs: tuple[SourceRef, ...] = ()
-        elif type(raw_refs) not in (list, tuple):
-            raise TypeError("source_refs must be a list or tuple")
-        else:
-            for item in raw_refs:
-                if not isinstance(item, dict):
-                    raise TypeError("source_refs items must be objects")
-            refs = tuple(SourceRef.from_dict(item) for item in raw_refs)
-        raw_metadata = data.get("metadata")
-        if raw_metadata is None:
-            metadata: dict[str, object] = {}
-        elif type(raw_metadata) is not dict:
-            raise TypeError("metadata must be a dict (JSON object)")
-        else:
-            metadata = raw_metadata
-        raw_assumptions = data.get("assumptions")
-        if raw_assumptions is None:
-            assumptions: tuple[str, ...] = ()
-        elif type(raw_assumptions) not in (list, tuple):
-            raise TypeError("assumptions must be a list or tuple of strings")
-        else:
-            assumptions = tuple(raw_assumptions)
+        metadata = document["metadata"]
+        if not isinstance(metadata, dict):
+            raise FieldError("metadata", "must be a JSON object")
         return cls(
-            plugin_id=str(data.get("plugin_id") or ""),
-            frame_id=str(data.get("frame_id") or ""),
-            lifecycle=str(data.get("lifecycle") or ""),
-            freshness=str(data.get("freshness") or ""),
-            confidence=data.get("confidence"),
-            reason=str(data.get("reason") or ""),
-            command=command,
-            assumptions=assumptions,
-            source_refs=refs,
-            # Preserve raw available; constructor rejects non-bool types.
-            available=data["available"] if "available" in data else False,
-            metadata=metadata,
-            proposal_id=str(data.get("proposal_id") or ""),
-            schema=str(data.get("schema") or ACTION_PROPOSAL_SCHEMA),
+            plugin_id=document["plugin_id"], frame_id=document["frame_id"],
+            lifecycle=lifecycle, freshness=document["freshness"],
+            confidence=document["confidence"], reason=document["reason"], command=command,
+            assumptions=document["assumptions"], source_refs=refs, available=document["available"],
+            metadata=metadata, proposal_id=require_text(document["proposal_id"], field_name="proposal_id"),
+            schema=document["schema"],
         )
 
 
@@ -397,7 +342,25 @@ def synthetic_error_proposal(
     )
 
 
-def _source_refs(value: object) -> tuple[object, ...]:
-    if type(value) not in (list, tuple):
-        raise TypeError("source_refs must be a list or tuple of SourceRef")
-    return tuple(value)
+def _bounded_text(value: object, *, field_name: str, max_len: int, empty: bool = False) -> str:
+    if empty and value == "":
+        return ""
+    text = require_text(value, field_name=field_name)
+    if len(text) > max_len:
+        raise FieldError(field_name, f"exceeds {max_len} code points")
+    return text
+
+
+def _validate_frozen_json(value: object, *, field_name: str) -> None:
+    if isinstance(value, FrozenJsonObject):
+        for key, item in value.items():
+            if not isinstance(key, str):  # pyright: ignore[reportUnnecessaryIsInstance] - validate plugin-owned frozen storage
+                raise FieldError(field_name, "JSON object keys must be strings")
+            _validate_frozen_json(item, field_name=f"{field_name}.{key}")
+    elif isinstance(value, tuple):
+        for index, item in enumerate(value):
+            _validate_frozen_json(item, field_name=f"{field_name}.{index}")
+    elif isinstance(value, float):
+        require_number(value, field_name=field_name)
+    elif value is not None and type(value) not in (str, int, bool):
+        raise FieldError(field_name, "must contain immutable JSON values")

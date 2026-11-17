@@ -83,7 +83,7 @@ class StopOrderingTests(unittest.TestCase):
 
         self.assertEqual((stopped.exit_code, stopped.kind, stopped.error), (2, "remote_failed", "offline"))
         self.assertEqual((result.exit_code, result.kind), (0, "started"))
-        self.assertNotIn("stopped_by", self._record("process.json"))
+        self.assertIsNone(self._record("process.json")["stopped_by"])
 
     def test_a_stop_that_times_out_lets_the_start_finish(self) -> None:
         self.enterContext(patch.object(service, "stop_worker", return_value="timeout"))
@@ -98,7 +98,7 @@ class StopOrderingTests(unittest.TestCase):
 
         self.assertEqual((stopped.exit_code, stopped.kind), (2, "timeout"))
         self.assertEqual(result.kind, "started")
-        self.assertNotIn("stopped_by", self._record("process.json"))
+        self.assertIsNone(self._record("process.json")["stopped_by"])
         self.assertEqual(self._record("order.json")["stops"], 0)
 
     def test_stop_during_restart_is_the_run_that_remains(self) -> None:

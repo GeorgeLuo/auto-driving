@@ -60,25 +60,23 @@ def _admit_candidate(
             frame_id=frame_id,
             reason="plugin_invalid_return",
         )
-    # Re-validate the lifecycle matrix and admit a reconstructed copy so
-    # post-construction mutation of nested storage cannot change the candidate.
+    # Nested storage is immutable; validate the plugin's typed return directly.
     try:
-        plain = returned.to_dict()
-        validated = ActionProposal.from_dict(plain)
+        ActionProposal.validate(returned)
     except ActionProposalMatrixError:
         raise
     except Exception as exc:
         raise ActionProposalMatrixError(
             f"candidate fails lifecycle/bounds matrix: {exc}"
         ) from exc
-    identity = (validated.plugin_id, validated.proposal_id, validated.frame_id)
+    identity = (returned.plugin_id, returned.proposal_id, returned.frame_id)
     if identity != (invoked_plugin_id, expected_id, frame_id):
         return synthetic_error_proposal(
             plugin_id=invoked_plugin_id,
             frame_id=frame_id,
             reason="plugin_invalid_return",
         )
-    return validated
+    return returned
 
 
 class ProposalRunner(StepRunner[ProposalPlugin]):

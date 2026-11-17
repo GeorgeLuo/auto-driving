@@ -23,9 +23,14 @@ from dataclasses import dataclass
 from pathlib import Path
 
 from autonomy.decision_cycle.cycle import CYCLE_RECORD_KEYS
+from autonomy.decision_cycle.proposal.values import ActionProposal, ProposedVehicleCommand, SourceRef
 from autonomy.fields import ROOT, FieldError
 from autonomy.runtime.frame_loop import FramePublication
 from autonomy.runtime.report import HostReport, ReportApplication
+from autonomy.runtime.control import AutonomyControl
+from autonomy.runtime.execution import ControlApplication
+from autonomy.runtime.session import RunConfiguration
+from cli.automa_cli.hosts.runs.models import RunState, WorkerProcess
 
 REPOSITORY = Path(__file__).resolve().parents[3]
 MISSING = object()
@@ -51,7 +56,57 @@ def _report(**fields: object) -> HostReport:
     })
 
 
+def _run_state() -> RunState:
+    return RunState(
+        schema="automa_automation_run_state", host_name="car", run_id="run-1", status="completed",
+        pid=123, started_at_ms=1000, updated_at_ms=1100, completed_at_ms=1100,
+        frames_received=3, frames_dropped=1, processed_count=2, num_decisions=2,
+        pipeline="latest_frame_async_decision", control_source="runtime_host", action_policy="autonomy",
+        control_application="shared_execution", recording=True, recorded_count=2, run_dir="runtime/run-1",
+        stop_reason="decision_limit", error="export failed", exit_code=2,
+        activation_problems=[{"step": "proposal", "error": "unavailable"}],
+        session={"status": "completed"}, execution={"mode": "autonomy"},
+        selections={"proposal": {"plugins": ["fixture"]}}, decision={"generation_id": "decision-1"},
+        steps={"cycle_count": 2}, arming={"status": "armed"}, last_frame={"frame_id": "frame-1"},
+    )
+
+
 DOCUMENTS = {
+    "autonomy.decision_cycle.proposal.values.SourceRef": Document(lambda: [
+        SourceRef("observation", "frame-1"),
+        SourceRef("memory_record", "thing:1:7:fixture:6:object", frame_id="frame-1",
+                  observation_id="frame-1", plugin_id="fixture", note="primary"),
+    ]),
+    "autonomy.decision_cycle.proposal.values.ProposedVehicleCommand": Document(lambda: [
+        ProposedVehicleCommand(0, 0), ProposedVehicleCommand(0.25, -0.5),
+    ]),
+    "autonomy.decision_cycle.proposal.values.ActionProposal": Document(lambda: [
+        ActionProposal("fixture", "frame-1", "inactive", "none", None, "idle", None),
+        ActionProposal("fixture", "frame-1", "fresh", "fresh", 0.75, "drive", ProposedVehicleCommand(0.25, -0.5),
+                       assumptions=("image_relative",), source_refs=(SourceRef(
+                           "memory_record", "thing:1:7:fixture:6:object", frame_id="frame-1",
+                           observation_id="frame-1", plugin_id="fixture", note="primary",
+                       ),), available=True, metadata={"policy": {"epoch": 1}}),
+    ], opaque=("metadata",)),
+    "autonomy.runtime.execution.ControlApplication": Document(lambda: [
+        ControlApplication(None, "manual", False, "idle", AutonomyControl()),
+        ControlApplication("frame-1", "autonomy", True, "drive", AutonomyControl(
+            steering=0.25, throttle=-0.5, confidence=0.75, reason="drive", metadata={"plugin_id": "fixture"},
+        ), delivered_at_ms=1000, receipt={"boundary": "fixture"}, error="delivery failed"),
+    ], opaque=("control.metadata", "receipt")),
+    "autonomy.runtime.session.RunConfiguration": Document(lambda: [
+        RunConfiguration("observe_only", None), RunConfiguration("autonomy", 2),
+    ]),
+    "cli.automa_cli.hosts.runs.models.RunState": Document(
+        lambda: [RunState(), _run_state()],
+        opaque=("session", "execution", "selections", "decision", "steps", "arming", "last_frame"),
+    ),
+    "cli.automa_cli.hosts.runs.models.WorkerProcess": Document(lambda: [WorkerProcess(), WorkerProcess(
+        schema="automa_automation_process", host_name="car", pid=123, started_at_ms=1000,
+        command=["python", "-m", "cli.automa_cli.hosts.runs.worker"], log_to_disk=True,
+        log_path="runtime/automation.log", state_path="runtime/state.json", stream_command="automa hosts stream",
+        startup={"status": "ready"}, status="stopped", stopped_by="stop_command", stopped_at_ms=1100,
+    )], opaque=("startup",)),
     "autonomy.runtime.report.ReportApplication": Document(lambda: [_application()]),
     "autonomy.runtime.report.HostReport": Document(
         lambda: [_report(), _report(status="error", error="cycle raised")], opaque=("values",),
@@ -76,13 +131,6 @@ PENDING = frozenset({
     "autonomy.decision_cycle.perception.evidence.values.ViewLocation",
     "autonomy.decision_cycle.perception.interface.PerceptionPluginRun",
     "autonomy.decision_cycle.perception.interface.PerceptionText",
-    "autonomy.decision_cycle.proposal.values.ActionProposal",
-    "autonomy.decision_cycle.proposal.values.ProposedVehicleCommand",
-    "autonomy.decision_cycle.proposal.values.SourceRef",
-    "autonomy.runtime.execution.ControlApplication",
-    "autonomy.runtime.session.RunConfiguration",
-    "cli.automa_cli.hosts.runs.models.RunState",
-    "cli.automa_cli.hosts.runs.models.WorkerProcess",
     "implementations.decision_cycle.memory.shared.evidence_ledger.ledger.EvidenceLedger",
     "implementations.decision_cycle.memory.shared.evidence_ledger.ledger.LedgerBounds",
     "implementations.decision_cycle.perception.shared.image.stored.StoredImage",

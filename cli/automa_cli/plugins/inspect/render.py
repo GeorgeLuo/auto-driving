@@ -4,20 +4,26 @@ from __future__ import annotations
 
 import json
 from pathlib import Path
-from typing import Any
+from autonomy.decision_cycle.plan.values import ActionPlan
+from autonomy.decision_cycle.proposal.result import ProposalResult
 
 from ...shared.memory_report import evidence_publisher, plugin_summaries
 from ...shared.paths import display_path
 from ..step_formatting import format_step_record, format_step_timing
 
 
-def render_inspect(report: dict[str, Any], *, json_output: bool) -> str:
+def render_inspect(
+    report: dict[str, object], *, json_output: bool,
+    records: tuple[ProposalResult | ActionPlan | None, ...] = (),
+) -> str:
     if json_output:
         return json.dumps(report, indent=2, sort_keys=True)
-    return _format_inspect_report(report)
+    return _format_inspect_report(report, records=records)
 
 
-def _format_inspect_report(report: dict[str, Any]) -> str:
+def _format_inspect_report(
+    report: dict[str, object], *, records: tuple[ProposalResult | ActionPlan | None, ...],
+) -> str:
     step = report["step"]
     source = report["source"]
     lines = [
@@ -29,12 +35,13 @@ def _format_inspect_report(report: dict[str, Any]) -> str:
             for name, selection in report["selections"].items()
         ),
     ]
-    for item in report["frames"]:
+    for index, item in enumerate(report["frames"]):
         lines.extend(["", f"Frame {item['position']}: {item['frame_id']}"])
         if item["absence_reason"]:
             lines.append(f"Absent: {item['absence_reason']}")
+        record = records[index] if records and step in {"proposal", "plan"} else item["record"]
         lines.extend(_record_lines(
-            step, item["record"], observation=item.get("observation"), memory=item.get("memory"),
+            step, record, observation=item.get("observation"), memory=item.get("memory"),
         ))
         lines.append(format_step_timing(step, item["timing"]))
     if report["run_dir"]:
@@ -43,8 +50,8 @@ def _format_inspect_report(report: dict[str, Any]) -> str:
 
 
 def _record_lines(
-    step: str, record: dict[str, Any] | None, *,
-    observation: dict[str, Any] | None = None, memory: dict[str, Any] | None = None,
+    step: str, record: dict[str, object] | ProposalResult | ActionPlan | None, *,
+    observation: dict[str, object] | None = None, memory: dict[str, object] | None = None,
 ) -> list[str]:
     if record is None:
         return [f"{step.capitalize()}: none"]

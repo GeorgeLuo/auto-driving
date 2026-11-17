@@ -26,7 +26,7 @@ from ..host_formatting import vehicle_label
 from ..local import ensure_chase_host, host_record, stop_chase_host
 from ..publications.host_publications import host_state
 from ..runs.service import stop_host_automation
-from ..runs.store import read_process_record
+from ..runs.store import RunRecordError, read_process_record, read_run_state
 from ..staging import automation_dir, staged_host
 from ..step_activations import (
     decision_identity,
@@ -330,7 +330,11 @@ def _stop_active_automation(host_name: str) -> tuple[bool, DeleteResult | None]:
 
     base_url = running_base_url(host_name)
     state = host_state(base_url, host_name=host_name, timeout_s=1.0) if base_url else {}
-    process = read_process_record(automation_dir(host_name))
+    try:
+        process = read_process_record(automation_dir(host_name))
+        read_run_state(automation_dir(host_name))
+    except RunRecordError as exc:
+        return False, DeleteResult(2, "error", str(exc), host_name=host_name)
     active_run = (
         (process is not None and process.pid is not None and pid_alive(process.pid))
         or state.get("state") in {"starting", "running", "stopping"}

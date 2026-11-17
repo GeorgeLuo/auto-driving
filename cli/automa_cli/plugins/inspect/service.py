@@ -66,6 +66,7 @@ def inspect_step(
         return InspectResult(2, error=f"Could not load plugins for {step} inspect: {type(exc).__name__}: {exc}")
 
     frames: list[dict[str, Any]] = []
+    records = []
     replay_inputs: list[dict[str, Any]] = []
     for replay_frame in image_source.frames[: count if frame is None else frame + 1]:
         try:
@@ -78,6 +79,9 @@ def inspect_step(
             replay_inputs.append(replay.recording_entry(replay_frame, outcome))
         if frame is not None and replay_frame.position != frame:
             continue
+        records.append(
+            getattr(outcome.result, step) if step in {"proposal", "plan"} and not replay_frame.absent else None
+        )
         cycle = outcome.result.to_dict()
         step_record = None if replay_frame.absent else cycle[step]
         frames.append({
@@ -116,4 +120,4 @@ def inspect_step(
             record_inspect_run(run_dir, report, image_source, replay_inputs)
         except (OSError, ValueError) as exc:
             return InspectResult(2, error=f"Could not record {step} inspect run {run_dir}: {exc}")
-    return InspectResult(0, report=report)
+    return InspectResult(0, report=report, records=tuple(records))

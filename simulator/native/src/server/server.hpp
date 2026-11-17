@@ -1,5 +1,5 @@
 #pragma once
-#include "protocol.hpp"
+#include "server/protocol.hpp"
 #include <atomic>
 #include <memory>
 #include <mutex>
@@ -10,7 +10,7 @@
 namespace sim {
 class Server {
 public:
-    Server(int port, const Json& config);
+    Server(int port, World world, std::unique_ptr<Renderer> renderer);
     ~Server();
     void start();
 private:
@@ -26,6 +26,7 @@ private:
     };
     ix::WebSocketServer server_;
     World world_;
+    std::unique_ptr<const Renderer> renderer_;
     std::mutex world_mutex_, clients_mutex_;
     std::unordered_map<ix::WebSocket*,std::shared_ptr<Client>> clients_;
     std::atomic<bool> stopped_{false};

@@ -1,0 +1,44 @@
+#pragma once
+#include "physics/vehicle.hpp"
+#include "render/renderer.hpp"
+#include "scene/map_loader.hpp"
+#include "sensor/camera.hpp"
+
+namespace sim {
+struct Configuration {
+    Json document;
+    std::shared_ptr<const Map> map;
+    VehicleSettings vehicle;
+    Projection projection;
+    CameraEffects camera_effects;
+    double camera_height, fps;
+};
+
+struct World {
+    std::string epoch;
+    Configuration configuration;
+    VehiclePose pose;
+    Input input;
+    bool playing = true;
+    uint64_t frame = 0, revision = 0, command_sequence = 0, applied_command_sequence = 0;
+    double simulation_time = 0;
+    std::shared_ptr<const AssetCatalog> assets;
+
+    World(const Json& document, std::shared_ptr<const AssetCatalog> catalog);
+    void step();
+    Json configure(const Json& patch);
+    CameraPose camera_pose() const;
+    Json state() const;
+    Json debug() const;
+    Json fingerprint() const;
+    Json input_json() const;
+    Json identity() const;
+    Json native_state() const;
+private:
+    std::optional<Configuration> pending_;
+};
+
+Json read_config(const std::string& path);
+uint64_t monotonic_us();
+std::string new_epoch();
+}

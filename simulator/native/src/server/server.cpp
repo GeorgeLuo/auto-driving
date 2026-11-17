@@ -1,4 +1,4 @@
-#include "server.hpp"
+#include "server/server.hpp"
 #include <chrono>
 #include <ctime>
 #include <iomanip>
@@ -20,7 +20,8 @@ static void send(ix::WebSocket& socket, const Json& response) {
     }
     socket.sendText(encoded);
 }
-Server::Server(int port, const Json& config) : server_(port,"127.0.0.1",128,32,5), world_(config) {
+Server::Server(int port, World world, std::unique_ptr<Renderer> renderer)
+    : server_(port,"127.0.0.1",128,32,5), world_(std::move(world)), renderer_(std::move(renderer)) {
     server_.disablePerMessageDeflate();
     server_.setOnConnectionCallback([this](std::weak_ptr<ix::WebSocket> weak, std::shared_ptr<ix::ConnectionState>) {
         auto socket = weak.lock();
@@ -88,7 +89,7 @@ Json Server::query(const Json& request) {
     if (id == "atomic-evaluation-capture") {
         auto options = request.value("payload",Json::object());
         if (options.is_null()) options = Json::object();
-        return {{"queryId",id},{"result",capture(world,image_request(options))}};
+        return {{"queryId",id},{"result",capture(world,*renderer_,image_request(options))}};
     }
     if (id == "native-state") return {{"queryId",id},{"result",world.native_state()}};
     throw std::invalid_argument("Unsupported query: " + id);
@@ -101,7 +102,7 @@ void Server::subscribe(Client& client, ix::WebSocket& socket, const Json& reques
     double rate = request.contains("maxRateHz") ? number(request,"maxRateHz",1,30) : 30;
     auto world = copy_world();
     auto subscription = new_epoch();
-    auto first = stream_frame(world,image,subscription,0);
+    auto first = stream_frame(world,*renderer_,image,subscription,0);
     auto fingerprint = world.fingerprint();
     send(socket,message("play_camera_stream_result",request,{
         {"event","subscribed"},{"subscriptionId",subscription},{"cameraStream",{{"supported",true}}},
@@ -155,12 +156,12 @@ void Server::simulate() {
         accumulated += double(now-previous)/1000000; previous = now;
         std::lock_guard<std::mutex> guard(world_mutex_);
         if (!world_.playing) { accumulated = 0; continue; }
-        double dt = 1/world_.config["fps"].get<double>();
+        double dt = 1/world_.configuration.fps;
         // Bounded catchup matches the browser loop's eight-step limit.
         accumulated = std::min(accumulated,8*dt);
         for (int i=0;i<8 && accumulated >= dt;++i) {
             world_.step(); accumulated -= dt;
-            dt = 1/world_.config["fps"].get<double>();
+            dt = 1/world_.configuration.fps;
         }
     }
 }
@@ -187,7 +188,7 @@ void Server::stream() {
             client->next_capture_us = monotonic_us()+uint64_t(1000000/client->rate);
             if (socket->bufferedAmount() > 0) { ++client->dropped; continue; }
             try {
-                auto frame = stream_frame(world,client->image,client->subscription,client->dropped);
+                auto frame = stream_frame(world,*renderer_,client->image,client->subscription,client->dropped);
                 send(*socket,message("play_camera_stream_frame",Json::object(),frame));
                 client->last_frame = world.frame;
             } catch (const std::exception& error) {

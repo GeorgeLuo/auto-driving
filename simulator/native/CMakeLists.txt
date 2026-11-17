@@ -15,19 +15,49 @@ FetchContent_Declare(json
 FetchContent_MakeAvailable(ixwebsocket json)
 find_package(JPEG REQUIRED)
 find_package(Threads REQUIRED)
-add_library(sim_core src/world.cpp src/render.cpp src/protocol.cpp)
+add_library(sim_core src/core/json.cpp)
 target_include_directories(sim_core PUBLIC src)
-target_link_libraries(sim_core PUBLIC nlohmann_json::nlohmann_json JPEG::JPEG Threads::Threads)
-target_compile_options(sim_core PRIVATE -Wall -Wextra -Wpedantic)
-add_executable(automa-native-sim src/main.cpp src/server.cpp)
-target_link_libraries(automa-native-sim PRIVATE sim_core ixwebsocket)
-target_compile_definitions(automa-native-sim PRIVATE DEFAULT_CONFIG="${CMAKE_CURRENT_SOURCE_DIR}/scenarios/chaser-depth-obstacles.json")
+target_link_libraries(sim_core PUBLIC nlohmann_json::nlohmann_json)
+
+add_library(sim_scene src/scene/asset_loader.cpp src/scene/map_loader.cpp src/scene/material.cpp)
+target_link_libraries(sim_scene PUBLIC sim_core)
+
+add_library(sim_physics src/physics/vehicle.cpp)
+target_link_libraries(sim_physics PUBLIC sim_scene sim_core)
+
+# Each backend owns its implementation sources under src/render/<name>/.
+file(GLOB renderer_sources CONFIGURE_DEPENDS "src/render/*/*.cpp")
+add_library(sim_render ${renderer_sources})
+target_link_libraries(sim_render PUBLIC sim_scene sim_core PRIVATE Threads::Threads)
+
+add_library(sim_sensor src/sensor/camera.cpp src/sensor/jpeg.cpp)
+target_link_libraries(sim_sensor PUBLIC sim_core PRIVATE JPEG::JPEG)
+
+add_library(sim_protocol src/server/world.cpp src/server/protocol.cpp src/server/renderers.cpp)
+target_link_libraries(sim_protocol PUBLIC sim_physics sim_render sim_sensor sim_scene)
+
+set(default_map "${CMAKE_CURRENT_SOURCE_DIR}/maps/chaser-depth-obstacles.json")
+set(asset_directory "${CMAKE_CURRENT_SOURCE_DIR}/assets")
+add_executable(automa-native-sim src/server/main.cpp src/server/server.cpp)
+target_link_libraries(automa-native-sim PRIVATE sim_protocol ixwebsocket Threads::Threads)
+target_compile_definitions(automa-native-sim PRIVATE
+  DEFAULT_CONFIG="${default_map}" DEFAULT_ASSETS="${asset_directory}")
+
+foreach(target sim_core sim_scene sim_physics sim_render sim_sensor sim_protocol)
+  target_compile_options(${target} PRIVATE -Wall -Wextra -Wpedantic)
+endforeach()
+
 enable_testing()
 add_executable(native_sim_tests tests/core.cpp)
-target_link_libraries(native_sim_tests PRIVATE sim_core)
-add_test(NAME native_sim_core COMMAND native_sim_tests ${CMAKE_CURRENT_SOURCE_DIR}/tests/reference.json ${CMAKE_CURRENT_SOURCE_DIR}/scenarios/chaser-depth-obstacles.json)
+target_link_libraries(native_sim_tests PRIVATE sim_protocol)
+add_test(NAME native_sim_core COMMAND native_sim_tests
+  ${CMAKE_CURRENT_SOURCE_DIR}/tests/reference.json ${default_map} ${asset_directory})
 add_executable(native_sim_regression tests/regression.cpp)
-target_link_libraries(native_sim_regression PRIVATE sim_core)
+target_link_libraries(native_sim_regression PRIVATE sim_protocol)
 add_test(NAME native_sim_regression COMMAND native_sim_regression
-  ${CMAKE_CURRENT_SOURCE_DIR}/scenarios/chaser-depth-obstacles.json
-  ${CMAKE_CURRENT_SOURCE_DIR}/tests/native-baseline.json)
+  ${default_map} ${CMAKE_CURRENT_SOURCE_DIR}/tests/native-baseline.json ${asset_directory})
+add_executable(native_sim_scene tests/scene.cpp)
+target_link_libraries(native_sim_scene PRIVATE sim_protocol)
+add_test(NAME native_sim_scene COMMAND native_sim_scene ${default_map} ${asset_directory})
+add_test(NAME native_sim_include_graph COMMAND ${CMAKE_COMMAND}
+  -Dsource_dir=${CMAKE_CURRENT_SOURCE_DIR}/src -P ${CMAKE_CURRENT_SOURCE_DIR}/tests/include-graph.cmake)

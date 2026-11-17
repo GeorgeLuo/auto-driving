@@ -1,0 +1,18 @@
+{
+  "floor": {
+    "baseColor": [214, 206, 194],
+    "texture": {"kind": "grain", "seed": 0, "scale": 1.25}
+  },
+  "obstacle": {
+    "baseColor": [184, 135, 82],
+    "texture": {"kind": "grain", "seed": 0, "scale": 1.25}
+  },
+  "wall": {
+    "baseColor": [243, 240, 232],
+    "texture": {"kind": "none"}
+  },
+  "sky": {
+    "baseColor": [216, 214, 207],
+    "texture": {"kind": "none"}
+  }
+}

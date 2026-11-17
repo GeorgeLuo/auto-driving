@@ -49,7 +49,7 @@ class NativeSimulatorTests(unittest.TestCase):
         return self.client.play_game_query("native-state")
 
     def test_custom_map_file_is_used_at_startup_and_reported_by_cli(self) -> None:
-        config = json.loads((NATIVE_SIM_DIR / "scenarios/chaser-depth-obstacles.json").read_text())
+        config = json.loads((NATIVE_SIM_DIR / "maps/chaser-depth-obstacles.json").read_text())
         config["scenarioId"] = "custom-startup"
         config["materials"]["floor"] = [70, 80, 90]
         path = self.root / "custom-map.json"
@@ -174,7 +174,7 @@ class NativeSimulatorTests(unittest.TestCase):
         with self.assertRaises(MetricsUiWebSocketError):
             self.client.play_game_query("unknown-query")
         self.assertEqual(self.native(), before)
-        config = json.loads((NATIVE_SIM_DIR / "scenarios/chaser-depth-obstacles.json").read_text())
+        config = json.loads((NATIVE_SIM_DIR / "maps/chaser-depth-obstacles.json").read_text())
         config["scenarioId"] = "new-map"
         config["map"]["obstacles"] = []
         self.client.play_game_command("load-map", config)

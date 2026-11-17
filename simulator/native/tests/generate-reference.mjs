@@ -10,7 +10,7 @@ const load = file => import(pathToFileURL(path.join(root, 'examples/play/chase',
 const { resolveChaseScenario } = await load('simulation/scenario.mjs');
 const { createChaseSimulationState, stepChaseSimulation } = await load('simulation/simulation.mjs');
 const { getChaseScenarioDefinition } = await load('scenarios/index.mjs');
-const config = JSON.parse(fs.readFileSync(path.join(here, '../scenarios/chaser-depth-obstacles.json')));
+const config = JSON.parse(fs.readFileSync(path.join(here, '../maps/chaser-depth-obstacles.json')));
 const cases = [];
 for (const [name, x, z, angle, actions] of [
   ['straight-contact-reverse', 0, 3.05, -Math.PI/2, [[100, true, false, 0], [30, false, true, 0]]],

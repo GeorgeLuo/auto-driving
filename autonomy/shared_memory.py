@@ -48,6 +48,7 @@ import math
 from collections.abc import Iterator, Mapping, MutableMapping
 from contextlib import contextmanager
 from contextvars import ContextVar
+from dataclasses import dataclass
 from pathlib import Path
 from threading import get_ident
 
@@ -56,13 +57,25 @@ _RECORD_KEYS = frozenset({"$record", "data"})
 
 SharedMemory = MutableMapping[str, object]
 
-_CALL: ContextVar[tuple[SharedMemory | None, str, str, int] | None] = ContextVar("plugin_call", default=None)
+@dataclass(frozen=True)
+class _PluginCall:
+    """The map, owned key prefix, and thread of the plugin call now running."""
+
+    shared_memory: SharedMemory | None
+    prefix: str
+    thread: int
+
+    def owns(self, shared_memory: SharedMemory, key: str) -> bool:
+        return self.shared_memory is shared_memory and self.thread == get_ident() and key.startswith(self.prefix)
+
+
+_CALL: ContextVar[_PluginCall | None] = ContextVar("plugin_call", default=None)
 
 
 @contextmanager
 def plugin_call_memory(shared_memory: SharedMemory | None, step: str, plugin_id: str) -> Iterator[None]:
     """Establish the map and owner for a runner's synchronous plugin invocation."""
-    token = _CALL.set((shared_memory, step, plugin_id, get_ident()))
+    token = _CALL.set(_PluginCall(shared_memory, f"{step}.{plugin_id}.", get_ident()))
     try:
         yield
     finally:
@@ -72,7 +85,7 @@ def plugin_call_memory(shared_memory: SharedMemory | None, step: str, plugin_id:
 def require_plugin_call(shared_memory: SharedMemory, key: str) -> None:
     """Reject deferred commits outside the owning call, including worker threads."""
     current = _CALL.get()
-    if current is None or current[0] is not shared_memory or current[3] != get_ident() or not key.startswith(f"{current[1]}.{current[2]}."):
+    if current is None or not current.owns(shared_memory, key):
         raise RuntimeError(f"deferred state {key!r} must commit inside its owning plugin call")
 
 

@@ -1,8 +1,7 @@
 """Public Chase session identity and passive receipt contracts."""
 from __future__ import annotations
 
-import math
-
+from .control import validate_chase_control
 from .state import nested_get, play_sidebar_values
 
 RUN_STABLE_FIELDS = ("game_id", "scenario_id", "simulation_epoch", "control_source")
@@ -88,14 +87,7 @@ def normalize_passive_receipt_fingerprint(value: object) -> dict[str, object]:
             valid = protocol_name in source and (
                 field_value is None
                 or (
-                    isinstance(field_value, dict)
-                    and isinstance(field_value.get("source"), str)
-                    and bool(field_value["source"].strip())
-                    and isinstance(field_value.get("forward"), bool)
-                    and isinstance(field_value.get("reverse"), bool)
-                    and isinstance(field_value.get("steering"), (int, float))
-                    and not isinstance(field_value.get("steering"), bool)
-                    and math.isfinite(float(field_value["steering"]))
+                    validate_chase_control(field_value, bounded_steering=False) is not None
                 )
             )
         elif protocol_name == "playback":
@@ -187,7 +179,9 @@ def build_chase_session_fingerprint(
         nested_get(debug, ("actions", "chaserInput")),
         nested_get(debug, ("actors", "chaser", "input")),
     )
-    control_input = _bounded_input(control_input_source)
+    control_input = validate_chase_control(
+        control_input_source, allow_motion=True, bounded_steering=False,
+    )
     control_source = _first_nonempty(
         sidebar.get("chaser-control-source"),
         nested_get(debug, ("actions", "chaserInput", "source")),
@@ -206,7 +200,7 @@ def build_chase_session_fingerprint(
         ),
         "playback": playback or None,
         "control_source": control_source,
-        "control_input": control_input,
+        "control_input": control_input.to_dict() if control_input is not None else None,
     }
     unknown_fields = [
         field_name
@@ -271,34 +265,3 @@ def _first_nonempty(*values: object) -> str | None:
 
 def _first_dict(*values: object) -> dict[str, object] | None:
     return next((value for value in values if isinstance(value, dict)), None)
-
-
-def _bounded_input(value: dict[str, object] | None) -> dict[str, object] | None:
-    if not isinstance(value, dict):
-        return None
-    source = _first_nonempty(value.get("source"))
-    steering = value.get("steering")
-    if (
-        source is None
-        or isinstance(steering, bool)
-        or not isinstance(steering, (int, float))
-        or not math.isfinite(float(steering))
-    ):
-        return None
-    motion = _first_nonempty(value.get("motion"))
-    forward = value.get("forward")
-    reverse = value.get("reverse")
-    if motion is None and (
-        not isinstance(forward, bool) or not isinstance(reverse, bool)
-    ):
-        return None
-    result: dict[str, object] = {
-        "source": source,
-        "steering": float(steering),
-    }
-    if motion is not None:
-        result["motion"] = motion
-    if isinstance(forward, bool) and isinstance(reverse, bool):
-        result["forward"] = forward
-        result["reverse"] = reverse
-    return result

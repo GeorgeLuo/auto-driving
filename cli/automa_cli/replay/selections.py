@@ -15,6 +15,7 @@ from pathlib import Path
 from autonomy.decision_cycle.activation import StepActivation
 from autonomy.decision_cycle.restage import Restaged, restage
 from autonomy.decision_cycle.steps import builtin_activation
+from autonomy.plugins import PluginManagementError
 from autonomy.runtime.plugin_loader import code_source_from_activation, load_runner
 from autonomy.shared_memory import read_shared_memory_file
 from implementations.decision_cycle.catalog import selection_activation
@@ -105,11 +106,18 @@ def recorded_runner(activation: StepActivation) -> object:
     """
 
     release = recorded_release(activation)
-    if release is None:
-        return load_runner(activation)
-    host_name, tree_sha256 = release
-    code_dir, _ = release_code_dir(host_name, tree_sha256=tree_sha256)
-    return load_runner(activation, source=replace(code_source_from_activation(activation), bundle_root=code_dir))
+    source = code_source_from_activation(activation)
+    if release is not None:
+        host_name, tree_sha256 = release
+        code_dir, _ = release_code_dir(host_name, tree_sha256=tree_sha256)
+        source = replace(source, bundle_root=code_dir)
+    try:
+        return load_runner(activation, source=source)
+    except Exception as exc:
+        notes = getattr(exc, "__notes__", ())
+        if notes:
+            raise PluginManagementError(f"{' '.join(notes)}: {type(exc).__name__}: {exc}") from exc
+        raise
 
 
 def selection_record(activation: StepActivation) -> dict[str, object]:

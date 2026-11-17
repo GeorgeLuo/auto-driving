@@ -192,7 +192,11 @@ class StepRunner(Generic[PluginT]):
         if definition.entrypoint == f"{PROVIDED_ENTRYPOINT}:{definition.plugin_id}":
             plugin = self._provided[definition.plugin_id]
         else:
-            plugin = instantiate_plugin(definition)
+            try:
+                plugin = instantiate_plugin(definition)
+            except Exception as exc:
+                exc.add_note(f"Plugin: {definition.step}/{definition.plugin_id}")
+                raise
         require_plugin_id(plugin, definition)
         self.validate_plugin(plugin, definition)
         return plugin

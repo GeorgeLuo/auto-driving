@@ -486,6 +486,21 @@ overrides only the inspected step; without a recorded selection or override,
 each step uses its default. The two selection flags are exclusive. Perception,
 memory, proposal and plan accept presets; action accepts plugins.
 
+Use `--manifest` with either inspect or workbench to replace the recording's
+plugins by step and ID using a collection manifest accepted by `plugins upload`.
+The whole replay uses the installed package. Plugins outside the collection
+keep their recorded configs and order, and must be available in the installed
+catalog. Every plugin in the manifest must appear in the recording. Use the
+manifest separately from packaged preset and plugin flags.
+
+```sh
+./cli/automa plugins memory inspect path/to/recording --manifest path/to/collection/manifest.json --frame 2 --json
+./cli/automa workbench path/to/recording --manifest path/to/collection/manifest.json --pace realtime
+```
+
+The replay reports the manifest path, collection name, and replaced plugins.
+`inspect --record` keeps the replacement sources with the executed selections.
+
 Camera manifests (`camera_frames`) and inspection reports (`frames`) preserve
 their declared frame order, identity and timestamps. Equal millisecond
 timestamps are allowed; timestamps cannot go backwards. Without a manifest,

@@ -331,16 +331,16 @@ class StepInspectTests(unittest.TestCase):
                         [[run["plugin_id"] for run in item["record"]["plugin_runs"]] for item in report["frames"]],
                         expected,
                     )
-    def test_cli_has_one_inspect_group_and_no_decision_command(self) -> None:
+    def test_cli_inspect_spellings_share_flags_and_no_decision_command(self) -> None:
         for step in INSPECT_STEPS:
             with self.subTest(step=step):
                 flags = invoke_automa("plugins", "inspect", step, "--help").stdout
-                for flag in ("--plugin", "--frame", "--record", "--json", "--max-frames", "--shared-memory"):
+                for flag in ("--plugin", "--frame", "--record", "--json", "--max-frames", "--shared-memory", "--manifest"):
                     self.assertIn(flag, flags)
                 for removed in ("--name", "--frames", "--interval-s", "--timeout-s"):
                     self.assertNotIn(removed, flags)
-                old_order = invoke_automa("plugins", step, "inspect", "--help", check=False)
-                self.assertEqual(old_order.returncode, 2)
+                step_first = invoke_automa("plugins", step, "inspect", "--help").stdout
+                self.assertIn("--manifest", step_first)
                 removed_host = invoke_automa("hosts", step, "inspect", "--help", check=False)
                 self.assertEqual(removed_host.returncode, 2)
         removed = invoke_automa("vehicles", "decision", "help", check=False)

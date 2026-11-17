@@ -20,6 +20,7 @@ from autonomy.decision_cycle.cycle import CYCLE_RECORD_KEYS
 from autonomy.runtime.frame_loop import FRAME_PUBLICATION_SCHEMA, FramePublication
 from autonomy.runtime.report import HostReport, ReportApplication
 from autonomy.decision_cycle.perception.interface import PerceptionText
+from autonomy.decision_cycle.perception.evidence.values import PerceivedThing, PerceptionSignal, ViewLocation
 from cli.automa_cli.plugins.stream import decision, memory, perception, session
 from cli.automa_cli.plugins.stream.commands import stream_host_step
 from cli.automa_cli.plugins.stream.models import PerceptionPublication, StreamEvent, ViewState
@@ -397,11 +398,11 @@ class StreamOutputTests(unittest.TestCase):
         self.assertEqual(render_stream(replace_view(event), json_output=False), "offline")
 
     def test_perception_screen_formats_the_summary_the_stream_read(self):
-        evidence = {
-            "schema": "perception_text", "plugin_id": "lightweight_observer",
-            "signals": [{"signal_id": "clear", "value": True}, {"signal_id": "distance", "value": 2}],
-            "things": [{"thing_id": "ahead", "kind": "obstacle", "label": "ahead"}],
-        }
+        evidence = PerceptionText(
+            "perception_text", "lightweight_observer", "ok",
+            (PerceptionSignal("clear", True), PerceptionSignal("distance", 2)),
+            (PerceivedThing("ahead", "obstacle", "ahead", ViewLocation("image", "center")),),
+        ).to_dict()
         summary = perception.perception_publication(FramePublication(
             health="healthy", read_at_ms=1040, result_age_ms=40, stale_after_ms=1000,
             report=HostReport(

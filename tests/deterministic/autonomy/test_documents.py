@@ -23,6 +23,7 @@ from dataclasses import dataclass
 from pathlib import Path
 
 from autonomy.decision_cycle.cycle import CYCLE_RECORD_KEYS
+from autonomy.decision_cycle.observation.values import Observation
 from autonomy.decision_cycle.perception.evidence.values import PerceivedThing, PerceptionSignal, ViewLocation
 from autonomy.decision_cycle.perception.interface import PerceptionPluginRun, PerceptionText
 from autonomy.decision_cycle.proposal.values import ActionProposal, ProposedVehicleCommand, SourceRef
@@ -96,6 +97,11 @@ def _perception(full: bool = False) -> PerceptionText:
 
 
 DOCUMENTS = {
+    "autonomy.decision_cycle.observation.values.Observation": Document(lambda: [
+        Observation("frame-1", 100, {}, things=(_thing(),), signals=(_signal(),)),
+        Observation("frame-1", 100, {"readings": {}}, "perception_text", "fixture", ("present",),
+                    (_thing(True),), (_signal(True),), {"source": "fixture"}),
+    ], opaque=("sensor_frame", "metadata")),
     "autonomy.decision_cycle.perception.evidence.values.ViewLocation": Document(lambda: [_location(), _location(True)]),
     "autonomy.decision_cycle.perception.evidence.values.PerceivedThing": Document(
         lambda: [_thing(), _thing(True)], opaque=("properties",)),
@@ -159,7 +165,6 @@ PENDING = frozenset({
     "autonomy.decision_cycle.memory.evidence.RetainedEvidence",
     "autonomy.decision_cycle.memory.interface.MemoryPluginReport",
     "autonomy.decision_cycle.memory.interface.MemoryReport",
-    "autonomy.decision_cycle.observation.values.Observation",
     "implementations.decision_cycle.memory.shared.evidence_ledger.ledger.EvidenceLedger",
     "implementations.decision_cycle.memory.shared.evidence_ledger.ledger.LedgerBounds",
     "implementations.decision_cycle.perception.shared.image.stored.StoredImage",

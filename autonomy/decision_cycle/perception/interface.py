@@ -8,6 +8,7 @@ plugin. ``PerceptionBackend`` is anything that runs perception on a
 from __future__ import annotations
 
 from dataclasses import asdict, dataclass, field
+from copy import deepcopy
 from typing import Any, Literal, Protocol, runtime_checkable
 
 from autonomy.decision_cycle.perception.feeds.context import PerceptionRequest
@@ -99,7 +100,7 @@ class PerceptionText:
             "signals": tuple(signal.to_dict() for signal in self.signals),
             "things": tuple(thing.to_dict() for thing in self.things),
             "plugin_runs": tuple(run.to_dict() for run in self.plugin_runs),
-            "measurements": asdict(self)["measurements"], "limits": self.limits,
+            "measurements": deepcopy(self.measurements), "limits": self.limits,
         }
 
     @classmethod

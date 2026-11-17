@@ -1,9 +1,11 @@
 from __future__ import annotations
 
 from dataclasses import asdict, dataclass, field
+from collections.abc import Mapping
 from typing import Any
 
 from autonomy.decision_cycle.confidence import optional_confidence
+from autonomy.serialization import FrozenJsonObject, deep_freeze, frozen_mapping_to_dict
 from autonomy.fields import (
     FieldError, require_ascii_id, require_keys, require_nested, require_number, require_text,
 )
@@ -50,7 +52,7 @@ class PerceivedThing:
     label: str
     location: ViewLocation
     confidence: float | None = None
-    properties: dict[str, Any] = field(default_factory=dict)
+    properties: Mapping[str, Any] = field(default_factory=dict)
     source_plugin_id: str | None = None
 
     def __post_init__(self) -> None:
@@ -61,8 +63,13 @@ class PerceivedThing:
             raise FieldError("location", "must be ViewLocation")
         if self.source_plugin_id is not None:
             require_ascii_id(self.source_plugin_id, field_name="source_plugin_id")
-        if not isinstance(self.properties, dict):
+        if not isinstance(self.properties, (dict, FrozenJsonObject)):
             raise FieldError("properties", "must be an object")
+        if not isinstance(self.properties, FrozenJsonObject):
+            try:
+                object.__setattr__(self, "properties", deep_freeze(self.properties, field_name="properties"))
+            except ValueError as exc:
+                raise FieldError("properties", str(exc)) from exc
         object.__setattr__(
             self,
             "confidence",
@@ -72,7 +79,11 @@ class PerceivedThing:
         )
 
     def to_dict(self) -> dict[str, Any]:
-        return asdict(self)
+        return {
+            "thing_id": self.thing_id, "kind": self.kind, "label": self.label,
+            "location": self.location.to_dict(), "confidence": self.confidence,
+            "properties": frozen_mapping_to_dict(self.properties), "source_plugin_id": self.source_plugin_id,
+        }
 
     @classmethod
     def from_dict(cls, data: dict[str, Any]) -> "PerceivedThing":
@@ -97,15 +108,20 @@ class PerceptionSignal:
     signal_id: str
     value: bool | int | float | str | None
     confidence: float | None = None
-    properties: dict[str, Any] = field(default_factory=dict)
+    properties: Mapping[str, Any] = field(default_factory=dict)
     source_plugin_id: str | None = None
 
     def __post_init__(self) -> None:
         require_ascii_id(self.signal_id, field_name="signal_id")
         if self.source_plugin_id is not None:
             require_ascii_id(self.source_plugin_id, field_name="source_plugin_id")
-        if not isinstance(self.properties, dict):
+        if not isinstance(self.properties, (dict, FrozenJsonObject)):
             raise FieldError("properties", "must be an object")
+        if not isinstance(self.properties, FrozenJsonObject):
+            try:
+                object.__setattr__(self, "properties", deep_freeze(self.properties, field_name="properties"))
+            except ValueError as exc:
+                raise FieldError("properties", str(exc)) from exc
         if self.value is not None and not isinstance(self.value, (bool, str)):
             require_number(self.value, field_name="value")
         object.__setattr__(
@@ -117,7 +133,10 @@ class PerceptionSignal:
         )
 
     def to_dict(self) -> dict[str, Any]:
-        return asdict(self)
+        return {
+            "signal_id": self.signal_id, "value": self.value, "confidence": self.confidence,
+            "properties": frozen_mapping_to_dict(self.properties), "source_plugin_id": self.source_plugin_id,
+        }
 
     @classmethod
     def from_dict(cls, data: dict[str, Any]) -> "PerceptionSignal":

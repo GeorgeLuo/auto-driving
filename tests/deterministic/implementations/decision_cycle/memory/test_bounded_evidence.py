@@ -5,10 +5,13 @@ from __future__ import annotations
 
 import unittest
 from copy import deepcopy
+from dataclasses import replace
+from autonomy.fields import FieldError
+from autonomy.serialization import frozen_mapping_to_dict
 
 from autonomy.decision_cycle.context import DecisionFrameContext
 from autonomy.decision_cycle.observation.values import Observation
-from autonomy.decision_cycle.perception.evidence.values import ViewLocation
+from autonomy.decision_cycle.perception.evidence.values import PerceivedThing, PerceptionSignal, ViewLocation
 from autonomy.plugins import PluginDefinition, instantiate_plugin
 from implementations.decision_cycle.memory.shared.evidence_ledger.ledger import serialized_ledger_bytes
 from implementations.decision_cycle.memory.shared.evidence_ledger.reduction import (
@@ -18,6 +21,7 @@ from implementations.decision_cycle.memory.shared.evidence_ledger.reduction impo
     location_geometry_signature,
     namespaced_record_id,
     reduce_evidence,
+    structural_conflict_reason,
 )
 
 
@@ -25,8 +29,8 @@ def _observation(
     observation_id: str,
     *,
     created_at_ms: int,
-    things: tuple[dict, ...] = (),
-    signals: tuple[dict, ...] = (),
+    things: tuple[PerceivedThing, ...] = (),
+    signals: tuple[PerceptionSignal, ...] = (),
 ) -> Observation:
     return Observation(
         observation_id=observation_id,
@@ -51,26 +55,12 @@ def _thing(
     polygon: list[list[float]] | None = None,
     properties: dict | None = None,
     source_plugin_id: str = "floor_plane",
-    include_location: bool = True,
-) -> dict:
-    thing: dict = {
-        "thing_id": thing_id,
-        "kind": kind,
-        "label": label if label is not None else f"{kind}:{thing_id}",
-        "confidence": confidence,
-        "properties": dict(properties if properties is not None else {"width_fraction": 0.2}),
-        "source_plugin_id": source_plugin_id,
-    }
-    if include_location:
-        location: dict = {"frame": frame, "zone": zone}
-        if bbox is not None:
-            location["bbox_xyxy_norm"] = bbox
-        elif polygon is None:
-            location["bbox_xyxy_norm"] = [0.4, 0.5, 0.6, 0.9]
-        if polygon is not None:
-            location["polygon_xy_norm"] = polygon
-        thing["location"] = location
-    return thing
+) -> PerceivedThing:
+    return PerceivedThing(
+        thing_id, kind, label if label is not None else f"{kind}:{thing_id}",
+        ViewLocation(frame, zone, bbox if bbox is not None else ([0.4, 0.5, 0.6, 0.9] if polygon is None else None), polygon),
+        confidence, properties if properties is not None else {"width_fraction": 0.2}, source_plugin_id,
+    )
 
 
 def _ledger(**kwargs) -> BoundedEvidenceReducer:
@@ -113,11 +103,7 @@ class BoundedEvidenceLedgerTests(unittest.TestCase):
             created_at_ms=990,
             things=(_thing("floor_boundary_000", zone="left"),),
             signals=(
-                {
-                    "signal_id": "floor_visible",
-                    "value": True,
-                    "confidence": 0.95,
-                },
+                PerceptionSignal("floor_visible", True, 0.95),
             ),
         )
         state = ledger.update(context, observation)
@@ -221,7 +207,7 @@ class BoundedEvidenceLedgerTests(unittest.TestCase):
                 things = []
                 for plugin, zone in zip(plugins, ("left", "right")):
                     thing = _thing("shared", zone=zone)
-                    thing["source_plugin_id"] = plugin
+                    thing = replace(thing, source_plugin_id=plugin)
                     things.append(thing)
                 state = BoundedEvidenceReducer(max_records=8, max_age_ms=5_000).update(
                     DecisionFrameContext("f1", 1, 100),
@@ -269,9 +255,9 @@ class BoundedEvidenceLedgerTests(unittest.TestCase):
                     _thing("unscored", confidence=None),
                 ),
                 signals=(
-                    {"signal_id": "floor_visible", "value": False, "confidence": 1.0},
-                    {"signal_id": "boundary", "value": True, "confidence": 0.9},
-                    {"signal_id": "unscored", "value": True, "confidence": None},
+                    PerceptionSignal("floor_visible", False, 1.0),
+                    PerceptionSignal("boundary", True, 0.9),
+                    PerceptionSignal("unscored", True, None),
                 ),
             ),
         )
@@ -293,7 +279,7 @@ class BoundedEvidenceLedgerTests(unittest.TestCase):
             max_property_bytes=64,
         )
         huge = _thing("huge")
-        huge["properties"] = {"blob": "x" * 500}
+        huge = replace(huge, properties={"blob": "x" * 500})
         small = _thing("small")
         state = ledger.update(
             DecisionFrameContext("f1", 1, 100),
@@ -316,10 +302,10 @@ class BoundedEvidenceLedgerTests(unittest.TestCase):
 
         ledger = BoundedEvidenceReducer(max_records=8, max_age_ms=5_000)
         no_plugin = _thing("shared", zone="left")
-        no_plugin["source_plugin_id"] = None
+        no_plugin = replace(no_plugin, source_plugin_id=None)
         # Observation without perception_plugin_id keeps source absent.
         unknown_plugin = _thing("shared", zone="right")
-        unknown_plugin["source_plugin_id"] = "unknown"
+        unknown_plugin = replace(unknown_plugin, source_plugin_id="unknown")
         state = ledger.update(
             DecisionFrameContext("f1", 1, 100),
             Observation(
@@ -334,17 +320,10 @@ class BoundedEvidenceLedgerTests(unittest.TestCase):
         ids = {record.record_id for record in state.records}
         self.assertEqual(ids, {absent, literal_unknown})
 
-    def test_non_json_property_values_are_not_retained(self) -> None:
-        ledger = BoundedEvidenceReducer(max_records=8, max_age_ms=5_000)
-        bad = _thing("opaque")
-        bad["properties"] = {"opaque": object()}
-        good = _thing("ok")
-        state = ledger.update(
-            DecisionFrameContext("f1", 1, 100),
-            _observation("o1", created_at_ms=90, things=(bad, good)),
-        )
-        ids = {record.record_id for record in state.records}
-        self.assertEqual(ids, {"thing:1:11:floor_plane:2:ok"})
+    def test_non_json_property_values_are_rejected_before_reduction(self) -> None:
+        with self.assertRaises(FieldError) as invalid:
+            _thing("opaque", properties={"opaque": object()})
+        self.assertEqual(invalid.exception.field_name, "properties")
 
 
 class HelperUnitTests(unittest.TestCase):
@@ -402,7 +381,7 @@ class ConflictMatrixTests(unittest.TestCase):
                 record = snap.records[0]
                 self.assertEqual(
                     (record.confidence, record.label, record.location.zone, record.properties),
-                    (expected["confidence"], expected["label"], expected["location"]["zone"], expected["properties"]),
+                    (expected.confidence, expected.label, expected.location.zone, frozen_mapping_to_dict(expected.properties)),
                 )
                 self.assertEqual((snap.metadata["conflict_count"], snap.metadata["last_update_conflict_count"]), (0, 0))
                 self.assertEqual(snap.metadata["conflict_policy"], CONFLICT_POLICY)
@@ -422,16 +401,8 @@ class ConflictMatrixTests(unittest.TestCase):
             _ctx("f1", 1, 100),
             _observation("o1", created_at_ms=90, things=(_thing(),)),
         )
-        snap = ledger.update(
-            _ctx("f2", 2, 200),
-            _observation(
-                "o2",
-                created_at_ms=190,
-                things=(_thing(include_location=False),),
-            ),
-        )
-        self.assertEqual(snap.record_count, 0)
-        self.assertEqual(snap.metadata["conflict_count"], 1)
+        record = ledger.ledger().records[0]
+        self.assertEqual(structural_conflict_reason(record, replace(record, location=None)), "location_presence_changed")
 
         ledger = _ledger()
         ledger.update(

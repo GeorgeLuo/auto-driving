@@ -21,7 +21,7 @@ from dataclasses import replace
 from autonomy.decision_cycle.context import DecisionFrameContext
 from autonomy.decision_cycle.observation.values import Observation
 from autonomy.decision_cycle.memory.evidence import MemoryOrigin, RetainedEvidence
-from autonomy.serialization import canonical_json_size_bytes, ensure_strict_json_value
+from autonomy.serialization import canonical_json_size_bytes, frozen_mapping_to_dict
 from implementations.decision_cycle.memory.shared.evidence_ledger.ledger import (
     DEFAULT_MAX_PROPERTY_BYTES,
     DEFAULT_MAX_SERIALIZED_BYTES,
@@ -30,7 +30,7 @@ from implementations.decision_cycle.memory.shared.evidence_ledger.ledger import 
     empty_ledger,
     serialized_ledger_bytes,
 )
-from autonomy.decision_cycle.perception.evidence.values import ViewLocation
+from autonomy.decision_cycle.perception.evidence.values import PerceivedThing, PerceptionSignal, ViewLocation
 
 CONFLICT_POLICY = "bounded_evidence_structural"
 MAX_REPORTED_DROPS = 12
@@ -228,7 +228,7 @@ class BoundedEvidenceReducer:
     def _admitted_record(
         self,
         kind: str,
-        candidate: object,
+        candidate: PerceivedThing | PerceptionSignal,
         *,
         context: DecisionFrameContext,
         observation: Observation,
@@ -236,42 +236,31 @@ class BoundedEvidenceReducer:
     ) -> RetainedEvidence | None:
         """The record one candidate becomes, or None when it is not admitted."""
 
-        if not isinstance(candidate, dict):
-            self._report_drop(f"<{kind}>", "invalid_candidate", "not_admitted")
-            return None
         # The floor filters scored evidence. Unscored evidence is retained.
-        confidence = candidate.get("confidence")
-        if confidence is not None and float(confidence) < self.min_confidence:
+        confidence = candidate.confidence
+        if confidence is not None and confidence < self.min_confidence:
             return None
-        observed_id = str(candidate.get(f"{kind}_id") or "").strip()
-        if not observed_id:
-            self._report_drop(f"<{kind}>", "missing_observed_id", "not_admitted")
-            return None
-        is_thing = kind == "thing"
-        value = None if is_thing else candidate.get("value")
+        observed_id = candidate.thing_id if isinstance(candidate, PerceivedThing) else candidate.signal_id
+        is_thing = isinstance(candidate, PerceivedThing)
+        value = candidate.value if isinstance(candidate, PerceptionSignal) else None
         # Keep affirmative / present signals; skip explicit false.
         if value is False:
             return None
-        source_plugin = candidate.get("source_plugin_id")
+        source_plugin = candidate.source_plugin_id
         if source_plugin is None:
             source_plugin = observation.perception_plugin_id
         record_id = namespaced_record_id(kind, observed_id, source_plugin)
-        location = (
-            _location_from_payload(candidate.get("location"))
-            if is_thing else None
-        )
-        try:
-            properties = _strict_properties(candidate, is_thing=is_thing, value=value)
-        except (TypeError, ValueError):
-            self._report_drop(record_id, "invalid_properties", "not_admitted")
-            return None
+        location = candidate.location if isinstance(candidate, PerceivedThing) else None
+        properties = frozen_mapping_to_dict(candidate.properties)
+        if not is_thing:
+            properties["value"] = value
         if not self._properties_within_bound(properties):
             self._report_drop(record_id, "properties_too_large", "not_admitted")
             return None
-        label = str(candidate.get("label") or observed_id) if is_thing else observed_id
+        label = candidate.label if isinstance(candidate, PerceivedThing) else observed_id
         return RetainedEvidence(
             record_id=record_id,
-            kind=str(candidate.get("kind") or "thing") if is_thing else "signal",
+            kind=candidate.kind if isinstance(candidate, PerceivedThing) else "signal",
             label=label,
             confidence=confidence,
             origin=MemoryOrigin(
@@ -425,30 +414,6 @@ def namespaced_record_id(
     return (
         f"{kind_prefix}:1:{len(plugin)}:{plugin}:{len(observed)}:{observed}"
     )
-
-
-def _strict_properties(
-    candidate: dict[str, object], *, is_thing: bool, value: object
-) -> dict[str, object]:
-    """The candidate's properties as strict JSON; a signal's also carry its value.
-
-    Raises TypeError or ValueError when they are not a JSON object.
-    """
-
-    properties = ensure_strict_json_value(dict(candidate.get("properties") or {}))
-    if is_thing:
-        return properties
-    properties["value"] = value
-    return ensure_strict_json_value(properties)
-
-
-def _location_from_payload(payload: object) -> ViewLocation | None:
-    if not isinstance(payload, dict):
-        return None
-    try:
-        return ViewLocation.from_dict(payload)
-    except (TypeError, ValueError):
-        return None
 
 
 def location_geometry_signature(

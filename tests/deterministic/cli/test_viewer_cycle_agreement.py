@@ -13,6 +13,7 @@ from PIL import Image
 
 from autonomy.decision_cycle.cycle import CYCLE_RECORD_KEYS, DecisionCycle, DecisionSteps
 from autonomy.decision_cycle.observation.values import Observation
+from autonomy.decision_cycle.perception.evidence.values import PerceivedThing, PerceptionSignal, ViewLocation
 from autonomy.decision_cycle.perception.runner import PerceptionRunner
 from autonomy.runtime.control import AutonomyControl
 from autonomy.runtime.execution import ControlApplication
@@ -88,8 +89,8 @@ class ViewerCycleAgreementTests(unittest.TestCase):
                 context.timestamp_ms,
                 {},
                 summary=("ahead",),
-                things=({"thing_id": "one", "kind": "obstacle"},),
-                signals=({"name": "range"},),
+                things=(PerceivedThing("one", "obstacle", "obstacle", ViewLocation("image", "center")),),
+                signals=(PerceptionSignal("range", True),),
                 metadata={"labels": ["first"]},
             )
             result = DecisionCycle(DecisionSteps(

@@ -13,7 +13,7 @@ from autonomy.runtime.session import RunConfiguration
 from cli.automa_cli.hosts.runs import monitor
 from cli.automa_cli.hosts.runs.worker import startup_printer
 from cli.automa_cli.hosts.runs.render import render_run_result
-from cli.automa_cli.hosts.runs.models import run_exit_code
+from cli.automa_cli.hosts.runs.models import RunState, run_exit_code
 from cli.automa_cli.hosts.runs.store import CONTROL_SOURCE, control_application
 from cli.automa_cli.frontend.server import RuntimeViewServer
 
@@ -120,9 +120,10 @@ class RuntimeMonitorTests(unittest.TestCase):
             "num_decisions": 2,
             "run_dir": None,
         }
+        typed = RunState.from_dict(state)
         output = io.StringIO()
-        startup_printer(output)(state)
-        code, message = run_exit_code(state), render_run_result(state, state_path="automation/state.json")
+        startup_printer(output)(typed)
+        code, message = run_exit_code(typed), render_run_result(typed, state_path="automation/state.json")
 
         self.assertEqual(
             output.getvalue().splitlines(),

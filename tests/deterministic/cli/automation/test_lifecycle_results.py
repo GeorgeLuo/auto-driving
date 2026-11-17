@@ -13,7 +13,7 @@ from unittest.mock import patch
 
 from cli.automa_cli.hosts.runs import process, service, store
 from cli.automa_cli.frontend.server import RuntimeViewServer
-from cli.automa_cli.hosts.runs.models import RestartResult, StartResult, StopResult
+from cli.automa_cli.hosts.runs.models import RestartResult, RunState, StartResult, StopResult
 from cli.automa_cli.hosts.runs.worker import startup_printer
 from cli.automa_cli.hosts.runs.render import render_lifecycle_result
 
@@ -235,8 +235,9 @@ class WorkerProcessTests(unittest.TestCase):
                     "recorded_count": 1,
                     "processed_count": 2,
                 }
+                state = store.RunState.from_dict(state)
                 store.finish_run(state, status="completed")
-                (root / "state.json").write_text(json.dumps(state))
+                (root / "state.json").write_text(json.dumps(state.to_dict()))
                 result = self.wait(root, lambda: exit_code)
                 self.assertEqual(result["status"], "failed")
                 self.assertIn("Recording count does not match", result["reason"])
@@ -290,11 +291,10 @@ class ExplicitViewTests(unittest.TestCase):
 
 class StartupPrinterTests(unittest.TestCase):
     def test_the_accepted_run_is_printed(self):
-        state = {
-            "host_name": "car", "selections": {"perception": {"plugins": ["frame"], "preset": None}},
-            "run_dir": None, "control_source": "runtime_host", "action_policy": "observe_only",
-            "decision": {"generation_id": "g-1"}, "num_decisions": None,
-        }
+        state = RunState(
+            host_name="car", selections={"perception": {"plugins": ["frame"], "preset": None}},
+            control_source="runtime_host", action_policy="observe_only", decision={"generation_id": "g-1"},
+        )
         output = io.StringIO()
         startup_printer(output)(state)
         self.assertIn("Run started on host car.", output.getvalue())

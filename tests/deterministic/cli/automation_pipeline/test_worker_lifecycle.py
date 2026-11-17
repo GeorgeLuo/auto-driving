@@ -11,7 +11,7 @@ from autonomy.decision_cycle.steps import decision_steps
 from autonomy.runtime.session import RunConfiguration
 from implementations.runtime.picar import AutonomyPilotPart, create_host
 from unittest.mock import patch
-from cli.automa_cli.hosts.runs.models import RunResult
+from cli.automa_cli.hosts.runs.models import RunResult, RunState
 from cli.automa_cli.hosts.runs.process import wait_for_automation_startup
 from cli.automa_cli.hosts.runs.store import record_host_automation_terminal_result
 from cli.automa_cli.hosts.runs.service import (
@@ -83,7 +83,7 @@ class AutomationLivePipelineTests(unittest.TestCase):
             "status": "running",
             "session": {"status": "running", "processed_decisions": 0},
         }
-        with patch("cli.automa_cli.hosts.runs.process.read_run_state", return_value=state):
+        with patch("cli.automa_cli.hosts.runs.process.read_run_state", return_value=RunState.from_dict(state)):
             result = wait_for_automation_startup(
                 process=_RunningProcess(), automation_dir=Path("unused"), timeout_s=0.2,
             )

@@ -27,7 +27,7 @@ from ..step_activations import (
 )
 from ..vehicle_access import create_vehicle_access
 from .lifecycle import Claim, keep, section
-from .models import RestartResult, RunResult, StartResult, StopResult
+from .models import RestartResult, RunResult, RunState, StartResult, StopResult
 from .monitor import monitor_runtime
 from .process import (
     launch_worker,
@@ -132,7 +132,7 @@ def run_host_automation(
     unbounded: bool = False,
     take_control: bool = True,
     record: bool = False,
-    emit: Callable[[dict[str, object]], None] | None = None,
+    emit: Callable[[RunState], None] | None = None,
 ) -> RunResult:
     try:
         if host_name is not None:
@@ -348,17 +348,15 @@ def _existing_start(
     log_path: Path,
 ) -> StartResult | None:
     existing = read_process_record(automation_dir)
-    existing_pid = existing.get("pid") if isinstance(existing, dict) else None
-    if not isinstance(existing_pid, int) or not pid_alive(existing_pid):
+    existing_pid = existing.pid if existing is not None else None
+    if existing_pid is None or not pid_alive(existing_pid):
         return None
-    existing_state = read_run_state(automation_dir)
-    state = existing_state if isinstance(existing_state, dict) else {}
-    session = state.get("session")
-    session_status = session.get("status") if isinstance(session, dict) else None
+    state = read_run_state(automation_dir) or RunState()
+    session_status = (state.session or {}).get("status")
     state_path = automation_dir / "state.json"
-    if state.get("status") == "starting" or session_status == "starting":
+    if state.status == "starting" or session_status == "starting":
         return StartResult(2, "starting", host_name=host_name, pid=existing_pid, state_path=state_path)
-    state_pid = state.get("pid") if isinstance(state.get("pid"), int) else None
+    state_pid = state.pid
     if state_pid is not None and state_pid != existing_pid:
         return StartResult(
             2, "records_disagree", host_name=host_name, pid=existing_pid, state_pid=state_pid,
@@ -367,7 +365,7 @@ def _existing_start(
         "action_policy": configuration.mode,
         "control_application": control_application(configuration),
     }
-    actual = {key: state.get(key) for key in expected}
+    actual = {"action_policy": state.action_policy, "control_application": state.control_application}
     if actual != expected:
         return StartResult(
             2, "authority_mismatch", host_name=host_name, pid=existing_pid,

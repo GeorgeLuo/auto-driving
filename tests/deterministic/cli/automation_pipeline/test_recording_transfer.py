@@ -11,6 +11,7 @@ from autonomy.runtime.assembly import staged_runtime
 from autonomy.runtime import recording as recording_module
 from autonomy.runtime.recording import RECORDING_ENTRIES_NAME, RecordingWriter, RunRecording, host_runs_dir
 from autonomy.runtime.session import RunConfiguration
+from cli.automa_cli.hosts.runs.models import RunState
 from cli.automa_cli.hosts.runs.monitor import _sync_recording
 from implementations.decision_cycle.catalog import packaged_activation
 from implementations.runtime.picar import create_host
@@ -36,7 +37,7 @@ class RecordingTransferTests(unittest.TestCase):
             timings = {first.context.frame_id: first.timing}
             completions = {first.context.frame_id: first.completed_at_ms}
             export_dir = runtime_root / "automation" / "runs" / recording.run_id
-            state = {"recorded_count": 0, "host_name": HOST_NAME}
+            state = RunState(host_name=HOST_NAME)
 
             class Client:
                 def read_recording(self, run_id, *, after):
@@ -62,7 +63,7 @@ class RecordingTransferTests(unittest.TestCase):
                     _sync_recording(Client(), state, writer=writer)
 
             self.assertTrue(appended)
-            self.assertEqual(state["recorded_count"], 2)
+            self.assertEqual(state.recorded_count, 2)
             self.assertEqual(recording.status()["recorded_count"], 2)
             authoritative = read_recording_entries(recording.root)
             exported = read_recording_entries(export_dir)

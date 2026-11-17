@@ -9,16 +9,15 @@ turns that data into text or JSON.
 
 from __future__ import annotations
 
+from collections.abc import Mapping
 from concurrent.futures import ThreadPoolExecutor
 from pathlib import Path
-from typing import Any
 
 from ...frontend.perception_view import get_perception_view_status
 from ...providers.models import DEFAULT_READINESS_TIMEOUT_S
 from ...releases.errors import ReleaseError
 from ...releases.paths import bundle_paths
 from ...releases.store import release_manifest
-from ...shared.io.json_files import read_json
 from ...shared.io.processes import pid_alive
 from ...shared.paths import display_path
 from ...shared.timestamps import timestamp_ms
@@ -31,23 +30,15 @@ from ..step_activations import (
     staged_selections,
 )
 from ..views.view_discovery import runtime_view_dir
-from .models import status_reason
-from .store import latest_frame
-
-# The run state fields status reports as the worker recorded them.
-_STATE_FIELDS = (
-    "run_id", "pipeline", "frames_dropped", "num_decisions", "recording", "pid", "control_source",
-    "action_policy", "execution", "arming", "session", "control_application", "error", "exit_code",
-    "stop_reason", "updated_at_ms",
-)
-
+from .models import AppliedStep, ComparedSteps, HostRun, RunRelease, RunSection, RunState, WorkerProcess, status_reason
+from .store import latest_frame, read_process_record, read_run_state
 
 def hosts_status(
     *,
     host_name: str | None = None,
     timeout_s: float = DEFAULT_READINESS_TIMEOUT_S,
     include_runs: bool = False,
-) -> tuple[int, dict[str, Any]]:
+) -> tuple[int, dict[str, object]]:
     """The exit and the ``automa_hosts_status`` payload: each host's state and attachment.
 
     ``include_runs`` adds its deployment, release, steps, run and view. JSON
@@ -65,12 +56,12 @@ def hosts_status(
     if include_runs:
         with ThreadPoolExecutor() as pool:
             runs = list(pool.map(_run_status, hosts, [read for _, read in reads]))
-        for host, run in zip(hosts, runs):
+        for host, run in zip(hosts, runs, strict=False):
             host["run"] = run
     return exit_code, {"schema": "automa_hosts_status", "host_name": host_name, "hosts": hosts}
 
 
-def _run_status(host: dict[str, Any], read: dict[str, Any] | None) -> dict[str, Any] | None:
+def _run_status(host: Mapping[str, object], read: Mapping[str, object] | None) -> HostRun | None:
     """A host's deployment and steps, and its run as its monitor or, without one, its host reports it.
 
     ``read`` is the host's ``host_state`` that ``read_hosts`` collected. The
@@ -84,9 +75,9 @@ def _run_status(host: dict[str, Any], read: dict[str, Any] | None) -> dict[str, 
     name = host["host_name"]
     bundle = bundle_paths(name)
     automation_dir = Path(bundle["runtime_dir"]) / "automation"
-    process = _dict(read_json(automation_dir / "process.json"))
-    state = _dict(read_json(automation_dir / "state.json"))
-    process_pid, state_pid = _int_or_none(process.get("pid")), _int_or_none(state.get("pid"))
+    process = read_process_record(automation_dir) or WorkerProcess()
+    state = read_run_state(automation_dir) or RunState()
+    process_pid, state_pid = process.pid, state.pid
     pid = process_pid if process_pid is not None else state_pid
     alive = pid is not None and pid_alive(pid)
     selections = staged_selections(bundle)
@@ -123,22 +114,22 @@ def _run_status(host: dict[str, Any], read: dict[str, Any] | None) -> dict[str, 
 
 def _worker_run(
     automation_dir: Path,
-    process: dict[str, Any],
-    state: dict[str, Any],
-    selections: dict[str, dict[str, Any]],
+    process: WorkerProcess,
+    state: RunState,
+    selections: dict[str, dict[str, object]],
     *,
     pid: int | None,
     state_pid: int | None,
     alive: bool,
-) -> tuple[dict[str, Any], Any]:
+) -> tuple[RunSection, object]:
     """A run as its monitor's records report it, and the decision it applies.
 
     ``pid`` is the process record's, else the state's.
     """
 
     status, reason = _worker_state(state, pid=pid, state_pid=state_pid, alive=alive)
-    last_frame = _dict(state.get("last_frame"))
-    run = {
+    last_frame = state.last_frame
+    run: RunSection = {
         "process": {
             "pid": pid,
             "running": alive,
@@ -146,31 +137,38 @@ def _worker_run(
             "status": status,
             "generation_matches": state_pid in (None, pid),
             "reason": reason,
-            "log_to_disk": bool(process.get("log_to_disk")),
-            "log_path": process.get("log_path"),
-            "command": process.get("command"),
+            "log_to_disk": process.log_to_disk,
+            "log_path": process.log_path,
+            "command": process.command,
             "process_record": display_path(automation_dir / "process.json"),
         },
         "state": {
-            **{field: state.get(field) for field in _STATE_FIELDS},
-            "status": state.get("status", "none"),
-            "frames_received": state.get("frames_received", 0),
-            "processed_count": state.get("processed_count", 0),
+            "run_id": state.run_id, "pipeline": state.pipeline,
+            "frames_dropped": state.frames_dropped, "num_decisions": state.num_decisions,
+            "recording": state.recording, "pid": state.pid,
+            "control_source": state.control_source, "action_policy": state.action_policy,
+            "execution": state.execution, "arming": state.arming,
+            "session": state.session, "control_application": state.control_application,
+            "error": state.error, "exit_code": state.exit_code,
+            "stop_reason": state.stop_reason, "updated_at_ms": state.updated_at_ms,
+            "status": state.status if state.status is not None else "none",
+            "frames_received": state.frames_received,
+            "processed_count": state.processed_count,
             "last_frame": last_frame,
             "state_record": display_path(automation_dir / "state.json"),
             "latest_perception_age_ms": _age_ms(_int_or_none(last_frame.get("perception_completed_at_ms"))),
         },
         **_compared_steps(
-            selections, state.get("steps") if alive else None,
+            selections, state.steps if alive else None,
             unreported="the run has not reported its steps" if alive else "host not running",
         ),
     }
-    return run, state.get("decision") if alive else None
+    return run, state.decision if alive else None
 
 
 def _host_run(
-    base_url: str, read: dict[str, Any], selections: dict[str, dict[str, Any]],
-) -> tuple[dict[str, Any], Any]:
+    base_url: str, read: Mapping[str, object], selections: dict[str, dict[str, object]],
+) -> tuple[RunSection, object]:
     """A run as its host's ``/host/status`` reports it, and the decision it applied.
 
     Without a monitor, its host reports the same cycle counters from its
@@ -182,7 +180,7 @@ def _host_run(
     observation = observation_component(autonomy)
     error = read["error"] if read["state"] in {"not answering", "error"} else None
     status = "error" if error is not None else read["state"]
-    run = {
+    run: RunSection = {
         "process": {
             "pid": None,
             "running": status == "running",
@@ -217,7 +215,7 @@ def _host_run(
     return run, autonomy.get("applied_decision")
 
 
-def _published_view(host_name: str) -> dict[str, Any]:
+def _published_view(host_name: str) -> Mapping[str, object]:
     """The standalone view ``hosts viewer`` or ``plugins stream`` records, with or without a monitor."""
 
     view = get_perception_view_status(runtime_view_dir(host_name))
@@ -227,8 +225,8 @@ def _published_view(host_name: str) -> dict[str, Any]:
 
 
 def _compared_steps(
-    selections: dict[str, dict[str, Any]], reports: Any, *, unreported: str,
-) -> dict[str, Any]:
+    selections: dict[str, dict[str, object]], reports: object, *, unreported: str,
+) -> ComparedSteps:
     """Each staged selection with the one its host applied, and whether the host reported them.
 
     Without the host's step reports every step's ``applied`` is ``None`` and
@@ -245,7 +243,7 @@ def _compared_steps(
     }
 
 
-def _applied_step(report: Any) -> dict[str, Any]:
+def _applied_step(report: object) -> AppliedStep:
     """A step as its host reports running it; a step it runs no runner for has no plugins.
 
     ``plugin_configs`` is ``None`` when the host does not report them. ``error``
@@ -264,7 +262,7 @@ def _applied_step(report: Any) -> dict[str, Any]:
     }
 
 
-def _release_summary(manifest: dict[str, Any]) -> dict[str, Any]:
+def _release_summary(manifest: Mapping[str, object]) -> RunRelease:
     """The packaged release a start deploys: its source tree, archive and manifest."""
 
     archive = _dict(manifest.get("archive"))
@@ -279,15 +277,15 @@ def _release_summary(manifest: dict[str, Any]) -> dict[str, Any]:
 
 
 def _worker_state(
-    state: dict[str, Any], *, pid: int | None, state_pid: int | None, alive: bool,
+    state: RunState, *, pid: int | None, state_pid: int | None, alive: bool,
 ) -> tuple[str, str | None]:
     """The worker's status from its records, and why when it is stale or failed."""
 
     if state_pid not in (None, pid):
         return "stale", f"process/state worker generation mismatch: process pid={pid}, state pid={state_pid}"
-    run_status = state.get("status")
+    run_status = state.status
     if run_status == "error":
-        return "error", status_reason(state.get("error"), fallback="automation worker reported an error")
+        return "error", status_reason(state.error, fallback="automation worker reported an error")
     if alive:
         return ("starting" if run_status == "starting" else "running"), None
     if run_status in {"starting", "running"}:
@@ -301,9 +299,9 @@ def _age_ms(completed_at_ms: int | None) -> int | None:
     return None if completed_at_ms is None else max(0, timestamp_ms() - completed_at_ms)
 
 
-def _dict(value: Any) -> dict[str, Any]:
+def _dict(value: object) -> dict[str, object]:
     return value if isinstance(value, dict) else {}
 
 
-def _int_or_none(value: Any) -> int | None:
+def _int_or_none(value: object) -> int | None:
     return value if isinstance(value, int) and not isinstance(value, bool) else None

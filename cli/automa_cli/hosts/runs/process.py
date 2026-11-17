@@ -16,7 +16,7 @@ from autonomy.runtime.session import RunConfiguration
 from ...shared.io.processes import command_tokens, command_option_matches, pid_alive, reap_on_exit
 from ...shared.paths import ROOT
 from .lifecycle import keep
-from .models import WORKER_MODULE
+from .models import RunState, WORKER_MODULE
 from .store import mark_automation_startup_error, read_run_state
 
 
@@ -163,13 +163,8 @@ def _wait_for_exit(pid: int, *, timeout_s: float, interval_s: float) -> bool:
     return False
 
 
-def _state_dict(automation_dir: Path) -> dict[str, object]:
-    state = read_run_state(automation_dir)
-    return state if isinstance(state, dict) else {}
-
-
-def _failed(reason: str, state: dict[str, object]) -> dict[str, object]:
-    return {"status": "failed", "reason": reason, "state": state}
+def _failed(reason: str, state: RunState | None) -> dict[str, object]:
+    return {"status": "failed", "reason": reason, "state": state.to_dict() if state is not None else {}}
 
 
 def _record_startup_exit(automation_dir: Path, reason: str, exit_code: int, begun: int | None) -> None:
@@ -206,20 +201,20 @@ def wait_for_automation_startup(
     while True:
         # Read the record after the exit check, so an exited worker's last write is seen.
         exit_code = process.poll()
-        state = _state_dict(automation_dir)
-        own = state.get("pid") == process.pid
-        status = state.get("status") if own else None
-        session = state.get("session") if own and isinstance(state.get("session"), dict) else {}
+        state = read_run_state(automation_dir) or RunState()
+        own = state.pid == process.pid
+        status = state.status if own else None
+        session = (state.session or {}) if own else {}
         if status == "completed":
-            return {"status": "completed", "processed_count": state.get("processed_count", 0), "state": state}
+            return {"status": "completed", "processed_count": state.processed_count, "state": state.to_dict()}
         if status in {"stopped", "error"}:
-            return _failed(state.get("error") or state.get("stop_reason") or f"the run {status}", state)
+            return _failed(state.error or state.stop_reason or f"the run {status}", state)
         if exit_code is not None:
             reason = f"automation worker exited with code {exit_code} before the runtime session completed"
             _record_startup_exit(automation_dir, reason, exit_code, begun)
-            return _failed(reason, _state_dict(automation_dir))
+            return _failed(reason, read_run_state(automation_dir))
         if session.get("status") == "running":
-            return {"status": "ready", "processed_count": session.get("processed_decisions", 0), "state": state}
+            return {"status": "ready", "processed_count": session.get("processed_decisions", 0), "state": state.to_dict()}
         if time.monotonic() >= deadline:
             return _failed(
                 f"runtime session is {session.get('status') or 'missing'} and the worker is alive "

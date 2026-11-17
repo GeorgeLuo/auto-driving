@@ -2,17 +2,20 @@
 
 A policy definition has ``when``, ``goal``, optional ``how``, and ordered
 ``executors`` (proposal plugin IDs). Configure a ``PolicyCycle`` on the judge
-plugin; call ``current`` before taking an answer scoped by ``policy.tag()``, then ``choose``
-and ask under the returned tag. ``current`` consumes listed executors' exits,
-leaving the policy undecided until the next choice. Instances hold config only.
-The serialized state owns a lifetime token, created only when that state is absent. Restoring a recording seed preserves the token;
-a replay without that state starts a new lifetime and ignores earlier controls.
+plugin; call ``current`` before taking an answer scoped by ``policy.tag()``,
+then ``choose`` and ask under the returned tag. ``current`` consumes listed
+executors' exits, leaving the policy undecided until the next choice.
+Instances hold config only. A tag is the state's ``lifetime`` token plus the
+policy ``name`` and ``epoch``. The token is created only when the state is
+absent, so a restaged or reconstructed cycler keeps it, and restoring a
+recording seed preserves it. A replay without that state starts a new lifetime
+and ignores earlier controls.
 
 Shared-memory keys and ownership:
 
 * ``proposal.<cycler_id>.policy`` (default ``proposal.policy_cycler.policy``):
-  the cycler's state: ``name``, ``epoch``, ``since_ms``, ``reason``, ``policies``,
-  last ten ``changes``, and ``held``. Pass ``key`` for a differently named judge.
+  the cycler's state: ``lifetime``, ``name``, ``epoch``, ``since_ms``, ``reason``,
+  ``policies``, last ten ``changes``, and ``held``. Pass ``key`` for a differently named judge.
 * ``proposal.policy``: rewritten from that state on every current/choose call.
   Executors and the plan read this publication, never the cycler's private key.
 * ``proposal.<executor_id>.exit``: that executor writes once per identity through
@@ -119,7 +122,7 @@ def read_policy(shared_memory: SharedMemory) -> Policy | None:
 
 
 def read_exit(shared_memory: SharedMemory, plugin_id: str, policy: Policy | None) -> PolicyExit | None:
-    """Read only this policy epoch's exit, detached from shared memory."""
+    """Read only the exit tagged with this policy, detached from shared memory."""
     event = cast(PolicyExit | None, shared_memory.get(f"proposal.{plugin_id}.exit"))
     if policy is None or not event or event.get("policy") != policy.tag():
         return None
@@ -130,7 +133,7 @@ def write_exit(
     shared_memory: SharedMemory, plugin_id: str, policy: Policy, *,
     why: str, now_ms: int, detail: dict[str, object] | None = None,
 ) -> PolicyExit:
-    """Publish a sticky exit: the first exit in an epoch wins."""
+    """Publish a sticky exit: the first exit under a policy tag wins."""
     if why not in EXIT_REASONS:
         raise ValueError("exit why must be done, lost, blocked or timeout")
     event: PolicyExit | None = read_exit(shared_memory, plugin_id, policy)
@@ -162,7 +165,8 @@ class PolicyCycle:
     """Judge-independent transitions; history belongs to the supplied memory.
 
     A different choice is counted and discarded until the earliest non-zero
-    run of this epoch is min_acting_ms old. This is elapsed frame time from
+    run one of the policy's executors applied under its current tag is
+    min_acting_ms old. This is elapsed frame time from
     that run, including any gaps, not a sum of run durations. Even a zero
     minimum requires an applied run. Undecided policies accept a choice at once.
     Choices require ``memory/control_runs`` to be armed. Frame timestamps and
@@ -184,8 +188,8 @@ class PolicyCycle:
     def _state(self, shared_memory: SharedMemory, now_ms: int) -> PolicyState:
         state: PolicyState | None = deepcopy(cast(PolicyState | None, shared_memory.get(self._key)))
         if state is None:
-            state = {"lifetime": uuid4().hex, "policies": {}, "name": self._initial, "epoch": 0, "since_ms": now_ms, "reason": "initial",
-                     "changes": [], "held": 0}
+            state = {"lifetime": uuid4().hex, "name": self._initial, "epoch": 0, "since_ms": now_ms,
+                     "reason": "initial", "policies": {}, "changes": [], "held": 0}
         state["policies"] = deepcopy(self._policies)
         return state
 
@@ -197,7 +201,7 @@ class PolicyCycle:
     @staticmethod
     def _change(state: PolicyState, name: str | None, now_ms: int, reason: str) -> None:
         change: PolicyChange = {"from": state["name"], "to": name, "epoch": state["epoch"] + 1,
-                  "at_ms": now_ms, "reason": reason}
+                                "at_ms": now_ms, "reason": reason}
         state["changes"] = [*state["changes"], change][-10:]
         state.update(name=name, epoch=change["epoch"], since_ms=now_ms, reason=reason)
 

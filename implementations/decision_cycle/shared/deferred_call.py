@@ -45,7 +45,6 @@ Removed/replaced history has a different lifetime, so old outcomes cannot revive
 or contaminate it. No lock covers run(). At most workers requests are outstanding;
 when capacity is occupied, asking waits for a later owning call without queueing
 more transport work. shutdown(wait=False) never waits for a remote operation.
-
 """
 
 from __future__ import annotations
@@ -178,8 +177,7 @@ class DeferredCall(Generic[Request]):
             if current["status"] != "pending":
                 record["counts"]["dropped"] += 1
         elif self._overdue(current, now_ms):
-            counts = record["counts"]
-            counts["expired"] = counts.get("expired", 0) + 1  # records saved before expiry had no count
+            record["counts"]["expired"] += 1
             record["last_asked"] = None
         else:
             return record

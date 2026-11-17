@@ -196,6 +196,11 @@ class SummaryTests(unittest.TestCase):
         self.assertIn("| `cli/a.py` | 12 → 14 | 3 → 1 |", summary)
         self.assertEqual(exit_status(document), 0)
 
+    def test_summary_reports_acceptance_changes_by_document(self) -> None:
+        summary = render_summary(self.document([], []), shifts={"cli.doc.Doc": [2, 0, 1, 3]})
+        self.assertIn("### Acceptance changes, base → head (report only)", summary)
+        self.assertIn("| `cli.doc.Doc` | 2 | 0 | 1 | 3 |", summary)
+
     def test_exit_status_fails_on_blocking_findings_and_required_failures_only(self) -> None:
         blocking = finding("ruff", "F821", location("cli/a.py", 2), "Undefined?", status="blocking")
         review = finding("qca", "structure.x", location("cli/a.py", 2), "Clearer?")

@@ -34,7 +34,7 @@ from qca.evaluation import (
     text_context,
 )
 from qca.evaluators import structure
-from scripts.validation import evaluators, inspection, plugin_state, review, source_rules
+from scripts.validation import acceptance, evaluators, inspection, plugin_state, review, source_rules
 
 ROOT = Path(__file__).resolve().parents[2]
 PATHS = ("autonomy", "cli", "implementations", "deploy", "qca", "scripts/validation", "tests")
@@ -86,7 +86,8 @@ def exit_status(document: Document) -> int:
     return int(any(item["status"] == "blocking" for item in document["findings"]))
 
 
-def render_summary(document: Document, totals: dict[str, list[tuple[int, int]]] | None = None) -> str:
+def render_summary(document: Document, totals: dict[str, list[tuple[int, int]]] | None = None,
+                   shifts: dict[str, list[int]] | None = None) -> str:
     lines = ["## Python quality", "", _describe(document["context"]), "", "| Check | Result |", "| --- | --- |"]
     lines += [f"| {record['evaluator']} | {_outcome(record)} |" for record in document["evaluations"]]
     for status, title in (("blocking", "Blocking"), ("review", "Review questions")):
@@ -99,6 +100,10 @@ def render_summary(document: Document, totals: dict[str, list[tuple[int, int]]] 
                   f"| File | {' | '.join(TOTALS)} |", f"| --- |{' --- |' * len(TOTALS)}"]
         lines += [f"| `{path}` | {' | '.join(f'{base} → {head}' for base, head in counts)} |"
                   for path, counts in sorted(totals.items())]
+    if shifts:
+        lines += ["", "### Acceptance changes, base → head (report only)", "",
+                  f"| Document | {' | '.join(acceptance.COLUMNS)} |", f"| --- |{' --- |' * len(acceptance.COLUMNS)}"]
+        lines += [f"| `{name}` | {' | '.join(map(str, counts))} |" for name, counts in sorted(shifts.items())]
     return "\n".join(lines)
 
 
@@ -166,6 +171,23 @@ def _totals(context: Context, document: Document) -> dict[str, list[tuple[int, i
     return {path: [(before.get(path, 0), after.get(path, 0)) for before, after in sides] for path in paths}
 
 
+def _acceptance(context: Context, document: Document) -> dict[str, list[int]]:
+    record = EvaluationRecord(evaluator="acceptance-changes", required=False, status="completed")
+    document["evaluations"].append(record)
+    reason = acceptance.skip_reason(context)
+    if reason:
+        record.update(status="skipped", reason=reason)
+        return {}
+    try:
+        found, shifts = acceptance.acceptance_changes(context)
+    except Exception as exc:
+        record.update(status="failed", error=f"{type(exc).__name__}: {exc}")
+        return {}
+    record["findings"] = len(found)
+    document["findings"].extend(found)
+    return {name: shift.counts() for name, shift in shifts.items()}
+
+
 def main(argv: list[str] | None = None) -> int:
     parser = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
     parser.add_argument("paths", nargs="*", help="Evaluate these whole files or directories instead of a change.")
@@ -180,14 +202,15 @@ def main(argv: list[str] | None = None) -> int:
     try:
         with open_context(args) as context:
             document = evaluate(context, build_evaluators(ruff_only=args.ruff_only))
-            totals = {}
+            totals, shifts = {}, {}
             if not args.ruff_only:
                 _change_checks(context, document)
                 totals = _totals(context, document)
+                shifts = _acceptance(context, document)
     except (AnalysisError, OSError, ValueError) as exc:
         print(f"Quality check could not start: {exc}", file=sys.stderr)
         return 2
-    summary = render_summary(document, totals)
+    summary = render_summary(document, totals, shifts)
     print(summary)
     if args.output:
         args.output.mkdir(parents=True, exist_ok=True)

@@ -15,6 +15,7 @@ from autonomy.runtime.cycle_host import AutonomyCycleHost
 from autonomy.runtime.recording import RECORDING_ENTRIES_NAME, RecordingWriter, RunRecording
 from autonomy.runtime.session import RunConfiguration
 from autonomy.vehicle import FRONT_CAMERA_SENSOR_ID, SensorFrame, SensorReading
+from cli.automa_cli.hosts.runs.models import RunState
 from cli.automa_cli.hosts.runs.monitor import _sync_recording
 from cli.automa_cli.plugins.inspect.replay import StepReplay
 from cli.automa_cli.replay.source import load_image_source
@@ -70,7 +71,7 @@ class RecordingGenerationTests(unittest.TestCase):
             self.assertNotEqual(entries[0]["generation_id"], entries[2]["generation_id"])
 
             export = root / "export"
-            state = {"recorded_count": 0, "host_name": "picar"}
+            state = RunState(host_name="picar")
 
             class Client:
                 def read_recording(self, run_id, *, after):
@@ -78,7 +79,7 @@ class RecordingGenerationTests(unittest.TestCase):
 
             writer = RecordingWriter(export, host_name="picar", run_id=recording.run_id)
             _sync_recording(Client(), state, writer=writer)
-            self.assertEqual(state["recorded_count"], recording.count)
+            self.assertEqual(state.recorded_count, recording.count)
             self.assertEqual(
                 (export / "manifest.json").read_bytes(),
                 (recording.root / "manifest.json").read_bytes(),

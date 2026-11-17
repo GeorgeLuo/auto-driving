@@ -235,8 +235,9 @@ class WorkerProcessTests(unittest.TestCase):
                     "recorded_count": 1,
                     "processed_count": 2,
                 }
+                state = store.RunState.from_dict(state)
                 store.finish_run(state, status="completed")
-                (root / "state.json").write_text(json.dumps(state))
+                (root / "state.json").write_text(json.dumps(state.to_dict()))
                 result = self.wait(root, lambda: exit_code)
                 self.assertEqual(result["status"], "failed")
                 self.assertIn("Recording count does not match", result["reason"])

@@ -8,13 +8,16 @@ the closing result for the caller to print.
 from __future__ import annotations
 
 import json
+from collections.abc import Mapping
 from pathlib import Path
 
 from ...shared.paths import display_path
 from ...shared.text import automa_command
 from ..host_formatting import host_block, perception_stream_command, viewer_command
 from ..step_formatting import format_activation_problems, selection_label, step_lines
-from .models import RestartResult, StartResult, StopResult, status_reason
+from .models import RestartResult, RunState, StartResult, StopResult, WorkerProcess, status_reason
+
+from .models import AppliedStep, ComparedStep, HostRun, RunDecision, RunProcess, RunRelease, RunStatusState
 
 # A run's host owns its wheel commands. The label is the words status and the
 # live transcript print; the stored value stays ``runtime_host``.
@@ -38,36 +41,27 @@ def _format_hosts_status(hosts: list[dict[str, object]], *, long: bool) -> str:
     )
 
 
-def _run_lines(item: dict[str, object] | None) -> list[str]:
+def _run_lines(item: HostRun | None) -> list[str]:
     """A host's deployment, release, steps, worker, run and view, under its host block."""
 
-    if not isinstance(item, dict):
+    if item is None:
         return []
-    decision = item.get("decision") if isinstance(item.get("decision"), dict) else {}
-    process = item.get("process") if isinstance(item.get("process"), dict) else {}
-    state = item.get("state") if isinstance(item.get("state"), dict) else {}
-    published_view = (
-        item.get("published_view")
-        if isinstance(item.get("published_view"), dict)
-        else {}
-    )
-    last_frame = (
-        state.get("last_frame") if isinstance(state.get("last_frame"), dict) else {}
-    )
+    decision, process, state = item["decision"], item["process"], item["state"]
+    published_view, last_frame = item["published_view"], state["last_frame"]
     lines = [
-        f"  deployment: {'deployed' if item.get('deployed') else 'not deployed'}",
-        f"  release: {_release_label(item.get('release'), item.get('host_name'))}",
+        f"  deployment: {'deployed' if item['deployed'] else 'not deployed'}",
+        f"  release: {_release_label(item['release'], item['host_name'])}",
         *_selection_lines(item),
         f"  decision: {_decision_label(decision)}",
         f"  worker: {_worker_label(process)}",
         f"  run: {_run_label(state)}",
         f"  latest: {_latest_status_label(state, last_frame)}",
         f"  view: {_published_view_label(published_view)}",
-        f"  state: {state.get('state_record', 'unknown')}",
+        f"  state: {state['state_record']}",
         f"  log: {_status_log_label(process)}",
     ]
     arming = state.get("arming")
-    if isinstance(arming, dict) and arming.get("request_id"):
+    if arming is not None and arming.get("request_id"):
         request = f"request {arming['request_id']}"
         generation = arming.get("generation_id")
         if isinstance(generation, str) and generation:
@@ -75,38 +69,29 @@ def _run_lines(item: dict[str, object] | None) -> list[str]:
         lines.append(f"  arming: {arming['status']} ({request})")
         if arming.get("error"):
             lines.append(f"  problem: {arming['error']}")
-    problems = item.get("activation_problems")
-    if isinstance(problems, list) and problems:
+    problems = item["activation_problems"]
+    if problems:
         lines.extend(
             f"  {line}" for line in format_activation_problems(problems).splitlines()
         )
-    reason = process.get("reason")
-    if isinstance(reason, str) and reason:
+    reason = process["reason"]
+    if reason:
         lines.append(f"  problem: {reason}")
     return lines
 
 
-def _release_label(release: object, host_name: object) -> str:
-    if not isinstance(release, dict):
+def _release_label(release: RunRelease | None, host_name: str) -> str:
+    if release is None:
         return f"none (run `{automa_command('hosts', 'update', '--name', str(host_name))}` to package one)"
     fields = {"archive": release.get("archive"), "manifest": release.get("manifest")}
-    return "  ".join(
-        [
-            str(release.get("tree_sha256") or "unknown")[:12],
-            *(f"{name}={value}" for name, value in fields.items() if value),
-        ]
-    )
+    return "  ".join([str(release.get("tree_sha256") or "unknown")[:12],
+                      *(f"{name}={value}" for name, value in fields.items() if value)])
 
 
-def _selection_lines(item: dict[str, object]) -> list[str]:
+def _selection_lines(item: HostRun) -> list[str]:
     """Every step's staged selection and its source, over the selection its host applied."""
 
-    selections = item.get("steps")
-    if not isinstance(selections, dict):
-        return []
-    applied = (
-        item.get("applied_steps") if isinstance(item.get("applied_steps"), dict) else {}
-    )
+    selections, applied = item["steps"], item["applied_steps"]
     lines = [
         "  steps: staged, and applied by the running host"
         if applied.get("available")
@@ -114,14 +99,14 @@ def _selection_lines(item: dict[str, object]) -> list[str]:
     ]
     for step, selection in selections.items():
         lines.append(f"    {step}: {_staged_label(selection)}")
-        if isinstance(selection.get("applied"), dict):
+        if selection["applied"] is not None:
             lines.append(
                 f"      applied: {_applied_label(selection, selection['applied'])}"
             )
     return lines
 
 
-def _staged_label(selection: dict[str, object]) -> str:
+def _staged_label(selection: ComparedStep) -> str:
     source = selection.get("source")
     if source == "invalid":
         return "unreadable  source=invalid"
@@ -130,7 +115,7 @@ def _staged_label(selection: dict[str, object]) -> str:
     return f"{selection_label(selection.get('preset'), selection.get('plugins') or [])}  source={source}"
 
 
-def _applied_label(selection: dict[str, object], applied: dict[str, object]) -> str:
+def _applied_label(selection: ComparedStep, applied: AppliedStep) -> str:
     """What the host applied beside the staged selection; restaged configs wait for a restart."""
 
     if applied.get("error"):
@@ -144,7 +129,7 @@ def _applied_label(selection: dict[str, object], applied: dict[str, object]) -> 
         != (selection.get("preset"), selection.get("plugins"))
     ):
         label = selection_label(applied.get("preset"), applied.get("plugins") or [])
-    elif not isinstance(configs, dict):
+    elif configs is None:
         label = "staged plugins, configs not reported"
     elif configs != staged:
         differ = [
@@ -161,25 +146,20 @@ def _applied_label(selection: dict[str, object], applied: dict[str, object]) -> 
         "failures": applied.get("failure_count"),
         "last_error": status_reason(last_error, fallback="") if last_error else None,
     }
-    return "  ".join(
-        [
-            label,
-            *(f"{name}={value}" for name, value in fields.items() if value is not None),
-        ]
-    )
+    return "  ".join([label, *(f"{name}={value}" for name, value in fields.items() if value is not None)])
 
 
-def _decision_label(decision: dict[str, object]) -> str:
+def _decision_label(decision: RunDecision) -> str:
     return str(decision.get("generation_id") or f"not deployed; expected {decision.get('activation', 'unknown')}")
 
 
-def _worker_label(process: dict[str, object]) -> str:
+def _worker_label(process: RunProcess) -> str:
     pid = process.get("pid")
-    pid_text = str(pid) if isinstance(pid, int) else "none"
+    pid_text = str(pid) if pid is not None else "none"
     return f"{process.get('status', 'unknown')}  pid={pid_text} ({process.get('pid_state', 'unknown')})"
 
 
-def _run_label(state: dict[str, object]) -> str:
+def _run_label(state: RunStatusState) -> str:
     if not state.get("run_id"):
         return "none"
     num_decisions = state.get("num_decisions")
@@ -197,7 +177,7 @@ def _run_label(state: dict[str, object]) -> str:
     )
 
 
-def _latest_status_label(state: dict[str, object], last_frame: dict[str, object]) -> str:
+def _latest_status_label(state: RunStatusState, last_frame: dict[str, object]) -> str:
     if not last_frame:
         return "none"
     fields = {
@@ -210,97 +190,61 @@ def _latest_status_label(state: dict[str, object], last_frame: dict[str, object]
     )
 
 
-def _published_view_label(published_view: dict[str, object]) -> str:
+def _published_view_label(published_view: Mapping[str, object]) -> str:
     if published_view.get("available") and published_view.get("url"):
         return str(published_view["url"])
     return f"unavailable ({published_view.get('reason', 'automation view is not running')})"
 
 
-def _status_log_label(process: dict[str, object]) -> str:
+def _status_log_label(process: RunProcess) -> str:
     if not process.get("log_to_disk"):
         return "disabled"
     return process.get("log_path") or "enabled"
 
 
-def startup_lines(state: dict[str, object]) -> list[str]:
-    selections = state["selections"]
-    source = state["control_source"]
+def startup_lines(state: RunState) -> list[str]:
+    selections = state.selections
+    source = state.control_source
     return [
-        f"Run started on host {state['host_name']}.",
+        f"Run started on host {state.host_name}.",
         *step_lines(
             {step: selection["plugins"] for step, selection in selections.items()},
-            {
-                step: selection["preset"]
-                for step, selection in selections.items()
-                if selection["preset"]
-            },
+            {step: selection["preset"] for step, selection in selections.items() if selection["preset"]},
         ),
-        (
-            f"Recording: {state['run_dir']}"
-            if state["run_dir"] is not None
-            else "Recording: off"
-        ),
+        f"Recording: {state.run_dir}" if state.run_dir is not None else "Recording: off",
         f"Control source: {_CONTROL_SOURCE_LABELS.get(source, source)}",
-        f"Action policy: {state['action_policy']}",
-        f"Decision generation: {state['decision']['generation_id']}",
-        f"View: {viewer_command(state['host_name'])}",
-        "Decisions: unbounded"
-        if state["num_decisions"] is None
-        else f"Decisions: {state['num_decisions']}",
+        f"Action policy: {state.action_policy}",
+        f"Decision generation: {state.decision['generation_id']}",
+        f"View: {viewer_command(state.host_name)}",
+        "Decisions: unbounded" if state.num_decisions is None else f"Decisions: {state.num_decisions}",
     ]
 
 
-def render_run_result(state: dict[str, object], *, state_path: str) -> str:
-    """The closing lines for a finished run.
+def render_run_result(state: RunState, *, state_path: str) -> str:
+    """The closing lines for a finished run, with the caller's display path."""
 
-    ``state_path`` is the path text the caller already prepared for display.
-    """
-
-    host_name = state["host_name"]
-    status = state["status"]
-    if status == "error":
-        return "\n".join(
-            [
-                f"The run on host {host_name} failed.",
-                f"Reason: {state['error']}",
-                f"State: {state_path}",
-            ]
-        )
-    if status == "completed":
-        dropped = state.get("frames_dropped")
-        dropped = "unavailable" if dropped is None else dropped
-        return "\n".join(
-            [
-                f"Run completed on host {host_name}.",
-                f"Frames received: {state.get('frames_received', 0)}",
-                f"Frames dropped before decision: {dropped}",
-                f"Decisions completed: {state['processed_count']}",
-                f"Control source: {state['control_source']}",
-                f"Action policy: {state['action_policy']}",
-                f"Recording: {'on' if state['recording'] else 'off'}",
-                *(
-                    [f"Decisions recorded: {state['recorded_count']}"]
-                    if state["recording"]
-                    else []
-                ),
-                f"State: {state_path}",
-            ]
-        )
-    return "\n".join(
-        [
-            f"Run stopped on host {host_name}.",
-            f"State: {state_path}",
-        ]
-    )
+    if state.status == "error":
+        return (f"The run on host {state.host_name} failed.\n"
+                f"Reason: {state.error}\nState: {state_path}")
+    if state.status == "completed":
+        dropped = "unavailable" if state.frames_dropped is None else state.frames_dropped
+        recorded = f"Decisions recorded: {state.recorded_count}\n" if state.recording else ""
+        return (f"Run completed on host {state.host_name}.\n"
+                f"Frames received: {state.frames_received}\n"
+                f"Frames dropped before decision: {dropped}\n"
+                f"Decisions completed: {state.processed_count}\n"
+                f"Control source: {state.control_source}\nAction policy: {state.action_policy}\n"
+                f"Recording: {'on' if state.recording else 'off'}\n{recorded}State: {state_path}")
+    return f"Run stopped on host {state.host_name}.\nState: {state_path}"
 
 
-def _log_status_line(process: object, log_path: Path) -> str:
-    record = process if isinstance(process, dict) else {}
-    configured_path = record.get("log_path")
-    log_to_disk = bool(record.get("log_to_disk")) or isinstance(configured_path, str)
+def _log_status_line(process: WorkerProcess | None, log_path: Path) -> str:
+    record = process or WorkerProcess()
+    configured_path = record.log_path
+    log_to_disk = record.log_to_disk or configured_path is not None
     if not log_to_disk:
         return "Log: disabled; pass --log to persist worker output"
-    if isinstance(configured_path, str) and configured_path:
+    if configured_path:
         return f"Log: {configured_path}"
     return f"Log: {display_path(log_path)}"
 
@@ -310,196 +254,75 @@ def render_start_result(result: StartResult) -> str:
         return format_activation_problems(result.problems)
     if result.kind == "error":
         return result.error
-    host_name, pid = result.host_name, result.pid
-    existing_pid, existing_state_pid = pid, result.state_pid
-    state_path, log_path = result.state_path, result.log_path
-    expected_authority, actual_authority = (
-        result.expected_authority,
-        result.actual_authority,
-    )
-    existing = result.process_record
-    error = result.error
-    if result.kind == "starting":
-        return "\n".join(
-            [
-                f"The run on host {host_name} is still starting.",
-                f"PID: {existing_pid}",
-                f"State: {display_path(state_path)}",
-            ]
-        )
+    host, pid = result.host_name, result.pid
+    messages = {"starting": f"The run on host {host} is still starting.",
+                "stopped": f"The run on host {host} was stopped before it was ready."}
+    if result.kind in messages:
+        return f"{messages[result.kind]}\nPID: {pid}\nState: {display_path(result.state_path)}"
     if result.kind == "session_not_running":
-        return "\n".join(
-            [
-                f"Host {host_name} has a live worker, but {error}.",
-                f"PID: {existing_pid}",
-                f"State: {display_path(state_path)}",
-                f"Recovery: {automa_command('hosts', 'stop', '--name', host_name)}",
-            ]
-        )
+        return (f"Host {host} has a live worker, but {result.error}.\nPID: {pid}\nState: {display_path(result.state_path)}\n"
+                f"Recovery: {automa_command('hosts', 'stop', '--name', host)}")
     if result.kind == "records_disagree":
-        return "\n".join(
-            [
-                f"The run records for host {host_name} disagree.",
-                f"Process PID: {existing_pid}",
-                f"State PID: {existing_state_pid}",
-                "Reason: worker generation is stale; no duplicate worker was started.",
-            ]
-        )
+        return (f"The run records for host {host} disagree.\n"
+                f"Process PID: {pid}\nState PID: {result.state_pid}\n"
+                "Reason: worker generation is stale; no duplicate worker was started.")
     if result.kind == "authority_mismatch":
-        return "\n".join(
-            [
-                f"Host {host_name} already has a run, but its authority does not match this command.",
-                f"PID: {existing_pid}",
-                (
-                    "Expected authority: "
-                    f"action={expected_authority['action_policy']}, "
-                    f"control={expected_authority['control_application']}"
-                ),
-                (
-                    "Current authority: "
-                    f"action={actual_authority['action_policy'] or 'unknown'}, "
-                    f"control={actual_authority['control_application'] or 'unknown'}"
-                ),
-                (f"Recovery: {automa_command('hosts', 'stop', '--name', host_name)}"),
-            ]
-        )
+        expected, actual = result.expected_authority, result.actual_authority
+        return (f"Host {host} already has a run, but its authority does not match this command.\n"
+                f"PID: {pid}\nExpected authority: action={expected['action_policy']}, "
+                f"control={expected['control_application']}\n"
+                f"Current authority: action={actual['action_policy'] or 'unknown'}, "
+                f"control={actual['control_application'] or 'unknown'}\n"
+                f"Recovery: {automa_command('hosts', 'stop', '--name', host)}")
     if result.kind == "existing":
-        return "\n".join(
-            [
-                f"Host {host_name} already has a run.",
-                f"PID: {existing_pid}",
-                f"View: {viewer_command(host_name)}",
-                f"State: {display_path(state_path)}",
-                _log_status_line(existing, log_path),
-                f"Stream: {perception_stream_command(host_name)}",
-            ]
-        )
-    terminal = _render_terminal_start(result)
-    if terminal is not None:
-        return terminal
-    if result.kind != "started":
-        raise ValueError(f"Unknown start outcome: {result.kind}")
-    return _render_started_run(result)
-
-
-def _render_terminal_start(result: StartResult) -> str | None:
-    """A start that ended before a run was ready, or None when the run started."""
-
-    host_name, pid, state_path, error = result.host_name, result.pid, result.state_path, result.error
+        return (f"Host {host} already has a run.\nPID: {pid}\nView: {viewer_command(host)}\n"
+                f"State: {display_path(result.state_path)}\n{_log_status_line(result.process_record, result.log_path)}\n"
+                f"Stream: {perception_stream_command(host)}")
     if result.kind == "launch_failed":
-        return f"Could not start a run on host {host_name}: {error}"
-    if result.kind == "stopped":
-        return "\n".join(
-            [
-                f"The run on host {host_name} was stopped before it was ready.",
-                f"PID: {pid}",
-                f"State: {display_path(state_path)}",
-            ]
-        )
-    return None
+        return f"Could not start a run on host {host}: {result.error}"
+    if result.kind == "started":
+        return _render_started_run(result)
+    raise ValueError(f"Unknown start outcome: {result.kind}")
 
 
 def _render_started_run(result: StartResult) -> str:
-    host_name, pid = result.host_name, result.pid
-    state_path, log_path = result.state_path, result.log_path
-    startup, process_record = result.startup, result.process_record
-    startup_status = startup["status"]
-    if startup_status == "ready":
-        lines = [
-            f"Run started on host {host_name}.",
-            f"PID: {pid}",
-            "Session: running",
-            f"Decisions: {startup.get('processed_count', 0)}",
-            f"View: {viewer_command(host_name)}",
-            f"Stop: {automa_command('hosts', 'stop', '--name', host_name)}",
-        ]
-    elif startup_status == "completed":
-        lines = [
-            f"The run on host {host_name} completed during startup verification.",
-            f"PID: {pid}",
-        ]
+    host, pid, startup = result.host_name, result.pid, result.startup
+    if startup["status"] == "ready":
+        message = (f"Run started on host {host}.\nPID: {pid}\nSession: running\n"
+                   f"Decisions: {startup.get('processed_count', 0)}\nView: {viewer_command(host)}\n"
+                   f"Stop: {automa_command('hosts', 'stop', '--name', host)}")
+    elif startup["status"] == "completed":
+        message = f"The run on host {host} completed during startup verification.\nPID: {pid}"
     else:
-        lines = [
-            f"The run on host {host_name} did not become ready.",
-            f"PID: {pid}",
-            f"Reason: {startup.get('reason', 'unknown startup failure')}",
-        ]
-    lines.extend(
-        [
-            f"State: {display_path(state_path)}",
-            _log_status_line(process_record, log_path),
-            f"Stream: {perception_stream_command(host_name)}",
-            f"Status: {automa_command('hosts', 'status', '--name', host_name, '--long')}",
-        ]
-    )
-    return "\n".join(lines)
+        message = (f"The run on host {host} did not become ready.\nPID: {pid}\n"
+                   f"Reason: {startup.get('reason', 'unknown startup failure')}")
+    return (f"{message}\nState: {display_path(result.state_path)}\n"
+            f"{_log_status_line(result.process_record, result.log_path)}\nStream: {perception_stream_command(host)}\n"
+            f"Status: {automa_command('hosts', 'status', '--name', host, '--long')}")
 
 
 def render_stop_result(result: StopResult) -> str:
-    host_name, pid, state_path, error = (
-        result.host_name,
-        result.pid,
-        result.state_path,
-        result.error,
-    )
+    host, pid, error = result.host_name, result.pid, result.error
     if result.kind == "error":
         return error
     if result.kind == "remote_failed":
-        return f"Could not stop {host_name}: {error}"
-    if result.kind == "no_pid":
-        return "\n".join(
-            [
-                f"No run PID is recorded for host {host_name}.",
-                f"State: {display_path(state_path)}",
-            ]
-        )
-    if result.kind == "already_dead":
-        return "\n".join(
-            [
-                f"Host {host_name} has no run.",
-                f"Recorded PID: {pid}",
-                f"State: {display_path(state_path)}",
-            ]
-        )
+        return f"Could not stop {host}: {error}"
     if result.kind == "stale_pid":
-        return "\n".join(
-            [
-                f"The recorded run PID for host {host_name} is alive but is not this host's run.",
-                f"PID: {pid}",
-                "The PID record was marked stale; no process was terminated.",
-                f"Process: {result.command or 'unknown'}",
-            ]
-        )
-    if result.kind == "stopped":
-        return "\n".join(
-            [
-                f"Stopped the run on host {host_name}.",
-                f"PID: {pid}",
-                f"State: {display_path(state_path)}",
-            ]
-        )
-    if result.kind == "forced":
-        return "\n".join(
-            [
-                f"Force-stopped the run on host {host_name}.",
-                f"PID: {pid}",
-                f"State: {display_path(state_path)}",
-            ]
-        )
-    if result.kind == "timeout":
-        return "\n".join(
-            [
-                f"The run on host {host_name} did not stop.",
-                f"PID: {pid}",
-                f"State: {display_path(state_path)}",
-            ]
-        )
+        return (f"The recorded run PID for host {host} is alive but is not this host's run.\nPID: {pid}\n"
+                "The PID record was marked stale; no process was terminated.\n"
+                f"Process: {result.command or 'unknown'}")
     if result.kind == "release_failed":
-        return (
-            f"The Chase host for {host_name} did not answer and was killed; "
-            f"stopping the car failed: {error}\n"
-            "Stop the chaser in the simulator before the next run."
-        )
+        return (f"The Chase host for {host} did not answer and was killed; stopping the car failed: {error}\n"
+                "Stop the chaser in the simulator before the next run.")
+    messages = {
+        "no_pid": f"No run PID is recorded for host {host}.",
+        "already_dead": f"Host {host} has no run.\nRecorded PID: {pid}",
+        "stopped": f"Stopped the run on host {host}.\nPID: {pid}",
+        "forced": f"Force-stopped the run on host {host}.\nPID: {pid}",
+        "timeout": f"The run on host {host} did not stop.\nPID: {pid}",
+    }
+    if result.kind in messages:
+        return f"{messages[result.kind]}\nState: {display_path(result.state_path)}"
     raise ValueError(f"Unknown stop outcome: {result.kind}")
 
 

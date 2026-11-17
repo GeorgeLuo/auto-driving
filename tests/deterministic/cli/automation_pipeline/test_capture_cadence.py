@@ -91,9 +91,9 @@ class ChaseCaptureCadenceTests(unittest.TestCase):
             records.sort(key=lambda r: r["context"]["metadata"]["capture_sequence"])
             self.assertEqual([r["context"]["metadata"]["simulator_frame_index"] for r in records], [100, 103])
             self.assertEqual(records[-1]["context"]["metadata"]["simulation_epoch"], "chase-run:test")
-            self.assertEqual(result.state["frames_received"], 4)
-            self.assertEqual(result.state["processed_count"], 2)
-            self.assertEqual(result.state["recorded_count"], 2)
+            self.assertEqual(result.state.frames_received, 4)
+            self.assertEqual(result.state.processed_count, 2)
+            self.assertEqual(result.state.recorded_count, 2)
 
     def test_bounded_completion_does_not_wait_after_the_worker_finishes(self) -> None:
         perception = GatedPerception(1)

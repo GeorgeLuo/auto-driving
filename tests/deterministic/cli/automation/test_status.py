@@ -32,9 +32,10 @@ class AutomationStatusTests(unittest.TestCase):
                 "steps": {},
                 "applied_steps": {"available": False, "reason": "host not running"},
                 "decision": {"activation": "bundle", "generation_id": None},
-                "process": {"status": "not_started", "pid_state": "none"},
-                "state": {},
+                "process": {"status": "not_started", "pid_state": "none", "reason": None},
+                "state": {"last_frame": {}, "state_record": "unknown"},
                 "published_view": {},
+                "activation_problems": [],
             },
         }
         status = {"schema": "automa_hosts_status", "host_name": "car", "hosts": [host]}

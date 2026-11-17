@@ -8,7 +8,6 @@ changes a host.
 
 from __future__ import annotations
 
-import json
 import os
 import shutil
 from autonomy.decision_cycle.activation import STEPS, activation_presets
@@ -27,6 +26,7 @@ from ..host_formatting import vehicle_label
 from ..local import ensure_chase_host, host_record, stop_chase_host
 from ..publications.host_publications import host_state
 from ..runs.service import stop_host_automation
+from ..runs.store import read_process_record
 from ..staging import automation_dir, staged_host
 from ..step_activations import (
     decision_identity,
@@ -328,15 +328,11 @@ def _delete_recorded_host(
 def _stop_active_automation(host_name: str) -> tuple[bool, DeleteResult | None]:
     """Stop a running automation before its host. An idle host has nothing to stop."""
 
-    process = automation_dir(host_name) / "process.json"
     base_url = running_base_url(host_name)
     state = host_state(base_url, host_name=host_name, timeout_s=1.0) if base_url else {}
-    try:
-        process_record = json.loads(process.read_text())
-    except (OSError, ValueError):
-        process_record = {}
+    process = read_process_record(automation_dir(host_name))
     active_run = (
-        (isinstance(process_record, dict) and pid_alive(process_record.get("pid")))
+        (process is not None and process.pid is not None and pid_alive(process.pid))
         or state.get("state") in {"starting", "running", "stopping"}
     )
     if not active_run:

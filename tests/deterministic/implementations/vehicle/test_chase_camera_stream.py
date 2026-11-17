@@ -9,7 +9,7 @@ from unittest import mock
 
 from implementations.vehicle.chase_sim import ChasePassiveCaptureError, ChaseSimCar
 from implementations.vehicle.chase_sim.camera_stream import ChaseCameraStream
-from implementations.vehicle.chase_sim.frame_identity import ChaseCaptureValidationError
+from implementations.vehicle.chase_sim.frame_identity import ChaseCaptureValidationError, validate_chase_sensor_capture
 from implementations.vehicle.chase_sim.metrics_ws import MetricsUiCommandResponse, MetricsUiWebSocketError, MetricsUiWsClient
 from tests.deterministic.implementations.vehicle.chase_frame_identity_fixtures import (
     _Connection, _frame, _session_state,
@@ -86,16 +86,20 @@ class ChaseCameraStreamTests(unittest.TestCase):
     def test_raw_consumer_defers_decode_and_state_reads_until_selection(self):
         from PIL.JpegImagePlugin import JpegImageFile
         frames = [_frame(index) for index in range(43, 51)]
-        with mock.patch.object(JpegImageFile, "load", autospec=True, side_effect=JpegImageFile.load) as decode:
+        with mock.patch.object(JpegImageFile, "load", autospec=True, side_effect=JpegImageFile.load) as decode, \
+                mock.patch("implementations.vehicle.chase_sim.camera_stream.validate_chase_sensor_capture",
+                           wraps=validate_chase_sensor_capture) as validate:
             with _capturing(self.client) as (stream, captures):
                 for frame in frames:
                     self.connection.push(frame)
                 wait_until(lambda: captures.qsize() == 9, message="raw captures not delivered")
                 self.assertEqual((decode.call_count, self.state.call_count), (0, 1))
+                self.assertEqual(validate.call_count, 9)
                 latest = [captures.get_nowait() for _ in range(9)][-1]
                 self.assertEqual(latest.load_image().shape, (3, 2, 3))
                 self.assertGreater(decode.call_count, 0)
                 self.assertEqual(self.state.call_count, 2)
+                self.assertEqual(validate.call_count, 9)
 
     def test_invalid_receipt_fails_before_delivering_a_capture(self):
         self.connection.result["preservation"]["after"]["simulationEpoch"] = "changed"

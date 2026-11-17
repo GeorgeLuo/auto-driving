@@ -1,7 +1,9 @@
 from __future__ import annotations
 import unittest
+from dataclasses import replace
 from implementations.vehicle.chase_sim.frame_identity import (
     ChaseCaptureValidationError,
+    ChaseReferenceFrame,
     align_candidate_with_reference,
     build_chaser_reference,
     evaluate_chase_evaluator_reference,
@@ -71,10 +73,10 @@ class ChaseFrameIdentityTests(ChaseFrameIdentityFixture, unittest.TestCase):
         capture["sensor"]["image"]["dataUrl"] = _PNG_DATA_URL.replace(
             "data:image/png;", "data:IMAGE/PNG;charset=utf-8;"
         )
-        sensor = validate_chase_sensor_capture(capture, include_validated_bytes=True)
-        self.assertEqual(sensor["image"]["content_type"], "image/png")
-        self.assertEqual(sensor["image"]["raster_format"], "PNG")
-        self.assertIsInstance(sensor["image"]["validated_bytes"], bytes)
+        sensor = validate_chase_sensor_capture(capture)
+        self.assertEqual(sensor.image.content_type, "image/png")
+        self.assertEqual(sensor.image.raster_format, "PNG")
+        self.assertIsInstance(sensor.image.validated_bytes, bytes)
 
     def test_sensor_image_envelope_accepts_all_supported_raster_mappings(self) -> None:
         for image_format, mime in (
@@ -94,23 +96,23 @@ class ChaseFrameIdentityTests(ChaseFrameIdentityFixture, unittest.TestCase):
                 capture["sensor"]["image"]["contentType"] = mime.upper()
                 sensor = validate_chase_sensor_capture(
                     capture,
-                    include_validated_bytes=True,
                 )
-                self.assertEqual(sensor["image"]["content_type"], mime)
-                self.assertEqual(sensor["image"]["raster_format"], image_format)
-                self.assertIsInstance(sensor["image"]["validated_bytes"], bytes)
+                self.assertEqual(sensor.image.content_type, mime)
+                self.assertEqual(sensor.image.raster_format, image_format)
+                self.assertIsInstance(sensor.image.validated_bytes, bytes)
 
     def test_sensor_image_envelope_accepts_empty_content_type_as_omitted(self) -> None:
         capture = _atomic_capture()
         capture["sensor"]["image"]["contentType"] = "   "
         sensor = validate_chase_sensor_capture(capture)
-        self.assertEqual(sensor["image"]["content_type"], "image/png")
+        self.assertEqual(sensor.image.content_type, "image/png")
 
     def test_builds_bounded_chaser_reference_from_atomic_capture(self) -> None:
         self.assertEqual(format_chase_frame_id(42), "chase_frame_000042")
         reference = build_chaser_reference(_atomic_capture())
         assert reference is not None
 
+        reference = reference.to_dict()
         self.assertEqual(reference["schema"], "chaser_reference")
         self.assertTrue(reference["evaluator_only"])
         self.assertEqual(reference["simulator_frame_index"], 42)
@@ -145,31 +147,32 @@ class ChaseFrameIdentityTests(ChaseFrameIdentityFixture, unittest.TestCase):
         sensor = validate_chase_sensor_capture(missing)
         evaluator = evaluate_chase_evaluator_reference(missing, sensor=sensor)
 
-        self.assertEqual(sensor["frame_id"], "chase_frame_000042")
-        self.assertEqual(evaluator["status"], "unavailable")
-        self.assertEqual(evaluator["reason"], "reference_missing")
-        self.assertIsNone(evaluator["reference"])
+        self.assertEqual(sensor.identity.frame_id, "chase_frame_000042")
+        self.assertEqual(evaluator.status, "unavailable")
+        self.assertEqual(evaluator.reason, "reference_missing")
+        self.assertIsNone(evaluator.reference)
 
         malformed = _atomic_capture(frame_index=10, action_frame_index=11)
         evaluator = evaluate_chase_evaluator_reference(
             malformed,
             sensor=validate_chase_sensor_capture(malformed),
         )
-        self.assertEqual(evaluator["status"], "invalid")
-        self.assertEqual(evaluator["path"], "evaluator.reference.actionFrameIndex")
+        self.assertEqual(evaluator.status, "invalid")
+        self.assertEqual(evaluator.path, "evaluator.reference.actionFrameIndex")
 
     def test_protocol_frame_indexes_are_type_strict_on_the_wire(self) -> None:
         """Wire fields reject string/bool coercion; JSON integers remain valid."""
 
         # Valid JSON integer still accepted.
         sensor = validate_chase_sensor_capture(_atomic_capture(frame_index=42))
-        self.assertEqual(sensor["simulator_frame_index"], 42)
+        self.assertEqual(sensor.identity.simulator_frame_index, 42)
         evaluator = evaluate_chase_evaluator_reference(
             _atomic_capture(frame_index=42, action_frame_index=42),
             sensor=sensor,
         )
-        self.assertEqual(evaluator["status"], "available")
-        self.assertEqual(evaluator["reference"]["action_frame_index"], 42)
+        self.assertEqual(evaluator.status, "available")
+        assert evaluator.reference is not None
+        self.assertEqual(evaluator.reference.action_frame_index, 42)
 
         for bad_value in ("42", True, 42.0, -1, None):
             with self.subTest(field="frameIdentity.frameIndex", bad_value=bad_value):
@@ -190,12 +193,12 @@ class ChaseFrameIdentityTests(ChaseFrameIdentityFixture, unittest.TestCase):
                     capture,
                     sensor=validate_chase_sensor_capture(capture),
                 )
-                self.assertEqual(result["status"], "invalid")
+                self.assertEqual(result.status, "invalid")
                 self.assertEqual(
-                    result["path"],
+                    result.path,
                     "evaluator.reference.actionFrameIndex",
                 )
-                self.assertIsNone(result["reference"])
+                self.assertIsNone(result.reference)
 
     def test_required_capture_diagnostics_name_exact_first_path(self) -> None:
         missing_epoch = _atomic_capture()
@@ -246,44 +249,41 @@ class ChaseFrameIdentityTests(ChaseFrameIdentityFixture, unittest.TestCase):
         reference = build_chaser_reference(_atomic_capture(frame_index=7))
         assert reference is not None
         ok = align_candidate_with_reference(
-            candidate_frame_index=7,
-            candidate_simulation_epoch="chase-run:test",
+            candidate=validate_chase_sensor_capture(_atomic_capture(frame_index=7)),
             chaser_reference=reference,
         )
-        self.assertTrue(ok["aligned"])
+        self.assertTrue(ok.aligned)
         wrong_epoch = align_candidate_with_reference(
-            candidate_frame_index=7,
-            candidate_simulation_epoch="chase-run:other",
+            candidate=validate_chase_sensor_capture(
+                _atomic_capture(frame_index=7, simulation_epoch="chase-run:other")
+            ),
             chaser_reference=reference,
         )
-        self.assertFalse(wrong_epoch["aligned"])
+        self.assertFalse(wrong_epoch.aligned)
 
         frames = []
         for index in (10, 11):
             reference = build_chaser_reference(_atomic_capture(frame_index=index))
             frames.append(
-                {
-                    "frame_id": format_chase_frame_id(index),
-                    "simulator_frame_index": index,
-                    "simulation_epoch": "chase-run:test",
-                    "chaser_reference": reference,
-                }
+                ChaseReferenceFrame(
+                    validate_chase_sensor_capture(_atomic_capture(frame_index=index)), reference,
+                )
             )
         score = score_reference_alignment_batch(frames, min_frames=2)
-        self.assertTrue(score["passed"], score)
-        self.assertTrue(score["consistent_run_identity"])
-        self.assertEqual((score["error_code"], score["error"]), (None, None))
+        self.assertTrue(score.passed, score)
+        self.assertTrue(score.consistent_run_identity)
+        self.assertEqual((score.to_dict()["error_code"], score.to_dict()["error"]), (None, None))
 
         unreferenced = score_reference_alignment_batch(
-            [{**frame, "chaser_reference": None} for frame in frames], min_frames=2,
+            [replace(frame, chaser_reference=None) for frame in frames], min_frames=2,
         )
-        self.assertFalse(unreferenced["passed"])
-        self.assertEqual(unreferenced["error_code"], "evaluator_reference_unavailable")
-        self.assertIn("Reference alignment requires", unreferenced["error"])
+        self.assertFalse(unreferenced.passed)
+        self.assertEqual(unreferenced.to_dict()["error_code"], "evaluator_reference_unavailable")
+        self.assertIn("Reference alignment requires", unreferenced.to_dict()["error"])
 
         frames.reverse()
         reversed_score = score_reference_alignment_batch(frames, min_frames=2)
-        self.assertFalse(reversed_score["passed"])
-        self.assertFalse(reversed_score["advancing_simulator_frames"])
+        self.assertFalse(reversed_score.passed)
+        self.assertFalse(reversed_score.advancing_simulator_frames)
         self.assertFalse(frame_indices_strictly_increasing([11, 10]))
         self.assertTrue(frame_indices_strictly_increasing([10, 11, 15]))

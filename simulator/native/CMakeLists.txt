@@ -19,7 +19,9 @@ add_library(sim_core src/core/json.cpp)
 target_include_directories(sim_core PUBLIC src)
 target_link_libraries(sim_core PUBLIC nlohmann_json::nlohmann_json)
 
-add_library(sim_scene src/scene/asset_loader.cpp src/scene/map_loader.cpp src/scene/material.cpp)
+add_library(sim_scene src/scene/asset_loader.cpp src/scene/gltf_asset_loader.cpp
+  src/scene/map_loader.cpp src/scene/material.cpp src/scene/texture_image.cpp)
+target_include_directories(sim_scene SYSTEM PRIVATE third_party/cgltf third_party/stb_image)
 target_link_libraries(sim_scene PUBLIC sim_core)
 
 add_library(sim_physics src/physics/vehicle.cpp)

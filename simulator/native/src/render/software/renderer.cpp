@@ -1,46 +1,63 @@
 #include "render/software/renderer.hpp"
-#include "core/noise.hpp"
-#include <algorithm>
-#include <array>
-#include <cmath>
+#include "render/software/geometry.hpp"
+#include "render/software/textures.hpp"
 #include <future>
 #include <stdexcept>
 
 namespace sim {
-namespace {
-struct RenderBox {
-    const VisualBox& part;
-    const Material* material;
-    Vec3 position;
-    double cosine, sine;
-};
-struct Hit { double distance; const Material* material; double light, u, v; };
+using namespace software;
 
-static void intersect(Vec3 origin, Vec3 ray, const RenderBox& box, double near, Hit& hit) {
-    const auto& b = box.part;
-    double x = origin.x-box.position.x, z = origin.z-box.position.z;
-    double y = origin.y-box.position.y;
-    std::array<double,3> local_origin{x*box.cosine-z*box.sine, y, x*box.sine+z*box.cosine};
-    std::array<double,3> local_ray{ray.x*box.cosine-ray.z*box.sine, ray.y, ray.x*box.sine+ray.z*box.cosine};
-    std::array<double,3> mins{-b.width/2,0,-b.depth/2}, maxs{b.width/2,b.height,b.depth/2};
-    double entry = -INFINITY, exit = INFINITY;
-    int axis = 0;
-    for (int i=0;i<3;++i) {
-        if (std::abs(local_ray[i]) < 1e-12) {
-            if (local_origin[i] < mins[i] || local_origin[i] > maxs[i]) return;
-            continue;
+namespace {
+struct ShadowRay {
+    Vec3 direction, bias;
+    std::array<double,3> inverse;
+};
+
+struct RenderLight {
+    Vec3 direction;
+    double intensity, shadow_strength;
+    std::vector<ShadowRay> samples;
+
+    explicit RenderLight(const DirectionalLight& light)
+        : direction(unit(light.direction)), intensity(light.intensity), shadow_strength(light.shadow_strength) {
+        if (shadow_strength == 0 || intensity == 0) return;
+        auto add_sample = [&](Vec3 direction) {
+            samples.push_back({direction,direction*.018,BoundsRay({},direction).inverse});
+        };
+        double spread = light.shadow_softness;
+        if (spread == 0) {
+            add_sample(light.direction);
+        } else {
+            for (double dx : {-spread,spread}) for (double dz : {-spread,spread})
+                add_sample({light.direction.x+dx,light.direction.y,light.direction.z+dz});
         }
-        double first = (mins[i]-local_origin[i])/local_ray[i];
-        double second = (maxs[i]-local_origin[i])/local_ray[i];
-        double n = std::min(first,second);
-        if (n > entry) { entry = n; axis = i; }
-        exit = std::min(exit,std::max(first,second));
-        if (entry > exit) return;
     }
-    if (entry < near || entry >= hit.distance) return;
-    hit = {entry,box.material,axis == 1 ? 1.08 : axis == 0 ? .80 : .96,
-        local_origin[0]+entry*local_ray[0]+local_origin[2]+entry*local_ray[2],
-        y+entry*ray.y};
+
+    double transmission(Vec3 point, const Bvh& bvh, const std::vector<RenderPart>& parts) const {
+        if (samples.empty()) return 1;
+        static const double shadow_far = std::nextafter(30.,0.);
+        int blocked = 0;
+        for (const auto& sample : samples) {
+            Ray ray{point+sample.bias,sample.direction};
+            BoundsRay bounds_ray(ray.origin,sample.inverse);
+            double far = shadow_far;
+            if (bvh.intersect(bounds_ray,0,far,[&](size_t i) {
+                return parts[i].intersect(ray,0,far,nullptr);
+            })) ++blocked;
+        }
+        return 1-shadow_strength*blocked/double(samples.size());
+    }
+};
+
+double lighting(const std::optional<double>& ambient, const std::vector<RenderLight>& lights,
+                const Surface& surface, Vec3 point, const Bvh& bvh, const std::vector<RenderPart>& parts) {
+    if (!ambient) return surface.legacy_shade*lights.front().transmission(point,bvh,parts);
+    double brightness = *ambient;
+    for (const auto& light : lights) {
+        double incident = light.intensity*dot(surface.normal,light.direction);
+        if (incident > 0) brightness += incident*light.transmission(point,bvh,parts);
+    }
+    return brightness;
 }
 }
 
@@ -56,57 +73,85 @@ LinearRgbImage SoftwareRenderer::render(const Map& scene, const CameraPose& came
     double half_columns = scene.columns/2, half_rows = scene.rows/2;
     const auto& floor = scene.materials.at(scene.floor_material);
     const auto& sky = scene.materials.at("sky");
-    std::vector<RenderBox> boxes;
-    for (const auto& object : scene.objects) {
-        const auto& pose = object.pose;
-        double cosine = std::cos(pose.rotation), sine = std::sin(pose.rotation);
-        for (const auto& part : object.asset->visuals) {
-            Vec offset = rotate({part.offset.x,part.offset.z},cosine,sine);
-            double rotation = pose.rotation+part.rotation;
-            boxes.push_back({part,&scene.materials.at(part.material),
-                {pose.position.x+offset.x,part.offset.y,pose.position.z+offset.z},
-                std::cos(rotation),std::sin(rotation)});
+
+    std::vector<RenderPart> parts;
+    std::vector<Bounds> bounds;
+    {
+        // Compiled meshes are shared across frames and instances. The scene still owns the geometry.
+        std::lock_guard<std::mutex> guard(mesh_mutex_);
+        for (auto it = meshes_.begin();it != meshes_.end();) {
+            if (it->first.expired()) it = meshes_.erase(it);
+            else ++it;
+        }
+        for (const auto& object : scene.objects) {
+            const auto& pose = object.pose;
+            double cosine = std::cos(pose.rotation), sine = std::sin(pose.rotation);
+            const auto* override = object.material ? &scene.materials.at(*object.material) : nullptr;
+            for (const auto& part : object.asset->visuals) {
+                Vec offset = rotate({part.offset.x,part.offset.z},cosine,sine);
+                const auto& material = override ? *override :
+                    part.embedded_material ? *part.embedded_material : scene.materials.at(part.material);
+                std::shared_ptr<const MeshBvh> mesh;
+                if (part.mesh) {
+                    auto& compiled = meshes_[part.mesh];
+                    if (!compiled) compiled = std::make_shared<const MeshBvh>(*part.mesh);
+                    mesh = compiled;
+                }
+                parts.push_back({part,material,object.color ? *object.color : material.base_color,
+                    {{pose.position.x+offset.x,part.offset.y,pose.position.z+offset.z},
+                     pose.rotation+part.rotation,part.pitch,part.roll},std::move(mesh)});
+                bounds.push_back(parts.back().bounds());
+            }
         }
     }
+    Bvh bvh(bounds);
+    std::vector<RenderLight> lights;
+    for (const auto& light : scene.light.directionals) lights.emplace_back(light);
+
     LinearRgbImage image{size,std::vector<double>(size_t(width)*height*3)};
     auto rows = [&](int begin, int end) {
         for (int y=begin;y<end;++y) for (int x=0;x<width;++x) {
             double nx = 2*(x+.5)/width-1, ny = 1-2*(y+.5)/height;
             double px = nx*aspect*tan_fov, py = ny*tan_fov;
-            Vec3 ray{d.x*(cp+py*sp)-d.z*px, -sp+py*cp, d.z*(cp+py*sp)+d.x*px};
-            Hit hit{far,nullptr,1,0,0};
-            if (ray.y < -1e-12) {
-                double distance = -origin.y/ray.y;
-                double gx = origin.x+distance*ray.x, gz = origin.z+distance*ray.z;
-                if (distance >= near && distance < far && std::abs(gx) <= half_columns && std::abs(gz) <= half_rows)
-                    hit = {distance,&floor,1,gx,gz};
-            }
-            for (const auto& b : boxes) intersect(origin,ray,b,near,hit);
-            double brightness = 1;
-            const auto& material = hit.material ? *hit.material : sky;
-            if (hit.material) {
-                brightness *= hit.light;
-                // Four nearby rays approximate the soft shadow-map footprint.
-                Vec3 surface{origin.x+hit.distance*ray.x, origin.y+hit.distance*ray.y,
-                            origin.z+hit.distance*ray.z};
-                int blocked = 0;
-                for (double dx : {-.002, .002}) for (double dz : {-.002, .002}) {
-                    Vec3 light{scene.light.direction.x+dx,scene.light.direction.y,scene.light.direction.z+dz};
-                    Vec3 start{surface.x+light.x*.018, surface.y+light.y*.018, surface.z+light.z*.018};
-                    Hit shadow{30,nullptr,1,0,0};
-                    for (const auto& box : boxes) intersect(start,light,box,0,shadow);
-                    if (shadow.material) ++blocked;
-                }
-                brightness *= 1-scene.light.shadow_strength*blocked/4.0;
-                if (material.texture.kind == TextureKind::grain) {
-                    double scale = material.texture.scale;
-                    uint32_t grain = noise(int(std::floor(hit.u*80/scale)),int(std::floor(hit.v*80/scale)),
-                                           material.texture.seed);
-                    brightness *= .92 + .16*(grain&255)/255.0;
+            Ray ray{origin,{d.x*(cp+py*sp)-d.z*px,-sp+py*cp,d.z*(cp+py*sp)+d.x*px}};
+            Surface surface{};
+            double closest = far;
+            const Material* material = nullptr;
+            const std::array<int,3>* base = nullptr;
+            size_t order = 0;
+            if (ray.direction.y < -1e-12) {
+                double distance = -origin.y/ray.direction.y;
+                auto point = ray.at(distance);
+                if (distance >= near && distance < far && std::abs(point.x) <= half_columns && std::abs(point.z) <= half_rows) {
+                    closest = distance;
+                    material = &floor;
+                    base = &floor.base_color;
+                    UV coords{point.x,point.z};
+                    surface = {distance,{0,1,0},coords,
+                               {point.x/scene.columns+.5,point.z/scene.rows+.5},coords,1,true};
                 }
             }
-            for (int channel=0;channel<3;++channel)
-                image.channels[(size_t(y)*width+x)*3+channel] = material.base_color[channel]*brightness;
+            bvh.intersect(BoundsRay(origin,ray.direction),near,closest,[&](size_t i) {
+                Surface candidate;
+                const auto& part = parts[i];
+                if (part.intersect(ray,near,closest,&candidate) &&
+                    (candidate.distance < closest || i+1 < order)) {
+                    closest = candidate.distance;
+                    surface = candidate;
+                    material = &part.material;
+                    base = &part.color;
+                    order = i+1;
+                }
+                return false;
+            });
+            size_t pixel = (size_t(y)*width+x)*3;
+            if (material) {
+                double brightness = lighting(scene.light.ambient,lights,surface,ray.at(closest),bvh,parts);
+                auto color = texture_color(*material,*base,surface,ray.direction,brightness);
+                std::copy(color.begin(),color.end(),image.channels.data()+pixel);
+            } else {
+                std::copy(sky.base_color.begin(),sky.base_color.end(),image.channels.data()+pixel);
+            }
         }
     };
     // Independent scanlines; deterministic output regardless of task scheduling.

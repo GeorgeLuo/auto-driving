@@ -16,6 +16,12 @@ public:
     Asset load(const std::filesystem::path& source) const override;
 };
 
-// A future GltfAssetLoader can decode visual parts via cgltf at this boundary.
+class GltfAssetLoader final : public AssetLoader {
+public:
+    bool supports(const std::filesystem::path& source) const override;
+    Asset load(const std::filesystem::path& source) const override;
+};
+
+AssetCatalog load_asset_catalog(const std::filesystem::path& directory);
 AssetCatalog load_asset_catalog(const std::filesystem::path& directory, const AssetLoader& loader);
 }

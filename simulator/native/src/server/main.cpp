@@ -29,7 +29,7 @@ int main(int argc, char** argv) {
         }
         auto settings = sim::read_config(config);
         auto assets = std::make_shared<const sim::AssetCatalog>(
-            sim::load_asset_catalog(DEFAULT_ASSETS,sim::JsonAssetLoader{}));
+            sim::load_asset_catalog(DEFAULT_ASSETS));
         sim::World world(settings,std::move(assets));
         auto renderer = sim::make_renderer(renderer_name);
         if (!render.empty()) {

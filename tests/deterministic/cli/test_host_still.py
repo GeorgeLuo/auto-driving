@@ -16,7 +16,7 @@ from dataclasses import replace
 
 from autonomy.decision_cycle.cycle import CYCLE_RECORD_KEYS
 from autonomy.runtime.frame_loop import FRAME_TRANSACTION_SCHEMA, FramePublication
-from autonomy.runtime.report import HostReport, ReportApplication
+from autonomy.runtime.report import HostReport, ReportApplication, ReportValues
 from cli.automa_cli.providers.metadata import CHASE_SIM, PICAR
 from cli.automa_cli.shared.browser_result import BrowserOpenResult
 from cli.automa_cli.shared.paths import display_path
@@ -38,7 +38,10 @@ def _publication(**extra: object) -> FramePublication:
             frame_index=7, timestamp_ms=900, published_at_ms=1000,
             cycle=dict.fromkeys(CYCLE_RECORD_KEYS),
             application=ReportApplication(False, "observe_only", "idle", 0.0, 0.0),
-            values={"source_id": "chase", "stale_after_ms": 1500, "activation": {"steps": {}}},
+            values=ReportValues.from_dict({
+                "source_id": "chase", "stale_after_ms": 1500, "activation": {"steps": {}},
+                "delivered_at_ms": None, "delivery_error": None, "receipt": None, "timing": None,
+            }),
         ),
     )
     return replace(publication, **extra) if extra else publication

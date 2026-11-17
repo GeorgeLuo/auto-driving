@@ -11,16 +11,21 @@ returned and ``error`` when it raised. ``error`` is null on success and a
 nonempty string when execution raised. A non-ok action record is not a frame
 error.
 
-``values["timing"]`` is the cycle's ``timing`` record from
+``values.timing`` is the cycle's ``timing`` record from
 ``autonomy.decision_cycle.timing``: its total and each step's and plugin's
-duration. A report from a host that does not record it has no such key.
+duration. A host that does not record it writes ``null``.
+``values.activation.steps`` is the step-activation payloads.
+``source_id`` is an ascii id. ``source_id_for`` writes
+``{runtime}:{host_name}`` when that fits, and the host name when a
+64-character name leaves no room for the prefix. The telemetry join
+compares this id with the telemetry record's source id.
 """
 
 from __future__ import annotations
 
 import time
-from dataclasses import dataclass
-from typing import Any, Mapping
+from dataclasses import dataclass, replace
+from typing import Any
 
 from autonomy.decision_cycle.cycle import CYCLE_RECORD_KEYS, DecisionCycleResult
 from autonomy.fields import (
@@ -57,6 +62,16 @@ REPORT_EXACT_KEYS = frozenset(
 FRAME_STATUSES = frozenset({"ok", "error"})
 CYCLE_EXACT_KEYS = frozenset(CYCLE_RECORD_KEYS)
 APPLICATION_EXACT_KEYS = frozenset({"applied", "mode", "reason", "steering", "throttle"})
+ACTIVATION_KEYS = frozenset({"steps"})
+VALUES_KEYS = frozenset({
+    "source_id",
+    "activation",
+    "stale_after_ms",
+    "delivered_at_ms",
+    "delivery_error",
+    "receipt",
+    "timing",
+})
 UNIT = (-1.0, 1.0)
 
 
@@ -81,6 +96,19 @@ def _json_copy(value: object, *, field: str) -> Any:
             copied[key] = _json_copy(item, field=f"{field}.{key}")
         return copied
     raise FieldError(field, f"must be JSON data; got {type(value).__name__}")
+
+
+def _object(value: object, *, field_name: str) -> dict[str, object]:
+    copied = _json_copy(value, field=field_name)
+    if type(copied) is not dict:
+        raise FieldError(field_name, "must be an object")
+    return copied
+
+
+def _object_or_null(value: object, *, field_name: str) -> dict[str, object] | None:
+    if value is None:
+        return None
+    return _object(value, field_name=field_name)
 
 
 def _cycle_record(record: object, *, key: str) -> Any:
@@ -133,6 +161,81 @@ class ReportApplication:
 
 
 @dataclass(frozen=True)
+class ReportActivation:
+    """The selection published on one frame. ``steps`` stays the activation payloads."""
+
+    steps: dict[str, object]
+
+    def __post_init__(self) -> None:
+        object.__setattr__(self, "steps", _object(self.steps, field_name="steps"))
+
+    def to_dict(self) -> dict[str, object]:
+        return {"steps": _json_copy(self.steps, field="steps")}
+
+    @classmethod
+    def from_dict(cls, payload: object) -> "ReportActivation":
+        document = require_keys(payload, ACTIVATION_KEYS)
+        return cls(steps=document["steps"])
+
+
+@dataclass(frozen=True)
+class ReportValues:
+    """Vehicle detail on one frame. Nullable fields are written as ``null``."""
+
+    source_id: str
+    activation: ReportActivation
+    stale_after_ms: int
+    delivered_at_ms: int | None = None
+    delivery_error: str | None = None
+    receipt: dict[str, object] | None = None
+    timing: dict[str, object] | None = None
+
+    def __post_init__(self) -> None:
+        object.__setattr__(self, "source_id", require_ascii_id(self.source_id, field_name="source_id"))
+        ceiling = require_safe_int(self.stale_after_ms, field_name="stale_after_ms")
+        if ceiling == 0:
+            raise FieldError("stale_after_ms", "must be positive")
+        object.__setattr__(self, "stale_after_ms", ceiling)
+        if self.delivered_at_ms is not None:
+            object.__setattr__(
+                self, "delivered_at_ms",
+                require_safe_int(self.delivered_at_ms, field_name="delivered_at_ms"),
+            )
+        if self.delivery_error is not None:
+            object.__setattr__(
+                self, "delivery_error", require_text(self.delivery_error, field_name="delivery_error"),
+            )
+        object.__setattr__(self, "receipt", _object_or_null(self.receipt, field_name="receipt"))
+        object.__setattr__(self, "timing", _object_or_null(self.timing, field_name="timing"))
+
+    def to_dict(self) -> dict[str, object]:
+        return {
+            "source_id": self.source_id,
+            "activation": self.activation.to_dict(),
+            "stale_after_ms": self.stale_after_ms,
+            "delivered_at_ms": self.delivered_at_ms,
+            "delivery_error": self.delivery_error,
+            "receipt": None if self.receipt is None else _json_copy(self.receipt, field="receipt"),
+            "timing": None if self.timing is None else _json_copy(self.timing, field="timing"),
+        }
+
+    @classmethod
+    def from_dict(cls, payload: object) -> "ReportValues":
+        document = require_keys(payload, VALUES_KEYS)
+        return cls(
+            source_id=document["source_id"],
+            activation=require_nested(
+                ReportActivation.from_dict, document["activation"], field_name="activation",
+            ),
+            stale_after_ms=document["stale_after_ms"],
+            delivered_at_ms=document["delivered_at_ms"],
+            delivery_error=document["delivery_error"],
+            receipt=document["receipt"],
+            timing=document["timing"],
+        )
+
+
+@dataclass(frozen=True)
 class HostReport:
     """The frame document both vehicles give the viewer."""
 
@@ -145,7 +248,7 @@ class HostReport:
     published_at_ms: int
     cycle: dict[str, Any]
     application: ReportApplication
-    values: dict[str, Any]
+    values: ReportValues
     status: str = "ok"
     error: str | None = None
     schema: str = REPORT_SCHEMA
@@ -182,12 +285,6 @@ class HostReport:
         object.__setattr__(self, "cycle", cycle)
         if not isinstance(self.application, ReportApplication):
             raise TypeError("application must be ReportApplication")
-        if not isinstance(self.values, Mapping):
-            raise FieldError("values", "must be an object")
-        values = _json_copy(dict(self.values), field="values")
-        if type(values) is not dict:
-            raise FieldError("values", "must be an object")
-        object.__setattr__(self, "values", values)
         require_choice(self.status, FRAME_STATUSES, field_name="status")
         if self.status == "ok":
             if self.error is not None:
@@ -207,7 +304,7 @@ class HostReport:
             "published_at_ms": self.published_at_ms,
             "cycle": _json_copy(self.cycle, field="cycle"),
             "application": self.application.to_dict(),
-            "values": _json_copy(self.values, field="values"),
+            "values": self.values.to_dict(),
             "status": self.status,
             "error": self.error,
         }
@@ -225,49 +322,69 @@ class HostReport:
             timestamp_ms=document["timestamp_ms"],
             published_at_ms=document["published_at_ms"],
             cycle=document["cycle"],
-            application=require_nested(ReportApplication.from_dict, document["application"], field_name="application"),
-            values=document["values"],
+            application=require_nested(
+                ReportApplication.from_dict, document["application"], field_name="application",
+            ),
+            values=require_nested(ReportValues.from_dict, document["values"], field_name="values"),
             status=document["status"],
             error=document["error"],
         )
 
 
-def delivery_values(application: Any) -> dict[str, Any]:
+def source_id_for(runtime: str, host_name: str) -> str:
+    """An ascii id for one runtime's frames on this host.
+
+    ``{runtime}:{host_name}`` is the id when it matches. A host name of 64
+    characters leaves no room for the runtime prefix, and that name is already
+    an id, so it is the source id.
+    """
+
+    prefixed = f"{runtime}:{host_name}"
+    try:
+        return require_ascii_id(prefixed, field_name="source_id")
+    except FieldError:
+        return require_ascii_id(host_name, field_name="host_name")
+
+
+def _safe_int_or_null(value: object, *, field_name: str) -> int | None:
+    if value is None:
+        return None
+    try:
+        return require_safe_int(value, field_name=field_name)
+    except FieldError:
+        return None
+
+
+def _text_or_null(value: object, *, field_name: str) -> str | None:
+    if value is None:
+        return None
+    try:
+        return require_text(value, field_name=field_name)
+    except FieldError:
+        return None
+
+
+def delivery_values(application: object) -> tuple[int | None, str | None, dict[str, object] | None]:
     """Delivery detail that is not one of the named application fields.
 
-    Both vehicles put this under ``values``. A receipt that is not JSON is
-    omitted so the named application still publishes.
+    Both vehicles put this on ``ReportValues``. A value that is not the
+    field's kind is written as ``null`` so the named application still publishes.
     """
 
-    values: dict[str, Any] = {}
-    delivered_at_ms = getattr(application, "delivered_at_ms", None)
-    if type(delivered_at_ms) is int:
-        values["delivered_at_ms"] = delivered_at_ms
-    error = getattr(application, "error", None)
-    if type(error) is str and error:
-        values["delivery_error"] = error
+    delivered_at_ms = _safe_int_or_null(
+        getattr(application, "delivered_at_ms", None), field_name="delivered_at_ms",
+    )
+    delivery_error = _text_or_null(getattr(application, "error", None), field_name="delivery_error")
     receipt = getattr(application, "receipt", None)
+    copied: dict[str, object] | None = None
     if type(receipt) is dict:
         try:
-            copied = _json_copy(receipt, field="values.receipt")
-        except ValueError:
-            copied = None
-        if type(copied) is dict:
-            values["receipt"] = copied
-    return values
-
-
-def diagnostic_ceiling(values: Mapping[str, Any] | None) -> int:
-    """Display age limit published on the report, in milliseconds.
-
-    Both vehicles write ``values.stale_after_ms`` and both viewers honor it.
-    Command expiry stays in control execution and is not this number.
-    """
-
-    raw = None if values is None else values.get("stale_after_ms")
-    if type(raw) is not int or raw <= 0:
-        raise ValueError("values.stale_after_ms must be a positive int")
-    return raw
+            parsed = _json_copy(receipt, field="receipt")
+        except FieldError:
+            parsed = None
+        if type(parsed) is dict:
+            copied = parsed
+    return delivered_at_ms, delivery_error, copied
 
 
 def error_application(mode: str) -> ReportApplication:
@@ -291,7 +408,7 @@ def report_from_host_result(
     run_id: str,
     generation_id: str,
     published_at_ms: int | None = None,
-    values: Mapping[str, Any] | None = None,
+    values: ReportValues,
     status: str = "ok",
     error: str | None = None,
 ) -> HostReport:
@@ -300,8 +417,8 @@ def report_from_host_result(
     ``result`` is the host's cycle result. Any step may be null. The
     application is the host's write, including the idle write a raised cycle
     made, not the action step's earlier authority envelope. The result's
-    ``timing``, when it has one, goes in ``values["timing"]``. ``status`` is
-    ``ok`` unless execution raised.
+    ``timing`` goes on ``values.timing``, as ``null`` when the cycle has none.
+    ``status`` is ``ok`` unless execution raised.
     """
 
     context = result.context
@@ -316,9 +433,7 @@ def report_from_host_result(
         steering=control.steering,
         throttle=control.throttle,
     )
-    values = {} if values is None else dict(values)
-    if result.timing is not None:
-        values["timing"] = result.timing
+    values = replace(values, timing=result.timing)
     cycle = result.export_cycle()
     return HostReport(
         host_name=host_name,

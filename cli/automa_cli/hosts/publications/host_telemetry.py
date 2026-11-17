@@ -596,7 +596,7 @@ def decision_publication_identity(report: HostReport) -> dict[str, object]:
 
     values = report.values
     try:
-        source_id = _host_require_id(values.get("source_id"), field="decision.values.source_id")
+        source_id = _host_require_id(values.source_id, field="decision.values.source_id")
         source_frame = _decision_source_frame(report)
     except HostTelemetryError as exc:
         if exc.reason == "identity_mismatch":

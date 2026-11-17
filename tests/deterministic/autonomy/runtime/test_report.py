@@ -5,7 +5,8 @@ import unittest
 
 from autonomy.decision_cycle.cycle import CYCLE_RECORD_KEYS
 from autonomy.decision_cycle.perception.interface import PerceptionText
-from autonomy.runtime.report import HostReport, error_application
+from autonomy.fields import FieldError
+from autonomy.runtime.report import HostReport, ReportValues, error_application, source_id_for
 
 
 class HostReportTests(unittest.TestCase):
@@ -14,7 +15,12 @@ class HostReportTests(unittest.TestCase):
             host_name="fixture", run_id="run", generation_id="decision-test",
             frame_id="frame", frame_index=0, timestamp_ms=100, published_at_ms=110,
             cycle={step: None for step in CYCLE_RECORD_KEYS},
-            application=error_application("observe_only"), values={}, **fields,
+            application=error_application("observe_only"),
+            values=ReportValues.from_dict({
+                "source_id": "fixture", "activation": {"steps": {}}, "stale_after_ms": 1000,
+                "delivered_at_ms": None, "delivery_error": None, "receipt": None, "timing": None,
+            }),
+            **fields,
         )
 
     def test_six_nullable_steps_and_required_status_round_trip(self):
@@ -33,6 +39,32 @@ class HostReportTests(unittest.TestCase):
         for fields in ({"status": "error"}, {"status": "ok", "error": "failed"}, {"status": "failed"}):
             with self.subTest(fields=fields), self.assertRaises(ValueError):
                 self.report(**fields)
+
+    def test_a_main_values_document_names_the_missing_field(self):
+        payload = self.report().to_dict()
+        for key in ("delivered_at_ms", "delivery_error", "receipt", "timing"):
+            del payload["values"][key]
+        with self.assertRaises(FieldError) as raised:
+            HostReport.from_dict(payload)
+        self.assertEqual(str(raised.exception), "values.delivered_at_ms is missing")
+
+    def test_source_id_fits_every_host_name(self):
+        self.assertEqual(source_id_for("chase_sim", "h" * 54), "chase_sim:" + "h" * 54)
+        self.assertEqual(source_id_for("chase_sim", "h" * 55), "h" * 55)
+        self.assertEqual(source_id_for("chase_sim", "h" * 64), "h" * 64)
+        self.assertEqual(source_id_for("donkeycar", "piracer"), "donkeycar:piracer")
+        values = {
+            "source_id": "chase_sim:" + "h" * 64,
+            "activation": {"steps": {}},
+            "stale_after_ms": 1000,
+            "delivered_at_ms": None,
+            "delivery_error": None,
+            "receipt": None,
+            "timing": None,
+        }
+        with self.assertRaises(FieldError) as raised:
+            ReportValues.from_dict(values)
+        self.assertEqual(raised.exception.field_name, "source_id")
 
     def test_perception_storage_keeps_evidence_and_text_is_derived(self):
         perception = PerceptionText(

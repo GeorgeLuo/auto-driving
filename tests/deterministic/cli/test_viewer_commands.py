@@ -18,7 +18,7 @@ from PIL import Image
 
 from autonomy.decision_cycle.cycle import CYCLE_RECORD_KEYS
 from autonomy.runtime.frame_loop import FramePublication
-from autonomy.runtime.report import HostReport, ReportApplication
+from autonomy.runtime.report import HostReport, ReportApplication, ReportValues
 from cli.automa_cli import viewer_commands
 from cli.automa_cli.frontend.server import RuntimeViewServer
 from cli.automa_cli.hosts.deployment.models import CreateResult, UpdateResult
@@ -39,7 +39,10 @@ def _publication(frame_id: str) -> FramePublication:
             frame_id=frame_id, frame_index=1, timestamp_ms=5, published_at_ms=5,
             cycle=dict.fromkeys(CYCLE_RECORD_KEYS),
             application=ReportApplication(False, "observe_only", "idle", 0.0, 0.0),
-            values={"stale_after_ms": 1000},
+            values=ReportValues.from_dict({
+                "source_id": "fixture", "activation": {"steps": {}}, "stale_after_ms": 1000,
+                "delivered_at_ms": None, "delivery_error": None, "receipt": None, "timing": None,
+            }),
         ),
     )
 

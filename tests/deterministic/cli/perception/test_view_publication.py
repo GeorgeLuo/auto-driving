@@ -3,7 +3,7 @@ from __future__ import annotations
 import unittest
 from autonomy.decision_cycle.cycle import CYCLE_RECORD_KEYS
 from autonomy.runtime.frame_loop import FRAME_PUBLICATION_SCHEMA, FramePublication
-from autonomy.runtime.report import HostReport, ReportApplication
+from autonomy.runtime.report import HostReport, ReportApplication, ReportValues
 from cli.automa_cli.shared.memory_report import evidence_publisher, plugin_states
 from cli.automa_cli.frontend.perception_view import _publication_payload
 from tests.support.memory_fixtures import TWO_PLUGIN_IDS, memory_report, two_plugin_runner
@@ -30,7 +30,11 @@ def _publication(
             published_at_ms=110,
             cycle=cycle,
             application=ReportApplication(False, "observe_only", "idle", 0.0, 0.0),
-            values={"stale_after_ms": 1000, "timing": {"duration_ms": duration_ms, "steps": []}},
+            values=ReportValues.from_dict({
+                "source_id": "fixture", "activation": {"steps": {}}, "stale_after_ms": 1000,
+                "delivered_at_ms": None, "delivery_error": None, "receipt": None,
+                "timing": {"duration_ms": duration_ms, "steps": []},
+            }),
         ),
     )
 

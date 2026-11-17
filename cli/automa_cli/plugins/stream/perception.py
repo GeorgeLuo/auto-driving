@@ -94,8 +94,8 @@ def perception_publication(publication: FramePublication | None) -> PerceptionPu
     report = publication.report
     application = None if report is None else report.application
     perception = _perception_record(report)
-    timing = None if report is None else report.values.get("timing")
-    cycle_ms = timing.get("duration_ms") if isinstance(timing, dict) else None
+    timing = None if report is None else report.values.timing
+    cycle_ms = None if timing is None else timing.get("duration_ms")
     return PerceptionPublication(
         health=publication.health,
         presets=publication_presets(publication),

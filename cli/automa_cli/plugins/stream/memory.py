@@ -104,8 +104,8 @@ def _probe_memory(
         return {**probe, "status": unavailable[0], "error": unavailable[1]}
     if memory is None:
         return {**probe, "status": "absent", "error": absent_step_error("memory", host_name)}
-    activation = report.values["activation"]["steps"].get("memory") or {}
-    entry = step_timing(report.values.get("timing"), "memory")
+    activation = report.values.activation.steps.get("memory") or {}
+    entry = step_timing(report.values.timing, "memory")
     return {
         **probe, "status": "live", "health": publication.health,
         "activation": activation,

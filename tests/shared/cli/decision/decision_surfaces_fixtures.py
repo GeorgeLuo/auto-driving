@@ -19,7 +19,7 @@ from autonomy.decision_cycle.observation.values import Observation
 from autonomy.runtime.control import AutonomyControl
 from autonomy.runtime.execution import ControlApplication
 from autonomy.decision_cycle.records import DecisionRecords
-from autonomy.runtime.report import report_from_host_result
+from autonomy.runtime.report import ReportValues, report_from_host_result
 from implementations.decision_cycle.catalog import packaged_activation
 from cli.automa_cli.hosts.publications.decision_records import DecisionRunners
 from cli.automa_cli.hosts.step_activations import (
@@ -144,7 +144,10 @@ def vehicle_report_for_records(
 ) -> dict:
     """The ``host_report`` both viewers accept for these decision records."""
 
-    report_values = {"stale_after_ms": STALE_AFTER_MS}
+    report_values = {
+        "source_id": "fixture", "activation": {"steps": {}}, "stale_after_ms": STALE_AFTER_MS,
+        "delivered_at_ms": None, "delivery_error": None, "receipt": None, "timing": None,
+    }
     if values:
         report_values.update(values)
     return report_from_host_result(
@@ -161,7 +164,7 @@ def vehicle_report_for_records(
         run_id=run_id,
         generation_id=generation_id,
         published_at_ms=timestamp_ms if published_at_ms is None else published_at_ms,
-        values=report_values,
+        values=ReportValues.from_dict(report_values),
     ).to_dict()
 
 
@@ -235,7 +238,7 @@ class DecisionSurfaceFixture:
             memory=memory,
             values={
                 "source_id": "donkeycar:piracer",
-                "activation": identity,
+                "activation": {"steps": identity["steps"]},
                 "stale_after_ms": 1_000,
             },
         )

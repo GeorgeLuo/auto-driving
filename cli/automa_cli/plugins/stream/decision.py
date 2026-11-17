@@ -7,6 +7,7 @@ from typing import Callable
 
 from autonomy.decision_cycle.activation import DECISION_STEPS
 from autonomy.runtime.frame_loop import FramePublication
+from autonomy.runtime.report import HostReport
 
 from ...hosts.publications.decision import (
     DecisionSurfaceError,
@@ -87,7 +88,7 @@ def _read_decision_frame(
     host_name: str,
     base_url: str,
     timeout_s: float,
-) -> dict[str, object]:
+) -> tuple[dict[str, object], HostReport]:
     try:
         if publication is None:
             publication = fetch_frame_publication(base_url, timeout_s=timeout_s)
@@ -118,8 +119,8 @@ def _read_decision_frame(
         frame["memory"] = None if report.cycle.memory is None else report.cycle.memory.to_dict()
     unavailable = step_unavailable(publication, step)
     if unavailable is None:
-        return {**frame, "status": "live"}
-    return {**frame, "status": unavailable[0], "error": unavailable[1]}
+        return {**frame, "status": "live"}, report
+    return {**frame, "status": unavailable[0], "error": unavailable[1]}, report
 
 
 def _probe_decision(
@@ -129,7 +130,7 @@ def _probe_decision(
     host_name: str,
     base_url: str,
     timeout_s: float,
-) -> tuple[dict[str, object], None]:
+) -> tuple[dict[str, object], HostReport | None]:
     publication = None
     try:
         if view is not None:
@@ -139,7 +140,7 @@ def _probe_decision(
                 raise _unreadable(base_url, host_name, error)
         return _read_decision_frame(
             step, publication, host_name=host_name, base_url=base_url, timeout_s=timeout_s,
-        ), None
+        )
     except DecisionSurfaceError as exc:
         return _error_probe(exc), None
 

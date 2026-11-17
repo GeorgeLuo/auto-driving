@@ -5,8 +5,7 @@ from __future__ import annotations
 from dataclasses import dataclass
 from typing import Any
 
-from autonomy.decision_cycle.plan.values import ActionPlan
-from autonomy.decision_cycle.proposal.result import ProposalResult
+from autonomy.decision_cycle.cycle import DecisionCycleResult
 
 
 @dataclass(frozen=True)
@@ -21,4 +20,4 @@ class InspectResult:
     error: str | None = None
     report: dict[str, Any] | None = None
     # Local results stay typed for text rendering; report is the exported JSON.
-    records: tuple[ProposalResult | ActionPlan | None, ...] = ()
+    records: tuple[DecisionCycleResult | None, ...] = ()

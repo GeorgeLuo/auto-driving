@@ -6,6 +6,7 @@ from dataclasses import dataclass
 from typing import Any
 
 from autonomy.decision_cycle.memory.interface import MemoryReport
+from autonomy.runtime.report import HostReport
 
 
 @dataclass(frozen=True)
@@ -57,7 +58,7 @@ class StreamEvent:
 
     step: str
     live: dict[str, Any]
-    source: PerceptionPublication | MemoryPublication | None = None
+    source: PerceptionPublication | MemoryPublication | HostReport | None = None
     view: ViewState | None = None
     host_name: str = ""
     base_url: str = ""

@@ -9,7 +9,7 @@ using namespace software;
 
 namespace {
 struct ShadowRay {
-    Vec3 direction, bias;
+    Vec3 direction;
     std::array<double,3> inverse;
 };
 
@@ -22,7 +22,7 @@ struct RenderLight {
         : direction(unit(light.direction)), intensity(light.intensity), shadow_strength(light.shadow_strength) {
         if (shadow_strength == 0 || intensity == 0) return;
         auto add_sample = [&](Vec3 direction) {
-            samples.push_back({direction,direction*.018,BoundsRay({},direction).inverse});
+            samples.push_back({direction,BoundsRay({},direction).inverse});
         };
         double spread = light.shadow_softness;
         if (spread == 0) {
@@ -38,7 +38,9 @@ struct RenderLight {
         static const double shadow_far = std::nextafter(30.,0.);
         int blocked = 0;
         for (const auto& sample : samples) {
-            Ray ray{point+sample.bias,sample.direction};
+            const auto& light = sample.direction;
+            Vec3 start{point.x+light.x*.018,point.y+light.y*.018,point.z+light.z*.018};
+            Ray ray{start,light};
             BoundsRay bounds_ray(ray.origin,sample.inverse);
             double far = shadow_far;
             if (bvh.intersect(bounds_ray,0,far,[&](size_t i) {

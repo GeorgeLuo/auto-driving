@@ -8,10 +8,14 @@ double wave(double x) { return 1-std::abs(2*fraction(x)-1); }
 double mix(double a, double b, double t) { return a+(b-a)*t; }
 double smooth(double t) { return t*t*(3-2*t); }
 
-double random_cell(double x, double y, uint32_t seed) {
+uint32_t cell_noise(double x, double y, uint32_t seed) {
     auto i = static_cast<uint32_t>(static_cast<int64_t>(std::floor(x)));
     auto j = static_cast<uint32_t>(static_cast<int64_t>(std::floor(y)));
-    return (noise(i,j,seed)&255)/255.0;
+    return noise(i,j,seed)&255;
+}
+
+double random_cell(double x, double y, uint32_t seed) {
+    return cell_noise(x,y,seed)/255.0;
 }
 
 double mottling(double x, double y, uint32_t seed) {
@@ -56,7 +60,9 @@ std::array<double,3> texture_color(const Material& material, const std::array<in
 
     if (texture.kind == TextureKind::grain) {
         auto grain = surface.grain_uv;
-        brightness *= .92 + .16*random_cell(grain.u*80/texture.scale,grain.v*80/texture.scale,texture.seed);
+        auto value = cell_noise(grain.u*80/texture.scale,grain.v*80/texture.scale,texture.seed);
+        // Preserve the old operation order before the camera truncates to bytes.
+        brightness *= .92 + .16*value/255.0;
         return {base[0]*brightness,base[1]*brightness,base[2]*brightness};
     }
     if (texture.kind == TextureKind::image) {

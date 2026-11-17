@@ -23,6 +23,7 @@ from dataclasses import dataclass
 from pathlib import Path
 
 from autonomy.decision_cycle.cycle import CYCLE_RECORD_KEYS
+from autonomy.decision_cycle.proposal.values import ActionProposal, ProposedVehicleCommand, SourceRef
 from autonomy.fields import ROOT, FieldError
 from autonomy.runtime.frame_loop import FramePublication
 from autonomy.runtime.report import HostReport, ReportApplication
@@ -71,6 +72,22 @@ def _run_state() -> RunState:
 
 
 DOCUMENTS = {
+    "autonomy.decision_cycle.proposal.values.SourceRef": Document(lambda: [
+        SourceRef("observation", "frame-1"),
+        SourceRef("memory_record", "thing:1:7:fixture:6:object", frame_id="frame-1",
+                  observation_id="frame-1", plugin_id="fixture", note="primary"),
+    ]),
+    "autonomy.decision_cycle.proposal.values.ProposedVehicleCommand": Document(lambda: [
+        ProposedVehicleCommand(0, 0), ProposedVehicleCommand(0.25, -0.5),
+    ]),
+    "autonomy.decision_cycle.proposal.values.ActionProposal": Document(lambda: [
+        ActionProposal("fixture", "frame-1", "inactive", "none", None, "idle", None),
+        ActionProposal("fixture", "frame-1", "fresh", "fresh", 0.75, "drive", ProposedVehicleCommand(0.25, -0.5),
+                       assumptions=("image_relative",), source_refs=(SourceRef(
+                           "memory_record", "thing:1:7:fixture:6:object", frame_id="frame-1",
+                           observation_id="frame-1", plugin_id="fixture", note="primary",
+                       ),), available=True, metadata={"policy": {"epoch": 1}}),
+    ], opaque=("metadata",)),
     "autonomy.runtime.execution.ControlApplication": Document(lambda: [
         ControlApplication(None, "manual", False, "idle", AutonomyControl()),
         ControlApplication("frame-1", "autonomy", True, "drive", AutonomyControl(
@@ -114,9 +131,6 @@ PENDING = frozenset({
     "autonomy.decision_cycle.perception.evidence.values.ViewLocation",
     "autonomy.decision_cycle.perception.interface.PerceptionPluginRun",
     "autonomy.decision_cycle.perception.interface.PerceptionText",
-    "autonomy.decision_cycle.proposal.values.ActionProposal",
-    "autonomy.decision_cycle.proposal.values.ProposedVehicleCommand",
-    "autonomy.decision_cycle.proposal.values.SourceRef",
     "implementations.decision_cycle.memory.shared.evidence_ledger.ledger.EvidenceLedger",
     "implementations.decision_cycle.memory.shared.evidence_ledger.ledger.LedgerBounds",
     "implementations.decision_cycle.perception.shared.image.stored.StoredImage",

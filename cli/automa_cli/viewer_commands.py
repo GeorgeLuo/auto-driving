@@ -320,21 +320,19 @@ VIEWER_READS = {
 _RUN_FIELDS = ("name", "observe_only", "num_decisions", "unbounded", "record")
 _UPLOAD_COLLECTION_FIELDS = frozenset({"host_name", "manifest", "arm"})
 _UPLOAD_FIELDS = _UPLOAD_COLLECTION_FIELDS | {"name", "entrypoint", "filename", "source_base64", "config"}
-_NAME_FIELDS = ("name",)
-_URL_FIELDS = ("url",)
 VIEWER_WRITES = {
     route: _accepting(command, *fields)
     for route, command, fields in [
         ("/api/vehicles/discover", _discover, ("provider", "url", "force")),
-        ("/api/vehicles/remove", _remove, _URL_FIELDS),
+        ("/api/vehicles/remove", _remove, ("url",)),
         ("/api/simulators/create", _create, ()),
-        ("/api/simulators/delete", _delete, _URL_FIELDS),
+        ("/api/simulators/delete", _delete, ("url",)),
         ("/api/hosts/create", _create_host,
          ("name", "provider", "url", "ssh_target", "pi_home", "drive_args", "dry_run", "verbose")),
         ("/api/hosts/update", _update_host, ("name", "dry_run", "restart", "drive_args", "verbose")),
-        ("/api/hosts/delete", _delete_host, _NAME_FIELDS),
+        ("/api/hosts/delete", _delete_host, ("name",)),
         ("/api/hosts/run", _run_host, _RUN_FIELDS),
-        ("/api/hosts/stop", _stop_host, _NAME_FIELDS),
+        ("/api/hosts/stop", _stop_host, ("name",)),
         ("/api/hosts/restart", _restart_host, _RUN_FIELDS),
         ("/api/plugins/arm", _arm, ("host_name", "name", "preset", "collection")),
         ("/api/plugins/disarm", _disarm, ("host_name", "name", "collection", "step", "all")),

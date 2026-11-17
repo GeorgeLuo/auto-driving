@@ -8,6 +8,7 @@ from dataclasses import replace
 from pathlib import Path
 
 from autonomy.decision_cycle.action.publication import CONTROL_APPLICATIONS_KEY
+from autonomy.fields import FieldError
 from autonomy.runtime.control import AutonomyControl
 from autonomy.runtime.execution import CONTROL_APPLICATION_LIMIT, ControlApplication
 from autonomy.shared_memory import read_shared_memory_file, shared_memory_document
@@ -124,6 +125,22 @@ class ControlRunsTests(unittest.TestCase):
         self.assertEqual(runs[0]["end_ms"], 20)
         self.assertEqual(control_runs_status(self.memory)["gaps"], 0)
         self.assertEqual(self.memory[STATE_KEY]["runs"], list(runs))
+
+    def test_older_dict_cursors_are_rejected(self):
+        self.memory[STATE_KEY]["cursor"] = {
+            "frame_id": "f0", "delivered_at_ms": 0, "reason": "drive", "control": {},
+        }
+        with self.assertRaises(FieldError) as caught:
+            record_control_runs(self.memory)
+        self.assertEqual(caught.exception.field_name, "cursor")
+
+    def test_cursor_ignores_receipt_mode_applied_and_error(self):
+        first = application(10, plan={"options": [1, {}]})
+        self.consume(first)
+        changed = replace(first, mode="manual", applied=False, receipt={"transport": "copy"}, error="ignored")
+        self.consume(changed, application(20, by=None))
+        self.assertEqual(control_runs_status(self.memory)["gaps"], 0)
+        self.assertEqual(read_control_runs(self.memory)[0]["end_ms"], 20)
 
     def test_unknown_window_preserves_history_and_cursor_and_reports_unknown(self):
         self.consume(application(10))

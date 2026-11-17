@@ -32,8 +32,9 @@ from copy import deepcopy
 from typing import TypedDict, cast
 
 from autonomy.decision_cycle.action.publication import read_control_applications
+from autonomy.fields import FieldError
+from autonomy.runtime.control import AutonomyControl
 from autonomy.runtime.execution import ControlApplication
-from autonomy.serialization import ensure_strict_json_value
 from autonomy.shared_memory import SharedMemory
 
 CONTROL_RUNS_KEY = "memory.control_runs"
@@ -49,16 +50,9 @@ class ControlRun(TypedDict):
     end_ms: int | None
 
 
-class ApplicationIdentity(TypedDict):
-    frame_id: str | None
-    delivered_at_ms: int | None
-    reason: str
-    control: object
-
-
 class ControlRunsState(TypedDict):
     runs: list[ControlRun]
-    cursor: ApplicationIdentity | None
+    cursor: ControlApplication | None
     initialized: bool
     gaps: int
     window_known: bool
@@ -73,18 +67,18 @@ def read_control_runs(shared_memory: SharedMemory | None) -> tuple[ControlRun, .
 def control_runs_status(shared_memory: SharedMemory | None) -> ControlRunsState:
     """Detached producer state, including whether the host window is known."""
     state = None if shared_memory is None else shared_memory.get(STATE_KEY)
-    return deepcopy(cast(ControlRunsState, state)) if state is not None else {
+    if state is not None:
+        cursor = cast(dict[str, object], state)["cursor"]
+        if cursor is not None and not isinstance(cursor, ControlApplication):
+            raise FieldError("cursor", "must be a ControlApplication record or null")
+        return deepcopy(cast(ControlRunsState, state))
+    return {
         "runs": [], "cursor": None, "initialized": False, "gaps": 0, "window_known": False,
     }
 
 
-def _identity(application: ControlApplication) -> ApplicationIdentity:
-    return {
-        "frame_id": application.frame_id,
-        "delivered_at_ms": application.delivered_at_ms,
-        "reason": application.reason,
-        "control": ensure_strict_json_value(application.control.to_dict()),
-    }
+def _identity(application: ControlApplication) -> tuple[str | None, int | None, str, AutonomyControl]:
+    return (application.frame_id, application.delivered_at_ms, application.reason, application.control)
 
 
 def _consume(runs: list[ControlRun], application: ControlApplication) -> None:
@@ -121,14 +115,14 @@ def record_control_runs(shared_memory: SharedMemory) -> None:
         if state["initialized"]:
             cursor = state["cursor"]
             after = next((index + 1 for index in range(len(window) - 1, -1, -1)
-                          if identities[index] == cursor), None)
+                          if cursor is not None and identities[index] == _identity(cursor)), None)
             if cursor is not None and after is None:
                 state["gaps"] += 1
             for application in window[after or 0:]:
                 _consume(state["runs"], application)
         state["initialized"] = True
         if identities:
-            state["cursor"] = identities[-1]
+            state["cursor"] = deepcopy(window[-1])
         state["runs"] = state["runs"][-CONTROL_RUN_LIMIT:]
     shared_memory[STATE_KEY] = state
     shared_memory[CONTROL_RUNS_KEY] = deepcopy(state["runs"])

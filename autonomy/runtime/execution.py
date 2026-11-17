@@ -12,15 +12,17 @@ consumers must treat non-autonomous spans and clock discontinuities as unknown.
 from __future__ import annotations
 
 import json
-import math
 import threading
 import time
 from collections import deque
 from copy import deepcopy
-from dataclasses import asdict, dataclass, field
+from dataclasses import asdict, dataclass, field, fields
 from typing import Any, Protocol
 
-from autonomy.fields import require_choice
+from autonomy.fields import (
+    FieldError, require_ascii_id, require_choice, require_keys, require_nested,
+    require_number, require_safe_int, require_text,
+)
 from autonomy.runtime.control import AutonomyControl
 
 CONTROL_MAX_AGE_S = 2.0
@@ -66,45 +68,56 @@ class ControlApplication:
         return asdict(self)
 
     @classmethod
-    def from_dict(cls, data: dict[str, Any]) -> ControlApplication:
-        """Decode a recorded application without silently coercing bad input."""
-        if not isinstance(data, dict) or not isinstance(data.get("control"), dict):
-            raise ValueError("control application must contain a control object")
-        require_mode(data.get("mode"))
-        if type(data.get("applied")) is not bool:
-            raise ValueError("control application applied must be a boolean")
-        if not isinstance(data.get("reason"), str) or not data["reason"]:
-            raise ValueError("control application reason must be a non-empty string")
-        frame_id = data.get("frame_id")
-        if frame_id is not None and (not isinstance(frame_id, str) or not frame_id):
-            raise ValueError("control application frame_id must be a string or null")
-        at_ms = data.get("delivered_at_ms")
-        if at_ms is not None and (type(at_ms) is not int or at_ms < 0):
-            raise ValueError("delivered_at_ms must be a nonnegative integer or null")
-        if data["applied"] and at_ms is None:
-            raise ValueError("an applied control requires delivered_at_ms")
-        control = data["control"]
-        for key in ("steering", "throttle"):
-            value = control.get(key)
-            if type(value) not in (int, float) or not math.isfinite(value) or not -1 <= value <= 1:
-                raise ValueError(f"control {key} must be a finite number between -1 and 1")
-        confidence = control.get("confidence")
-        if confidence is not None and (
-            type(confidence) not in (int, float) or not math.isfinite(confidence) or not 0 <= confidence <= 1
-        ):
-            raise ValueError("control confidence must be between 0 and 1 or null")
-        if not isinstance(control.get("reason", "idle"), str) or not isinstance(control.get("metadata", {}), dict):
-            raise ValueError("control reason and metadata must be a string and object")
-        if data.get("receipt") is not None and not isinstance(data["receipt"], dict):
-            raise ValueError("control application receipt must be an object or null")
-        if data.get("error") is not None and not isinstance(data["error"], str):
-            raise ValueError("control application error must be a string or null")
-        json.dumps(data, allow_nan=False)
+    def from_dict(cls, payload: object) -> ControlApplication:
+        document = require_keys(payload, {item.name for item in fields(cls)})
+        frame_id = document["frame_id"]
+        if frame_id is not None:
+            frame_id = require_ascii_id(frame_id, field_name="frame_id")
+        mode = require_mode(document["mode"])
+        applied = document["applied"]
+        if type(applied) is not bool:
+            raise FieldError("applied", "must be a bool")
+        at_ms = document["delivered_at_ms"]
+        if at_ms is not None:
+            at_ms = require_safe_int(at_ms, field_name="delivered_at_ms")
+        if applied and at_ms is None:
+            raise FieldError("delivered_at_ms", "is required for an applied control")
+        receipt = document["receipt"]
+        if receipt is not None:
+            receipt = _json_object(receipt, field_name="receipt")
+        error = document["error"]
+        if error is not None:
+            error = require_text(error, field_name="error")
         return cls(
-            frame_id=frame_id, mode=data["mode"], applied=data["applied"], reason=data["reason"],
-            control=AutonomyControl(**deepcopy(control)), delivered_at_ms=at_ms,
-            receipt=deepcopy(data.get("receipt")), error=data.get("error"),
+            frame_id=frame_id, mode=mode, applied=applied,
+            reason=require_text(document["reason"], field_name="reason"),
+            control=require_nested(_recorded_control, document["control"], field_name="control"),
+            delivered_at_ms=at_ms, receipt=receipt, error=error,
         )
+
+
+def _recorded_control(payload: object) -> AutonomyControl:
+    document = require_keys(payload, {item.name for item in fields(AutonomyControl)})
+    confidence = document["confidence"]
+    if confidence is not None:
+        confidence = require_number(confidence, field_name="confidence", bounds=(0, 1))
+    return AutonomyControl(
+        steering=require_number(document["steering"], field_name="steering", bounds=(-1, 1)),
+        throttle=require_number(document["throttle"], field_name="throttle", bounds=(-1, 1)),
+        confidence=confidence,
+        reason=require_text(document["reason"], field_name="reason"),
+        metadata=_json_object(document["metadata"], field_name="metadata"),
+    )
+
+
+def _json_object(value: object, *, field_name: str) -> dict:
+    if not isinstance(value, dict):
+        raise FieldError(field_name, "must be an object")
+    try:
+        json.dumps(value, allow_nan=False)
+    except (TypeError, ValueError) as exc:
+        raise FieldError(field_name, "must contain finite JSON values") from exc
+    return deepcopy(value)
 
 
 class ControlExecution:

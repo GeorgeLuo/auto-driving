@@ -17,6 +17,7 @@ from autonomy.decision_cycle.context import DecisionFrameContext
 from autonomy.decision_cycle.cycle import DecisionSteps
 from autonomy.runtime.cycle_host import AutonomyCycleHost
 from autonomy.runtime.control import AutonomyControl
+from autonomy.fields import FieldError
 from autonomy.runtime.execution import CONTROL_APPLICATION_LIMIT, ControlApplication
 from autonomy.runtime.recording import (
     CONTROL_APPLICATION_CHANGE_FIELD, RECORDING_MANIFEST_NAME, RecordingWriter, RunRecording,
@@ -198,7 +199,7 @@ class ControlApplicationRecordingTests(unittest.TestCase):
                         "image_path": "frame_00.png",
                         CONTROL_APPLICATION_CHANGE_FIELD: {"kept": 0, "added": [application]},
                     }]})
-                    with self.assertRaisesRegex(SourceValidationError, "invalid control applications"):
+                    with self.assertRaisesRegex(SourceValidationError, r"frames.0.control_application_change.added.0"):
                         load_image_source(root)
             for change in ({}, [], {"kept": 0}, {"kept": 0, "added": {}},
                            {"kept": True, "added": []}, {"kept": -1, "added": []},
@@ -208,6 +209,18 @@ class ControlApplicationRecordingTests(unittest.TestCase):
                                                       CONTROL_APPLICATION_CHANGE_FIELD: change}]})
                     with self.assertRaisesRegex(SourceValidationError, "frame 0 has invalid control applications"):
                         load_image_source(root)
+
+    def test_older_application_shapes_are_rejected_with_nested_field_paths(self):
+        valid = ControlApplication(None, "manual", False, "idle", AutonomyControl()).to_dict()
+        for parent, missing, field in (
+            (valid, "receipt", "receipt"),
+            (valid["control"], "metadata", "control.metadata"),
+        ):
+            removed = parent.pop(missing)
+            with self.subTest(field=field), self.assertRaises(FieldError) as caught:
+                control_application_windows([{"kept": 0, "added": [valid]}])
+            self.assertEqual(caught.exception.field_name, f"frames.0.control_application_change.added.0.{field}")
+            parent[missing] = removed
 
     def test_replay_removes_the_keys_when_the_source_recorded_none(self):
         application = ControlApplication(None, "autonomy", True, "idle", AutonomyControl(), 100)

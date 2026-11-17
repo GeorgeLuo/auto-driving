@@ -13,6 +13,9 @@ from collections.abc import Mapping
 from concurrent.futures import ThreadPoolExecutor
 from pathlib import Path
 
+from autonomy.fields import require_nested
+from autonomy.runtime.session import RunConfiguration
+
 from ...frontend.perception_view import get_perception_view_status
 from ...providers.models import DEFAULT_READINESS_TIMEOUT_S
 from ...releases.errors import ReleaseError
@@ -178,6 +181,12 @@ def _host_run(
     endpoint = f"{base_url}/host/status"
     autonomy = _dict((read["reply"] or {}).get("host"))
     observation = observation_component(autonomy)
+    session = _dict(autonomy.get("session"))
+    configuration = None
+    if "configuration" in session:
+        configuration = require_nested(
+            RunConfiguration.from_dict, session["configuration"], field_name="session.configuration",
+        )
     error = read["error"] if read["state"] in {"not answering", "error"} else None
     status = "error" if error is not None else read["state"]
     run: RunSection = {
@@ -199,7 +208,7 @@ def _host_run(
             "frames_received": observation.get("frames_received", 0),
             "frames_dropped": observation.get("frames_dropped"),
             "processed_count": observation.get("processed_count", 0),
-            "num_decisions": _dict(_dict(autonomy.get("session")).get("configuration")).get("num_decisions"),
+            "num_decisions": configuration.num_decisions if configuration is not None else None,
             "recording": False,
             "control_source": "runtime_host",
             "action_policy": _dict(autonomy.get("execution")).get("mode"),

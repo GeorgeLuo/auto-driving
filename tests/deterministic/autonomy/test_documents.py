@@ -26,6 +26,9 @@ from autonomy.decision_cycle.cycle import CYCLE_RECORD_KEYS
 from autonomy.fields import ROOT, FieldError
 from autonomy.runtime.frame_loop import FramePublication
 from autonomy.runtime.report import HostReport, ReportApplication
+from autonomy.runtime.control import AutonomyControl
+from autonomy.runtime.execution import ControlApplication
+from autonomy.runtime.session import RunConfiguration
 from cli.automa_cli.hosts.runs.models import RunState, WorkerProcess
 
 REPOSITORY = Path(__file__).resolve().parents[3]
@@ -68,6 +71,15 @@ def _run_state() -> RunState:
 
 
 DOCUMENTS = {
+    "autonomy.runtime.execution.ControlApplication": Document(lambda: [
+        ControlApplication(None, "manual", False, "idle", AutonomyControl()),
+        ControlApplication("frame-1", "autonomy", True, "drive", AutonomyControl(
+            steering=0.25, throttle=-0.5, confidence=0.75, reason="drive", metadata={"plugin_id": "fixture"},
+        ), delivered_at_ms=1000, receipt={"boundary": "fixture"}, error="delivery failed"),
+    ], opaque=("control.metadata", "receipt")),
+    "autonomy.runtime.session.RunConfiguration": Document(lambda: [
+        RunConfiguration("observe_only", None), RunConfiguration("autonomy", 2),
+    ]),
     "cli.automa_cli.hosts.runs.models.RunState": Document(
         lambda: [RunState(), _run_state()],
         opaque=("session", "execution", "selections", "decision", "steps", "arming", "last_frame"),
@@ -105,8 +117,6 @@ PENDING = frozenset({
     "autonomy.decision_cycle.proposal.values.ActionProposal",
     "autonomy.decision_cycle.proposal.values.ProposedVehicleCommand",
     "autonomy.decision_cycle.proposal.values.SourceRef",
-    "autonomy.runtime.execution.ControlApplication",
-    "autonomy.runtime.session.RunConfiguration",
     "implementations.decision_cycle.memory.shared.evidence_ledger.ledger.EvidenceLedger",
     "implementations.decision_cycle.memory.shared.evidence_ledger.ledger.LedgerBounds",
     "implementations.decision_cycle.perception.shared.image.stored.StoredImage",

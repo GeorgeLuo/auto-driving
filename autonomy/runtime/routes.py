@@ -15,6 +15,7 @@ from collections.abc import Mapping
 from typing import Any, Callable
 from urllib.parse import parse_qs, urlsplit
 
+from autonomy.fields import FieldError, require_nested
 from autonomy.runtime.frame_loop import (
     FRAME_TRANSACTION_SCHEMA,
     FrameLoop,
@@ -139,9 +140,12 @@ class RuntimeRoutes:
             data = self._json_body(body)
             command = data.get("command")
             if command == "run":
-                self.loop.start(
-                    RunConfiguration.from_dict(data.get("configuration")), record=bool(data.get("record", False))
+                if "configuration" not in data:
+                    raise FieldError("configuration", "is missing")
+                configuration = require_nested(
+                    RunConfiguration.from_dict, data["configuration"], field_name="configuration",
                 )
+                self.loop.start(configuration, record=bool(data.get("record", False)))
             elif command == "read_recording":
                 recording = self.host.recording
                 if recording is None:

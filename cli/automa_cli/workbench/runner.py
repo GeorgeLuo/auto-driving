@@ -15,7 +15,6 @@ from typing import Callable, NoReturn
 from autonomy.decision_cycle.restage import Restaged
 from autonomy.decision_cycle.activation import DECISION_STEPS, STEPS, StepActivation
 from autonomy.decision_cycle.cycle import CYCLE_RECORD_KEYS, cycle_result_of
-from autonomy.decision_cycle.perception.interface import PerceptionText
 from autonomy.plugins import LocalPluginCatalog
 from autonomy.runtime.plugin_catalog import PluginCatalogAPI
 from implementations.decision_cycle.catalog import CUSTOM_PRESET
@@ -888,7 +887,7 @@ class ImageReplayRunner:
         cached: dict[str, object],
     ) -> None:
         self._state["current_frame"] = frame.to_dict()
-        self._set_displayed_locked(cached["cycle"], cached["perception"])
+        self._set_displayed_locked(cached["cycle"], cached["perception_text"])
         # The live pipeline is updated in place. A cached frame keeps its own.
         if "pipeline" in cached:
             self._state["machine_detail"]["pipeline"] = copy.deepcopy(cached["pipeline"])
@@ -1090,7 +1089,9 @@ class ImageReplayRunner:
                         if partial is not None
                         else {key: None for key in CYCLE_RECORD_KEYS}
                     )
-                    self._set_displayed_locked(cycle, cycle.get("perception"))
+                    self._set_displayed_locked(
+                        cycle, partial.perception.text if partial is not None and partial.perception is not None else None,
+                    )
                     self._state["timing"] = None if partial is None else copy.deepcopy(partial.timing)
                     self._set_failure_locked(
                         boundary=getattr(exc, "boundary", "pipeline"),
@@ -1113,9 +1114,9 @@ class ImageReplayRunner:
 
         result = outcome.result
         cycle = result.export_cycle()
-        perception = cycle.get("perception")
+        perception_text = result.perception.text if result.perception is not None else None
         self._state["current_frame"] = frame.to_dict()
-        self._set_displayed_locked(cycle, perception)
+        self._set_displayed_locked(cycle, perception_text)
         self._state["progress"]["completed"] = frame.position + 1
         self._state["progress"]["percent"] = (
             round(
@@ -1142,7 +1143,7 @@ class ImageReplayRunner:
         # updated in place for the next frame.
         self._history[frame.frame_id] = {
             "cycle": cycle,
-            "perception": perception,
+            "perception_text": perception_text,
             "pipeline": copy.deepcopy(pipeline),
             "summary": self._state["summary"],
             "timing": timing,
@@ -1324,15 +1325,16 @@ class ImageReplayRunner:
             "last_transition": None,
         }
 
-    def _set_displayed_locked(self, cycle: dict[str, object], perception: object) -> None:
+    def _set_displayed_locked(self, cycle: dict[str, object], perception_text: str | None) -> None:
         """Replace the displayed cycle and perception; the revision tells the page they changed.
 
-        The page shows the perception ``text`` rendered from the stored evidence.
+        The text comes from the typed result and is cached with its exported frame.
         """
 
         self._state["cycle"] = cycle
+        perception = cycle["perception"]
         self._state["perception"] = (
-            {**perception, "text": PerceptionText.from_dict(perception).text}
+            {**perception, "text": perception_text}
             if isinstance(perception, dict) else perception
         )
         self._state["steps_revision"] = int(self._state.get("steps_revision", 0)) + 1

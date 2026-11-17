@@ -36,7 +36,11 @@ def register_simulators(subcommands: argparse._SubParsersAction) -> None:
     )
     simulators_create.add_argument(
         "--backend", choices=("metrics-ui", "native"), default="metrics-ui",
-        help="Use Metrics UI (default) or the compiled C++ simulator prototype.",
+        help=(
+            "Use Metrics UI (default) or native (experimental environment). "
+            "Equivalence with Metrics UI covers motion and protocol only. "
+            "Camera and perception equivalence are unverified."
+        ),
     )
     simulators_create.add_argument("--config", help="Configuration file for the selected simulator backend.")
     simulators_create.set_defaults(handler=_handle_simulators_create)

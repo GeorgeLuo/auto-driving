@@ -322,7 +322,7 @@ class StreamOutputTests(unittest.TestCase):
         report["cycle"]["memory"] = {"schema": "memory_report", "plugins": [], "evidence_publisher": None}
         report["values"].update(source_id="fixture:local", stale_after_ms=1000)
         publication = FramePublication.from_dict({
-            "schema": FRAME_PUBLICATION_SCHEMA, "health": "healthy", "read_at_ms": 1,
+            "schema": FRAME_PUBLICATION_SCHEMA, "ok": True, "health": "healthy", "read_at_ms": 1,
             "result_age_ms": 0, "stale_after_ms": 1000, "report": report,
         })
         with (

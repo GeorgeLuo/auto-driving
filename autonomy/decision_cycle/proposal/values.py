@@ -13,9 +13,9 @@ from typing import Literal
 
 from autonomy.decision_cycle.action_identifiers import (
     proposal_id_for,
-    require_ascii_id,
     require_code_point_len,
 )
+from autonomy.fields import require_ascii_id
 from autonomy.decision_cycle.confidence import optional_confidence
 from autonomy.serialization import (
     deep_freeze,

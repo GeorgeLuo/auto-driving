@@ -123,6 +123,7 @@ class LiveRuntimeDecisionViewFixture:
         target.perception.publish(
             publication=FramePublication.from_dict({
                 "schema": FRAME_PUBLICATION_SCHEMA,
+                "ok": True,
                 "health": "healthy",
                 "read_at_ms": stream_frame["published_at_ms"],
                 "result_age_ms": 0,

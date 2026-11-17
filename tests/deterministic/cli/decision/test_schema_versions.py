@@ -8,7 +8,7 @@ class SchemaVersionTests(unittest.TestCase):
     def test_schema_mismatch_precedes_missing_and_extra_keys(self):
         with self.assertRaisesRegex(ValueError, "schema must be"):
             HostReport.from_dict({"schema": "previous-version", "obsolete": {}})
-        with self.assertRaisesRegex(ValueError, "missing=.*extra=.*obsolete"):
+        with self.assertRaisesRegex(ValueError, "application is missing"):
             HostReport.from_dict({"schema": REPORT_SCHEMA, "obsolete": {}})
 
 

@@ -47,6 +47,7 @@ def _publication(frame_id="first") -> FramePublication:
 def _warming() -> dict[str, object]:
     return {
         "schema": "host_frame_publication",
+        "ok": False,
         "health": "warming",
         "read_at_ms": 1000,
         "result_age_ms": None,

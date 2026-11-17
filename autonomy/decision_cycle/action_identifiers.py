@@ -1,6 +1,6 @@
 """Identifier grammar for action inputs, proposals, and plans.
 
-Frame, plugin, proposal, and plan identifiers share one ASCII pattern.
+Frame, plugin, proposal, and plan identifiers follow ``autonomy.fields.require_ascii_id``.
 ``ActionInputError`` rejects an invalid cycle identity before the action
 composition promises a result; ``ActionProposalMatrixError`` rejects an
 admitted candidate that fails lifecycle re-validation.
@@ -8,11 +8,7 @@ admitted candidate that fails lifecycle re-validation.
 
 from __future__ import annotations
 
-import re
-
-IDENTIFIER_PATTERN = re.compile(r"^[A-Za-z0-9._:-]{1,64}$")
 MAX_ID_LEN = 64
-MAX_SAFE_INT = 9_007_199_254_740_991  # 2**53 - 1
 
 
 class ActionInputError(ValueError):
@@ -21,25 +17,6 @@ class ActionInputError(ValueError):
 
 class ActionProposalMatrixError(ValueError):
     """Admitted candidate fails lifecycle/bounds matrix re-validation."""
-
-
-def require_ascii_id(value: object, *, field_name: str) -> str:
-    if not isinstance(value, str):
-        raise ValueError(f"{field_name} must be a string")
-    if not IDENTIFIER_PATTERN.fullmatch(value):
-        raise ValueError(
-            f"{field_name} must match ^[A-Za-z0-9._:-]{{1,64}}$; got {value!r}"
-        )
-    return value
-
-
-def require_safe_int(value: object, *, field_name: str) -> int:
-    # Reject bool (subclass of int), floats, and numeric strings.
-    if type(value) is not int:
-        raise ValueError(f"{field_name} must be a non-bool int; got {type(value).__name__}")
-    if value < 0 or value > MAX_SAFE_INT:
-        raise ValueError(f"{field_name} must be in 0..{MAX_SAFE_INT}")
-    return value
 
 
 def proposal_id_for(plugin_id: str, frame_id: str) -> str:

@@ -68,6 +68,7 @@ def build_evaluators(*, ruff_only: bool = False) -> list[Evaluator]:
         Evaluator("related-functions", inspection.related, roots=PATHS, excluded=excluded, forms=projects,
                   reach="project", required=False),
         Evaluator("recovered-types", source_rules.recovered_types, roots=PATHS, excluded=excluded, required=False),
+        Evaluator("field-rules", source_rules.field_rules, roots=PATHS, excluded=excluded, required=False),
     ]
 
 

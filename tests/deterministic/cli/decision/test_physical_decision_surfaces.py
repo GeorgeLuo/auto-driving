@@ -102,7 +102,7 @@ class DecisionSurfaceTests(DecisionSurfaceFixture, unittest.TestCase):
                 {
                     **deepcopy(publication),
                     "ok": False,
-                    "health": "absent",
+                    "health": "warming",
                     "result_age_ms": None,
                     "report": None,
                 },

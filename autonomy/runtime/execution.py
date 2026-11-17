@@ -20,6 +20,7 @@ from copy import deepcopy
 from dataclasses import asdict, dataclass, field
 from typing import Any, Protocol
 
+from autonomy.fields import require_choice
 from autonomy.runtime.control import AutonomyControl
 
 CONTROL_MAX_AGE_S = 2.0
@@ -27,10 +28,8 @@ CONTROL_APPLICATION_LIMIT = 32
 MODES = frozenset({"manual", "observe_only", "autonomy"})
 
 
-def require_mode(mode: str) -> str:
-    if mode not in MODES:
-        raise ValueError(f"unknown execution mode {mode!r}; expected {sorted(MODES)}")
-    return mode
+def require_mode(mode: object) -> str:
+    return require_choice(mode, MODES, field_name="mode")
 
 
 class ControlTarget(Protocol):

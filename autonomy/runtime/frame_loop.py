@@ -21,6 +21,7 @@ from typing import Callable
 from autonomy.decision_cycle.context import DecisionFrameContext
 from autonomy.decision_cycle.cycle import DecisionCycleResult
 from autonomy.decision_cycle.memory.errors import MemoryUpdateError
+from autonomy.fields import FieldError, require_choice, require_nested, require_safe_int, require_schema
 from autonomy.runtime.cycle_host import AutonomyCycleHost
 from autonomy.runtime.recording import RunRecording
 from autonomy.runtime.report import HostReport, delivery_values, report_from_host_result
@@ -37,6 +38,10 @@ LATEST_JSON_PATH = "/host/observation/latest"
 PUBLICATION_HEALTH_WARMING = "warming"
 PUBLICATION_HEALTH_HEALTHY = "healthy"
 PUBLICATION_HEALTH_STALE = "stale"
+PUBLICATION_HEALTHS = (PUBLICATION_HEALTH_WARMING, PUBLICATION_HEALTH_HEALTHY, PUBLICATION_HEALTH_STALE)
+FRAME_PUBLICATION_KEYS = frozenset({
+    "schema", "ok", "health", "read_at_ms", "result_age_ms", "stale_after_ms", "report",
+})
 
 
 def _envelope(
@@ -53,12 +58,6 @@ def _envelope(
         "stale_after_ms": stale_after_ms,
         "report": report,
     }
-
-
-def _publication_int(value: object, field: str) -> int:
-    if type(value) is not int:
-        raise ValueError(f"frame publication {field} must be an int")
-    return value
 
 
 @dataclass(frozen=True)
@@ -84,39 +83,23 @@ class FramePublication:
 
     @classmethod
     def from_dict(cls, payload: object) -> "FramePublication":
-        if not isinstance(payload, dict):
-            raise ValueError("frame publication must be an object")
-        if payload.get("schema") != FRAME_PUBLICATION_SCHEMA:
-            raise ValueError(
-                f"frame publication schema must be {FRAME_PUBLICATION_SCHEMA!r}"
-            )
-        health = payload.get("health")
-        if type(health) is not str or not health:
-            raise ValueError("frame publication health must be a string")
-        read_at_ms = _publication_int(payload.get("read_at_ms"), "read_at_ms")
-        age = payload.get("result_age_ms")
-        if age is not None:
-            age = _publication_int(age, "result_age_ms")
-            if age < 0:
-                raise ValueError("frame publication result_age_ms must be non-negative")
-        ceiling = _publication_int(payload.get("stale_after_ms"), "stale_after_ms")
-        if ceiling <= 0:
-            raise ValueError("frame publication stale_after_ms must be positive")
-        raw_report = payload.get("report")
-        if raw_report is None:
-            if age is not None:
-                raise ValueError("frame publication result_age_ms must be null without a report")
-            report = None
-        else:
-            if age is None:
-                raise ValueError("frame publication result_age_ms is required with a report")
-            report = HostReport.from_dict(raw_report)
+        document = require_schema(payload, FRAME_PUBLICATION_SCHEMA, FRAME_PUBLICATION_KEYS)
+        health = require_choice(document["health"], PUBLICATION_HEALTHS, field_name="health")
+        read_at_ms = require_safe_int(document["read_at_ms"], field_name="read_at_ms")
+        ceiling = require_safe_int(document["stale_after_ms"], field_name="stale_after_ms")
+        if ceiling == 0:
+            raise FieldError("stale_after_ms", "must be positive")
+        raw_report, age = document["report"], document["result_age_ms"]
+        if document["ok"] is not (raw_report is not None):
+            raise FieldError("ok", "must be true exactly when there is a report")
+        if raw_report is None and age is not None:
+            raise FieldError("result_age_ms", "must be null without a report")
         return cls(
             health=health,
             read_at_ms=read_at_ms,
-            result_age_ms=age,
+            result_age_ms=None if raw_report is None else require_safe_int(age, field_name="result_age_ms"),
             stale_after_ms=ceiling,
-            report=report,
+            report=None if raw_report is None else require_nested(HostReport.from_dict, raw_report, field_name="report"),
         )
 
 

@@ -47,6 +47,42 @@ class SourceRulesTests(unittest.TestCase):
                          [("cli/store.py", 4), ("cli/store.py", 7), ("cli/store.py", 16)])
         self.assertTrue(all(item["status"] == "review" for item in found))
 
+    def test_production_code_deciding_a_rule_autonomy_fields_owns_is_asked_about(self):
+        found = inspect(source_rules.field_rules, {
+            "cli/document.py": (
+                "import math\n"
+                "def parse(value, name):\n"
+                "    if isinstance(value, bool) or not isinstance(value, int):\n"
+                "        raise ValueError(value)\n"
+                "    if type(value) is float and math.isfinite(value):\n"
+                "        pass\n"
+                "    if not isinstance(name, str) or not name.strip():\n"
+                "        raise ValueError(name)\n"
+                "    return isinstance(name, str) and name.startswith('x')\n"
+                "def write(error, flag, items):\n"
+                "    payload = {'kept': error}\n"
+                "    if error is not None:\n"
+                "        payload['error'] = error\n"
+                "    if flag:\n"
+                "        payload['bytes'] = b''\n"
+                "    return {**payload, **({'items': items} if items else {}), 'pairs': {k: v for k, v in items if v is not None}}\n"
+                "class Record:\n"
+                "    @classmethod\n"
+                "    def from_dict(cls, data):\n"
+                "        return cls(data['name'], data.get('label'))\n"
+                "def read(data):\n"
+                "    return data.get('label')\n"
+            ),
+            "autonomy/fields.py": "def require_int(value):\n    return type(value) is int\n",
+            "tests/test_document.py": "def test_parse(value):\n    assert type(value) is int\n",
+        })
+        self.assertEqual([(item["location"]["line"], item["rule"]) for item in found], [
+            (3, "inline-field-rule"), (5, "inline-field-rule"), (7, "inline-field-rule"),
+            (12, "omitted-key"), (16, "omitted-key"), (20, "optional-read"),
+        ])
+        self.assertTrue(all(item["status"] == "review" and item["location"]["path"] == "cli/document.py"
+                            for item in found))
+
     def test_new_cross_module_copy_blocks_but_existing_same_module_stub_tests_and_justified_copies_do_not(self):
         with tempfile.TemporaryDirectory() as directory:
             root = Path(directory)

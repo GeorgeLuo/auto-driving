@@ -9,7 +9,7 @@ from __future__ import annotations
 
 from typing import Callable
 
-from autonomy.decision_cycle.action_identifiers import require_ascii_id
+from autonomy.fields import require_ascii_id
 
 
 class PublicationError(ValueError):

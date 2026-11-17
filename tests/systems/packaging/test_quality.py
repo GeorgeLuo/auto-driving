@@ -146,6 +146,38 @@ class QualityCommandTests(unittest.TestCase):
         status, document = self.check("--base", base, "--head", head)
         self.assertEqual((status, self.blocking(document)), (0, []))
 
+    def test_a_change_names_the_inputs_a_registered_document_now_handles_differently(self) -> None:
+        document = (
+            "class Doc:\n"
+            "    def __init__(self, name: object) -> None:\n"
+            "        self.name = name\n\n"
+            "    @classmethod\n"
+            "    def from_dict(cls, data: dict) -> 'Doc':\n"
+            "        {parse}\n\n"
+            "    def to_dict(self) -> dict:\n"
+            "        return {{'name': self.name}}\n"
+        )
+        cases = (("sample as written", {"name": "a"}), ('name = ""', {"name": ""}), ("name missing", {}),
+                 ("name = 1", {"name": 1}), ("$ = []", []))
+        registry = "def cases():\n" + "".join(
+            f"    yield 'cli.doc.Doc', {label!r}, {payload!r}\n" for label, payload in cases)
+        packages = {name: "" for name in ("tests/__init__.py", "tests/deterministic/__init__.py",
+                                          "tests/deterministic/autonomy/__init__.py")}
+        base = self.commit({**packages, "cli/doc.py": document.format(parse="return cls(str(data.get('name') or ''))")})
+        head = self.commit({
+            "cli/doc.py": document.format(parse="return cls(data['name'] if data['name'] != '' else data['blank'])"),
+            "tests/deterministic/autonomy/test_documents.py": registry,
+        })
+        _status, report = self.check("--base", base, "--head", head)
+        [record] = [item for item in report["evaluations"] if item["evaluator"] == "acceptance-changes"]
+        self.assertEqual(record["status"], "completed", record)
+        [question] = [item for item in report["findings"] if item["rule"] == "acceptance-change"]
+        self.assertEqual((question["location"]["path"], question["location"]["line"], question["status"]),
+                         ("cli/doc.py", 1, "review"))
+        self.assertIn("Doc now rejects 2 inputs it accepted, writes back 1 input differently", question["question"])
+        summary = (self.root.parent / f"{self.root.name}-quality" / "summary.md").read_text()
+        self.assertIn("| `cli.doc.Doc` | 2 | 0 | 1 | 1 |", summary)
+
     def test_whole_files_report_their_existing_debt(self) -> None:
         status, document = self.check("cli/unused.py", "cli/choose.py")
         self.assertEqual(status, 1)

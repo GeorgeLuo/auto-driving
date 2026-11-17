@@ -52,7 +52,9 @@ than trimmed, and a bad field raises `FieldError` naming it. A class with
 `from_dict` and `to_dict` registers samples in
 `tests/deterministic/autonomy/test_documents.py`, which checks it against those
 rules. Messages from another program keep that program's shape; parse them once
-into a typed value.
+into a typed value. The quality check lists the inputs a change makes each
+registered document reject, accept, or write back differently; the PR
+describes each one.
 
 Do not create extra planning documents, alternate implementations, or process
 artifacts unless the user explicitly asks for them or the repository requires

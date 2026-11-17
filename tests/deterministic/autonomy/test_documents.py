@@ -5,12 +5,16 @@ A class with both ``from_dict`` and ``to_dict`` registers samples in
 key, an added key, null, a value of another type, an empty or padded string, a
 non-finite number) either raises ``FieldError`` naming the mutated field or a
 sibling its rule depends on, or is accepted and written back unchanged.
+
+The quality check reads ``cases()`` on both sides of a change and reports
+which inputs each document now accepts, rejects, or writes back differently.
 """
 
 from __future__ import annotations
 
 import ast
 import importlib
+import json
 import math
 import unittest
 from collections.abc import Callable, Iterator
@@ -109,6 +113,25 @@ class DocumentTests(unittest.TestCase):
                 for path, original, replacement, mutated in _mutations(sample.to_dict(), document.opaque):
                     with self.subTest(document=name, field=path, value=replacement):
                         self.assertIsNone(_judge(parse, path, original, replacement, mutated))
+
+
+def cases() -> Iterator[tuple[str, str, dict[str, object]]]:
+    """Each registered document's samples and their mutations, as (class name, label, payload)."""
+
+    for name, document in DOCUMENTS.items():
+        for sample in document.samples():
+            written = sample.to_dict()
+            yield name, "sample as written", written
+            for path, original, replacement, mutated in _mutations(written, document.opaque):
+                yield name, _label(path, original, replacement), mutated
+
+
+def _label(path: str, original: object, replacement: object) -> str:
+    if replacement is MISSING:
+        return f"{path} missing"
+    if original is MISSING:
+        return f"{path} added"
+    return f"{path} = {json.dumps(replacement)}"
 
 
 def _judge(parse: Callable[[object], object], path: str, original: object, replacement: object,

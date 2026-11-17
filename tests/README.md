@@ -115,6 +115,11 @@ summary without failing the command. They include:
   in `from_dict`. Documents write every key and `None` as `null`.
   `tests/deterministic/autonomy/test_documents.py` checks each document class
   against those rules; a new class with `from_dict` and `to_dict` registers there.
+- Acceptance changes: when a change touches production Python, both sides
+  parse that file's samples and mutations with their own `from_dict` and write
+  them back with `to_dict`. Each document whose outcomes differ gets one question
+  naming the inputs it now rejects, accepts, or writes back differently, and the
+  summary tabulates them, along with inputs rejected by a different error class.
 
 Vulture, related functions, basedpyright, and import-linter read the whole project
 on both sides of a change, so a change answers for what it does to files it did

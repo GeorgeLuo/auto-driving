@@ -15,6 +15,10 @@ from autonomy.decision_cycle.perception.evidence.rendering import render_percept
 from autonomy.decision_cycle.perception.evidence.values import PerceivedThing, PerceptionSignal
 from autonomy.decision_cycle.runner import FailurePolicy
 from autonomy.shared_memory import SharedMemory
+from autonomy.fields import (
+    FieldError, require_ascii_id, require_choice, require_keys, require_nested,
+    require_number, require_safe_int, require_schema, require_text,
+)
 
 
 PERCEPTION_TEXT_SCHEMA = "perception_text"
@@ -49,13 +53,15 @@ class PerceptionPluginRun:
 
     @classmethod
     def from_dict(cls, data: dict[str, Any]) -> "PerceptionPluginRun":
+        document = require_keys(data, ("plugin_id", "status", "duration_ms", "signal_count", "thing_count", "error"))
+        error = document["error"]
         return cls(
-            plugin_id=str(data.get("plugin_id") or "unknown"),
-            status=str(data.get("status") or "error"),
-            duration_ms=float(data.get("duration_ms") or 0.0),
-            signal_count=int(data.get("signal_count") or 0),
-            thing_count=int(data.get("thing_count") or 0),
-            error=str(data["error"]) if data.get("error") is not None else None,
+            plugin_id=require_ascii_id(document["plugin_id"], field_name="plugin_id"),
+            status=require_choice(document["status"], PLUGIN_RESULT_STATUSES, field_name="status"),
+            duration_ms=require_number(document["duration_ms"], field_name="duration_ms", bounds=(0, float("inf"))),
+            signal_count=require_safe_int(document["signal_count"], field_name="signal_count"),
+            thing_count=require_safe_int(document["thing_count"], field_name="thing_count"),
+            error=require_text(error, field_name="error") if error is not None else None,
         )
 
 
@@ -88,35 +94,43 @@ class PerceptionText:
         )
 
     def to_dict(self) -> dict[str, Any]:
-        return asdict(self)
+        return {
+            "schema": self.schema, "plugin_id": self.plugin_id, "status": self.status,
+            "signals": tuple(signal.to_dict() for signal in self.signals),
+            "things": tuple(thing.to_dict() for thing in self.things),
+            "plugin_runs": tuple(run.to_dict() for run in self.plugin_runs),
+            "measurements": asdict(self)["measurements"], "limits": self.limits,
+        }
 
     @classmethod
     def from_dict(cls, data: dict[str, Any]) -> "PerceptionText":
+        document = require_schema(data, PERCEPTION_TEXT_SCHEMA, (
+            "schema", "plugin_id", "status", "signals", "things", "plugin_runs", "measurements", "limits",
+        ))
+        parsed = {}
+        for name, parse in (("signals", PerceptionSignal.from_dict), ("things", PerceivedThing.from_dict),
+                            ("plugin_runs", PerceptionPluginRun.from_dict)):
+            values = document[name]
+            if not isinstance(values, (list, tuple)):
+                raise FieldError(name, "must be an array")
+            parsed[name] = tuple(require_nested(parse, value, field_name=f"{name}.{index}")
+                                 for index, value in enumerate(values))
+        measurements = document["measurements"]
+        if not isinstance(measurements, dict):
+            raise FieldError("measurements", "must be an object")
+        for plugin_id, values in measurements.items():
+            require_ascii_id(plugin_id, field_name=f"measurements.{plugin_id}")
+            if not isinstance(values, dict):
+                raise FieldError(f"measurements.{plugin_id}", "must be an object")
+        limits = document["limits"]
+        if not isinstance(limits, (list, tuple)):
+            raise FieldError("limits", "must be an array")
         return cls(
-            schema=str(data.get("schema") or PERCEPTION_TEXT_SCHEMA),
-            plugin_id=str(data.get("plugin_id") or "unknown"),
-            status=str(data.get("status") or "error"),
-            signals=tuple(
-                PerceptionSignal.from_dict(item)
-                for item in data.get("signals") or ()
-                if isinstance(item, dict)
-            ),
-            things=tuple(
-                PerceivedThing.from_dict(item)
-                for item in data.get("things") or ()
-                if isinstance(item, dict)
-            ),
-            plugin_runs=tuple(
-                PerceptionPluginRun.from_dict(item)
-                for item in data.get("plugin_runs") or ()
-                if isinstance(item, dict)
-            ),
-            measurements={
-                str(plugin_id): dict(values)
-                for plugin_id, values in dict(data.get("measurements") or {}).items()
-                if isinstance(values, dict)
-            },
-            limits=tuple(str(item) for item in data.get("limits") or ()),
+            schema=document["schema"],
+            plugin_id=require_ascii_id(document["plugin_id"], field_name="plugin_id"),
+            status=require_choice(document["status"], (*PLUGIN_RESULT_STATUSES, "partial"), field_name="status"),
+            **parsed, measurements=measurements,
+            limits=tuple(require_text(value, field_name=f"limits.{index}") for index, value in enumerate(limits)),
         )
 
 

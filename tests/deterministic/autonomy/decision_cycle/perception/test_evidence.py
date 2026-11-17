@@ -3,6 +3,8 @@ from __future__ import annotations
 import json
 import unittest
 
+from autonomy.fields import FieldError
+
 from autonomy.decision_cycle.perception.interface import (
     PERCEPTION_TEXT_SCHEMA,
     PerceptionText,
@@ -61,12 +63,28 @@ class EvidenceValueTests(unittest.TestCase):
         signal = PerceptionSignal("ready", True)
         self.assertIsNone(thing.confidence)
         self.assertIsNone(signal.confidence)
-        self.assertEqual(PerceptionSignal.from_dict({"signal_id": "ready", "value": True}).confidence, None)
-        self.assertEqual(PerceptionSignal.from_dict({"signal_id": "ready", "value": True, "confidence": None}).confidence, None)
-        self.assertEqual(PerceptionSignal.from_dict({"signal_id": "ready", "value": True, "confidence": 0.0}).confidence, 0.0)
+        with self.assertRaises(FieldError) as missing:
+            PerceptionSignal.from_dict({"signal_id": "ready", "value": True})
+        self.assertEqual(missing.exception.field_name, "confidence")
+        self.assertEqual(PerceptionSignal.from_dict(signal.to_dict()), signal)
         restored = PerceivedThing.from_dict(thing.to_dict())
         self.assertIsNone(restored.confidence)
         self.assertEqual(restored, thing)
+
+    def test_scalar_signal_values_remain_exact(self) -> None:
+        for value in (None, True, False, 1, 0.5, "present", ""):
+            with self.subTest(value=value):
+                signal = PerceptionSignal("ready", value)
+                restored = PerceptionSignal.from_dict(signal.to_dict())
+                self.assertEqual(restored.value, value)
+                self.assertIs(type(restored.value), type(value))
+
+    def test_host_evidence_errors_name_nested_fields(self) -> None:
+        payload = PerceptionText("perception_text", "fixture", "ok", (), (_thing(),)).to_dict()
+        del payload["things"][0]["location"]["zone"]
+        with self.assertRaises(FieldError) as invalid:
+            PerceptionText.from_dict(payload)
+        self.assertEqual(invalid.exception.field_name, "things.0.location.zone")
 
 
 class PerceptionEvidenceSerializationTests(unittest.TestCase):

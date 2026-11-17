@@ -23,6 +23,8 @@ from dataclasses import dataclass
 from pathlib import Path
 
 from autonomy.decision_cycle.cycle import CYCLE_RECORD_KEYS
+from autonomy.decision_cycle.perception.evidence.values import PerceivedThing, PerceptionSignal, ViewLocation
+from autonomy.decision_cycle.perception.interface import PerceptionPluginRun, PerceptionText
 from autonomy.decision_cycle.proposal.values import ActionProposal, ProposedVehicleCommand, SourceRef
 from autonomy.fields import ROOT, FieldError
 from autonomy.runtime.frame_loop import FramePublication
@@ -71,7 +73,39 @@ def _run_state() -> RunState:
     )
 
 
+def _location(full: bool = False) -> ViewLocation:
+    return ViewLocation("image", "center", (0.1, 0.2, 0.8, 0.9) if full else None,
+                        ((0.1, 0.2), (0.8, 0.2), (0.8, 0.9)) if full else None)
+
+
+def _thing(full: bool = False) -> PerceivedThing:
+    return PerceivedThing("region", "obstacle", "a region", _location(full),
+                          0.8 if full else None, {"tags": ["near"]}, "fixture" if full else None)
+
+
+def _signal(full: bool = False) -> PerceptionSignal:
+    # The signal value is a scalar union, including null; exercise other scalar types beside the registry.
+    return PerceptionSignal("ready", None, 0.8 if full else None,
+                            {"frames": [1, 2]}, "fixture" if full else None)
+
+
+def _perception(full: bool = False) -> PerceptionText:
+    return PerceptionText("perception_text", "fixture", "ok", (_signal(full),), (_thing(full),),
+                          (PerceptionPluginRun("fixture", "ok", 1.5, 1, 1, "failed" if full else None),),
+                          {"fixture": {"count": 1}}, ("image_relative_only",))
+
+
 DOCUMENTS = {
+    "autonomy.decision_cycle.perception.evidence.values.ViewLocation": Document(lambda: [_location(), _location(True)]),
+    "autonomy.decision_cycle.perception.evidence.values.PerceivedThing": Document(
+        lambda: [_thing(), _thing(True)], opaque=("properties",)),
+    "autonomy.decision_cycle.perception.evidence.values.PerceptionSignal": Document(
+        lambda: [_signal(), _signal(True)], opaque=("properties",)),
+    "autonomy.decision_cycle.perception.interface.PerceptionPluginRun": Document(lambda: [
+        PerceptionPluginRun("fixture", "ok", 1.5, 1, 1), PerceptionPluginRun("fixture", "error", 0, 0, 0, "failed"),
+    ]),
+    "autonomy.decision_cycle.perception.interface.PerceptionText": Document(
+        lambda: [_perception(), _perception(True)], opaque=("measurements",)),
     "autonomy.decision_cycle.proposal.values.SourceRef": Document(lambda: [
         SourceRef("observation", "frame-1"),
         SourceRef("memory_record", "thing:1:7:fixture:6:object", frame_id="frame-1",
@@ -126,11 +160,6 @@ PENDING = frozenset({
     "autonomy.decision_cycle.memory.interface.MemoryPluginReport",
     "autonomy.decision_cycle.memory.interface.MemoryReport",
     "autonomy.decision_cycle.observation.values.Observation",
-    "autonomy.decision_cycle.perception.evidence.values.PerceivedThing",
-    "autonomy.decision_cycle.perception.evidence.values.PerceptionSignal",
-    "autonomy.decision_cycle.perception.evidence.values.ViewLocation",
-    "autonomy.decision_cycle.perception.interface.PerceptionPluginRun",
-    "autonomy.decision_cycle.perception.interface.PerceptionText",
     "implementations.decision_cycle.memory.shared.evidence_ledger.ledger.EvidenceLedger",
     "implementations.decision_cycle.memory.shared.evidence_ledger.ledger.LedgerBounds",
     "implementations.decision_cycle.perception.shared.image.stored.StoredImage",

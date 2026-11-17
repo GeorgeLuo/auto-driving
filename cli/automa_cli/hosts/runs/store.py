@@ -53,8 +53,6 @@ def new_run_state(
         control_source=control_source, action_policy=configuration.mode,
         control_application=control_application(configuration), recording=record,
         run_dir=display_path(run_dir) if run_dir is not None else None,
-        _present={"run_id", "pid", "frames_received", "frames_dropped", "processed_count",
-                  "num_decisions", "recorded_count", "run_dir"},
     )
 
 
@@ -284,7 +282,6 @@ def record_background_worker(
         command=command, log_to_disk=bool(log_to_disk),
         log_path=display_path(automation_dir / "automation.log") if log_to_disk else None,
         state_path=display_path(automation_dir / "state.json"), stream_command=perception_stream_command(host_name),
-        _present={"log_to_disk", "log_path"},
     )
     write_json_atomically(automation_dir / "process.json", record.to_dict())
     return record

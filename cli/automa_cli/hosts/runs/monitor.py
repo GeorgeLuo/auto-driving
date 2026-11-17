@@ -56,7 +56,7 @@ def _copy_session(state: RunState, session: dict[str, object]) -> None:
 def monitor_runtime(*, host_name: str, base_url: str, automation_dir: Path,
                     selections: dict[str, dict[str, object]], decision: dict[str, object],
                     configuration: RunConfiguration, timeout_s: float,
-                    record: bool, emit: Callable[[dict[str, object]], None] | None = None) -> RunResult:
+                    record: bool, emit: Callable[[RunState], None] | None = None) -> RunResult:
     client = RuntimeClient(base_url, timeout_s=timeout_s)
     automation_dir.mkdir(parents=True, exist_ok=True)
     state_path = automation_dir / "state.json"
@@ -77,7 +77,7 @@ def monitor_runtime(*, host_name: str, base_url: str, automation_dir: Path,
             state.run_dir = display_path(writer.root)
         write_json_atomically(state_path, state.to_dict())
         if emit is not None:
-            emit(deepcopy(state.to_dict()))
+            emit(deepcopy(state))
         while True:
             poll_started = time.monotonic()
             session, host = _poll(client, state, run_id, capture_base=capture_base, dropped_base=dropped_base)

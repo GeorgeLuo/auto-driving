@@ -10,7 +10,7 @@ reason status collection and status text both use.
 from __future__ import annotations
 
 from collections.abc import Mapping
-from dataclasses import MISSING, dataclass, field, fields
+from dataclasses import dataclass, field, fields
 from pathlib import Path
 from typing import Literal, NotRequired, TypedDict, cast
 
@@ -21,39 +21,18 @@ WORKER_MODULE = "cli.automa_cli.hosts.runs.worker"
 MAX_STATUS_REASON_CHARS = 240
 
 
-@dataclass
-class _Record:
-    # Keep absent fields absent when an old or partial record is rewritten.
-    _present: set[str] = field(default_factory=set, repr=False, kw_only=True)
-    _extra: dict[str, object] = field(default_factory=dict, repr=False, kw_only=True)
+def _written(record: object, later: frozenset[str]) -> dict[str, object]:
+    """A record's fields; one in ``later`` is left out until the run sets it."""
 
-    def __post_init__(self) -> None:
-        self._tracking = True
-
-    def __setattr__(self, name: str, value: object) -> None:
-        object.__setattr__(self, name, value)
-        if not name.startswith("_") and self.__dict__.get("_tracking", False):
-            self._present.add(name)
-
-    def _remember(self, payload: dict[str, object]) -> None:
-        names = {item.name for item in fields(self) if not item.name.startswith("_")}
-        self._present = names.intersection(payload)
-        self._extra = {key: value for key, value in payload.items() if key not in names}
-
-    def to_dict(self) -> dict[str, object]:
-        result = dict(self._extra)
-        for item in fields(self):
-            if item.name.startswith("_"):
-                continue
-            value = getattr(self, item.name)
-            default = item.default_factory() if item.default_factory is not MISSING else item.default
-            if item.name in self._present or value != default:
-                result[item.name] = value
-        return result
+    return {
+        item.name: value
+        for item in fields(record)
+        if (value := getattr(record, item.name)) not in (None, {}) or item.name not in later
+    }
 
 
 @dataclass
-class RunState(_Record):
+class RunState:
     schema: str | None = None
     host_name: str | None = None
     run_id: str | None = None
@@ -89,7 +68,7 @@ class RunState(_Record):
     def from_dict(cls, payload: object) -> RunState | None:
         if not isinstance(payload, dict):
             return None
-        record = cls(
+        return cls(
             schema=_string(payload.get("schema")), host_name=_string(payload.get("host_name")),
             run_id=_string(payload.get("run_id")), status=_string(payload.get("status")),
             pipeline=_string(payload.get("pipeline")), control_source=_string(payload.get("control_source")),
@@ -109,8 +88,9 @@ class RunState(_Record):
             decision=_document(payload.get("decision")) or {},
             last_frame=_document(payload.get("last_frame")) or {},
         )
-        record._remember(payload)
-        return record
+
+    def to_dict(self) -> dict[str, object]:
+        return _written(self, _RUN_STATE_LATER)
 
     def complete(self, status: str) -> None:
         self.status = status
@@ -122,7 +102,7 @@ class RunState(_Record):
 
 
 @dataclass
-class WorkerProcess(_Record):
+class WorkerProcess:
     schema: str | None = None
     host_name: str | None = None
     pid: int | None = None
@@ -142,7 +122,7 @@ class WorkerProcess(_Record):
         if not isinstance(payload, dict):
             return None
         command = payload.get("command")
-        record = cls(
+        return cls(
             schema=_string(payload.get("schema")), host_name=_string(payload.get("host_name")),
             pid=_integer(payload.get("pid")), started_at_ms=_integer(payload.get("started_at_ms")),
             command=command if isinstance(command, list) and all(isinstance(token, str) for token in command) else None,
@@ -152,8 +132,17 @@ class WorkerProcess(_Record):
             status=_string(payload.get("status")), stopped_by=_string(payload.get("stopped_by")),
             stopped_at_ms=_integer(payload.get("stopped_at_ms")),
         )
-        record._remember(payload)
-        return record
+
+    def to_dict(self) -> dict[str, object]:
+        return _written(self, _WORKER_PROCESS_LATER)
+
+
+# Fields a run sets after its first write; until then the file leaves them out.
+_RUN_STATE_LATER = frozenset({
+    "completed_at_ms", "stop_reason", "error", "exit_code", "activation_problems", "session",
+    "execution", "selections", "decision", "steps", "arming", "last_frame",
+})
+_WORKER_PROCESS_LATER = frozenset({"startup", "status", "stopped_by", "stopped_at_ms"})
 
 
 def _string(value: object) -> str | None:

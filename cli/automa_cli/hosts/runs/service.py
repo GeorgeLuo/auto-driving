@@ -132,7 +132,7 @@ def run_host_automation(
     unbounded: bool = False,
     take_control: bool = True,
     record: bool = False,
-    emit: Callable[[dict[str, object]], None] | None = None,
+    emit: Callable[[RunState], None] | None = None,
 ) -> RunResult:
     try:
         if host_name is not None:

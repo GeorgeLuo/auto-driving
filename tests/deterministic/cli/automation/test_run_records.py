@@ -1,4 +1,4 @@
-"""Run records tolerate old files and preserve partial-record omissions."""
+"""Run records tolerate old files and leave out fields a run has not set."""
 
 import json
 import tempfile
@@ -29,26 +29,25 @@ class RunRecordTests(unittest.TestCase):
         self.assertEqual((process.pid, process.log_path, process.command, process.log_to_disk),
                          (None, None, None, False))
 
-    def test_partial_startup_failure_rewrite_keeps_nulls_and_extra_fields(self):
+    def test_partial_startup_failure_rewrite_records_the_failure(self):
         with tempfile.TemporaryDirectory() as tmp:
             root = Path(tmp)
-            original = {"host_name": "car", "pid": None, "status": "starting", "extra": {"v": 1}}
-            (root / "state.json").write_text(json.dumps(original))
+            (root / "state.json").write_text(json.dumps({"host_name": "car", "pid": None, "status": "starting"}))
             with patch("cli.automa_cli.hosts.runs.models.timestamp_ms", return_value=123):
                 mark_automation_startup_error(automation_dir=root, error="launch failed")
-            self.assertEqual(json.loads((root / "state.json").read_text()),
-                             {**original, "status": "error", "error": "launch failed", "exit_code": None,
-                              "completed_at_ms": 123, "updated_at_ms": 123})
-            state = read_run_state(root)
-            self.assertNotIn("session", state.to_dict())
-            state.session, state.arming, state.decision = None, None, {}
-            self.assertEqual({key: state.to_dict()[key] for key in ("session", "arming", "decision")},
-                             {"session": None, "arming": None, "decision": {}})
+            written = json.loads((root / "state.json").read_text())
+            self.assertEqual({key: written[key] for key in ("host_name", "status", "error", "completed_at_ms")},
+                             {"host_name": "car", "status": "error", "error": "launch failed", "completed_at_ms": 123})
+            self.assertNotIn("session", written)
 
-    def test_old_process_record_keeps_omissions_when_stopped(self):
-        original = {"pid": 123, "log_path": None, "startup": {"status": "failed"}}
-        process = WorkerProcess.from_dict(original)
-        self.assertEqual(process.to_dict(), original)
+    def test_fields_a_run_sets_later_are_written_once_set(self):
+        process = WorkerProcess.from_dict({"pid": 123, "log_path": None})
+        self.assertNotIn("stopped_by", process.to_dict())
+        self.assertIn("log_path", process.to_dict())
         process.status, process.stopped_by, process.stopped_at_ms = "stopped", "stop_command", 123
-        self.assertEqual(process.to_dict(), {**original, "status": "stopped", "stopped_by": "stop_command",
-                                             "stopped_at_ms": 123})
+        self.assertEqual({key: process.to_dict()[key] for key in ("status", "stopped_by", "stopped_at_ms")},
+                         {"status": "stopped", "stopped_by": "stop_command", "stopped_at_ms": 123})
+        state = RunState(host_name="car")
+        self.assertNotIn("last_frame", state.to_dict())
+        state.last_frame = {"frame_id": "f0"}
+        self.assertEqual(state.to_dict()["last_frame"], {"frame_id": "f0"})

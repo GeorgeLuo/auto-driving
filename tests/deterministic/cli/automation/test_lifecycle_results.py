@@ -13,7 +13,7 @@ from unittest.mock import patch
 
 from cli.automa_cli.hosts.runs import process, service, store
 from cli.automa_cli.frontend.server import RuntimeViewServer
-from cli.automa_cli.hosts.runs.models import RestartResult, StartResult, StopResult
+from cli.automa_cli.hosts.runs.models import RestartResult, RunState, StartResult, StopResult
 from cli.automa_cli.hosts.runs.worker import startup_printer
 from cli.automa_cli.hosts.runs.render import render_lifecycle_result
 
@@ -291,11 +291,10 @@ class ExplicitViewTests(unittest.TestCase):
 
 class StartupPrinterTests(unittest.TestCase):
     def test_the_accepted_run_is_printed(self):
-        state = {
-            "host_name": "car", "selections": {"perception": {"plugins": ["frame"], "preset": None}},
-            "run_dir": None, "control_source": "runtime_host", "action_policy": "observe_only",
-            "decision": {"generation_id": "g-1"}, "num_decisions": None,
-        }
+        state = RunState(
+            host_name="car", selections={"perception": {"plugins": ["frame"], "preset": None}},
+            control_source="runtime_host", action_policy="observe_only", decision={"generation_id": "g-1"},
+        )
         output = io.StringIO()
         startup_printer(output)(state)
         self.assertIn("Run started on host car.", output.getvalue())

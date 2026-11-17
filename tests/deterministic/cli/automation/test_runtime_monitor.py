@@ -122,7 +122,7 @@ class RuntimeMonitorTests(unittest.TestCase):
         }
         typed = RunState.from_dict(state)
         output = io.StringIO()
-        startup_printer(output)(typed.to_dict())
+        startup_printer(output)(typed)
         code, message = run_exit_code(typed), render_run_result(typed, state_path="automation/state.json")
 
         self.assertEqual(

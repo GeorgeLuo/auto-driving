@@ -20,12 +20,10 @@ from .service import run_host_automation
 from .store import record_host_automation_terminal_result
 
 
-def startup_printer(output: TextIO) -> Callable[[dict[str, object]], None]:
+def startup_printer(output: TextIO) -> Callable[[RunState], None]:
     """Print the accepted run's lines to ``output``; the closing result is printed separately."""
 
-    def print_startup(payload: dict[str, object]) -> None:
-        state = RunState.from_dict(payload)
-        assert state is not None
+    def print_startup(state: RunState) -> None:
         for line in startup_lines(state):
             print(line, file=output, flush=True)
 

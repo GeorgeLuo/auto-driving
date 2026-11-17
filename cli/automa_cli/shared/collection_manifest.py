@@ -4,14 +4,13 @@ from __future__ import annotations
 import json
 import os
 from pathlib import Path
-from typing import Any
 
 from autonomy.plugin_collections import is_module_path
 
-from ...shared.plugin_catalog import step_plugin
+from .plugin_catalog import step_plugin
 
 
-def read_manifest(path: Path) -> dict[str, Any]:
+def read_manifest(path: Path) -> dict[str, object]:
     """The ``upload_collection`` request for the manifest at ``path``.
 
     Each plugin is a ``step/plugin`` name, a ``module:Class`` entrypoint and an
@@ -45,7 +44,7 @@ def read_manifest(path: Path) -> dict[str, Any]:
             "plugins": definitions, "sources": _sources(root)}
 
 
-def _field(entry: dict[str, Any], key: str, where: str) -> Any:
+def _field(entry: dict[str, object], key: str, where: str) -> object:
     if key not in entry:
         raise ValueError(f"{where}: missing field: {key}")
     return entry[key]

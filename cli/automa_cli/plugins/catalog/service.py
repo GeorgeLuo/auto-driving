@@ -26,9 +26,9 @@ from ...hosts.step_activations import (
     staging_host,
 )
 from ...hosts.step_formatting import format_activation_problems
+from ...shared.collection_manifest import read_manifest
 from ...shared.paths import display_path
 from ...shared.plugin_catalog import packaged_plugin_definitions
-from .manifest import read_manifest
 from .models import (
     Arming,
     CatalogListing,

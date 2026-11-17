@@ -10,6 +10,7 @@ from __future__ import annotations
 import os
 import time
 from collections.abc import Callable, Mapping, Sequence
+from pathlib import Path
 from typing import Any
 
 from implementations.decision_cycle.catalog import selection_activation
@@ -19,6 +20,7 @@ from ..frontend.workbench_contract import (
     WORKBENCH_DEFAULT_PACE,
     ReplayActionError,
 )
+from ..replay.manifest import check_manifest_selection
 from ..replay.models import SourceValidationError
 from ..replay.source import WORKBENCH_DEFAULT_MAX_FRAMES
 from ..shared.open_view import launch_browser
@@ -31,6 +33,7 @@ def run_workbench_replay(
     source_dir: str | os.PathLike[str],
     *,
     selections: Mapping[str, tuple[str | None, Sequence[str] | None]] | None = None,
+    manifest: Path | None = None,
     cadence_ms: int = WORKBENCH_DEFAULT_CADENCE_MS,
     pace: str = WORKBENCH_DEFAULT_PACE,
     max_frames: int = WORKBENCH_DEFAULT_MAX_FRAMES,
@@ -55,6 +58,7 @@ def run_workbench_replay(
     try:
         activations = {}
         for step, (preset, plugins) in (selections or {}).items():
+            check_manifest_selection(manifest, preset, plugins, flag_prefix=f"{step}-")
             if preset is not None or plugins is not None:
                 activations[step] = selection_activation(step, preset=preset, plugins=plugins)
     except ValueError as exc:
@@ -68,6 +72,7 @@ def run_workbench_replay(
         runner = ImageReplayRunner(
             source_dir,
             activations=activations,
+            manifest=manifest,
             cadence_ms=cadence_ms,
             pace=pace,
             max_frames=max_frames,

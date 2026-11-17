@@ -6,7 +6,7 @@ import argparse
 from collections.abc import Callable
 
 from ..replay.source import WORKBENCH_DEFAULT_MAX_FRAMES
-from ..shared.cli.selection_args import add_selection_args
+from ..shared.cli.selection_args import add_manifest_arg, add_selection_args
 from .models import WorkbenchEvent
 from .plugins import WORKBENCH_SELECTABLE_STEPS
 from .render import render_workbench_event, render_workbench_result
@@ -48,6 +48,7 @@ def register_workbench(
     )
     for step_name in WORKBENCH_SELECTABLE_STEPS:
         add_selection_args(workbench, step_name, verb="replay", flag_prefix=f"{step_name}-")
+    add_manifest_arg(workbench)
     workbench.add_argument(
         "--cadence-ms",
         type=int,
@@ -106,6 +107,7 @@ def _handle_workbench(args: argparse.Namespace) -> int:
             step: (getattr(args, f"{step}_preset"), getattr(args, f"{step}_plugins"))
             for step in WORKBENCH_SELECTABLE_STEPS
         },
+        manifest=args.manifest,
         cadence_ms=args.cadence_ms,
         pace=args.pace,
         max_frames=args.max_frames,

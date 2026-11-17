@@ -3,8 +3,17 @@
 from __future__ import annotations
 
 import argparse
+from pathlib import Path
 
 from implementations.decision_cycle.catalog import DEFAULT_STEP_PLUGINS, DEFAULT_STEP_PRESETS, STEP_PRESETS
+
+
+def add_manifest_arg(parser: argparse.ArgumentParser) -> None:
+    parser.add_argument(
+        "--manifest", type=Path, metavar="FILE",
+        help="Replay a recording with replacements from a collection manifest on the installed package. "
+             "Exclusive with preset and plugin flags.",
+    )
 
 
 def add_selection_args(

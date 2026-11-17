@@ -30,6 +30,7 @@ from ..frontend.workbench_contract import (
     ReplayActionError,
 )
 from ..replay.frames import run_frame
+from ..replay.manifest import apply_collection_manifest
 from ..replay.models import (
     WORKBENCH_ADAPTER,
     FrameOutcome,
@@ -96,6 +97,7 @@ class ImageReplayRunner:
         *,
         source_root: Path | None = None,
         activations: dict[str, StepActivation] | None = None,
+        manifest: Path | None = None,
         cadence_ms: int = WORKBENCH_DEFAULT_CADENCE_MS,
         pace: str = WORKBENCH_DEFAULT_PACE,
         loop: bool = WORKBENCH_DEFAULT_LOOP,
@@ -107,6 +109,7 @@ class ImageReplayRunner:
             Path(source_root).expanduser().resolve() if source_root else None
         )
         self.source_dir = os.fspath(source_dir) if source_dir is not None else None
+        self._manifest = manifest
         self.max_frames = int(max_frames)
         self.max_image_bytes = int(max_image_bytes)
         # Test hooks: a selectable step's runner, in place of its catalog build.
@@ -342,6 +345,9 @@ class ImageReplayRunner:
                         max_frames=self.max_frames,
                         max_image_bytes=self.max_image_bytes,
                     )
+                    if self._manifest is not None:
+                        image_source, provenance = apply_collection_manifest(image_source, self._manifest, self.catalog)
+                        self._state["collection_manifest"] = provenance
                     steps = self._build_steps(image_source.frames[0])
                 except Exception as exc:  # noqa: BLE001 - startup isolation boundary
                     self._set_failure_locked(

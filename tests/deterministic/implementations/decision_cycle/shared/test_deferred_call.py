@@ -173,22 +173,26 @@ class DeferredCallTests(unittest.TestCase):
         self.assertEqual(call.record(self.memory)["counts"]["answered"], 1)
 
     def test_hung_call_expires_at_max_age_and_same_pair_is_asked_again(self):
-        hung, release = threading.Event(), threading.Event()
+        hung, release, fresh = threading.Event(), threading.Event(), threading.Event()
 
         def run(request):
             if request == "hung":
                 hung.set()
-                if not release.wait(3):
-                    raise AssertionError("test did not release call")
+            # Held so poll's second take cannot see the fresh answer before the test does.
+            gate = {"hung": release, "fresh": fresh}.get(request)
+            if gate is not None and not gate.wait(3):
+                raise AssertionError("test did not release call")
             return request
 
         call = self.call(run, workers=2, max_age_ms=500)
         self.addCleanup(release.set)
+        self.addCleanup(fresh.set)
         self.assertIsNone(self.poll(call, now=100, request=lambda: "hung"))
         self.assertTrue(hung.wait(3))
         self.assertIsNone(self.poll(call, now=599, request=lambda: "unused"))  # younger than max_age_ms
         self.assertEqual(call.record(self.memory)["counts"]["asked"], 1)
         self.assertIsNone(self.poll(call, now=600, request=lambda: "fresh"))  # same pair, asked anew
+        fresh.set()
         self.settled(call)
         self.assertEqual(call.take(self.memory, scope=0).result, "fresh")
         release.set()

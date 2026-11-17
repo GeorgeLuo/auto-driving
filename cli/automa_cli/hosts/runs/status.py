@@ -33,8 +33,8 @@ from ..step_activations import (
     staged_selections,
 )
 from ..views.view_discovery import runtime_view_dir
-from .models import AppliedStep, ComparedSteps, HostRun, RunRelease, RunSection, RunState, WorkerProcess, status_reason
-from .store import latest_frame, read_process_record, read_run_state
+from .models import AppliedStep, ComparedSteps, HostRun, RunRelease, RunSection, RunState, UnreadableRun, WorkerProcess, status_reason
+from .store import RunRecordError, latest_frame, read_process_record, read_run_state
 
 def hosts_status(
     *,
@@ -61,10 +61,12 @@ def hosts_status(
             runs = list(pool.map(_run_status, hosts, [read for _, read in reads]))
         for host, run in zip(hosts, runs, strict=False):
             host["run"] = run
+            if host_name is not None and run is not None and "error" in run:
+                exit_code = 1
     return exit_code, {"schema": "automa_hosts_status", "host_name": host_name, "hosts": hosts}
 
 
-def _run_status(host: Mapping[str, object], read: Mapping[str, object] | None) -> HostRun | None:
+def _run_status(host: Mapping[str, object], read: Mapping[str, object] | None) -> HostRun | UnreadableRun | None:
     """A host's deployment and steps, and its run as its monitor or, without one, its host reports it.
 
     ``read`` is the host's ``host_state`` that ``read_hosts`` collected. The
@@ -78,8 +80,11 @@ def _run_status(host: Mapping[str, object], read: Mapping[str, object] | None) -
     name = host["host_name"]
     bundle = bundle_paths(name)
     automation_dir = Path(bundle["runtime_dir"]) / "automation"
-    process = read_process_record(automation_dir) or WorkerProcess()
-    state = read_run_state(automation_dir) or RunState()
+    try:
+        process = read_process_record(automation_dir) or WorkerProcess()
+        state = read_run_state(automation_dir) or RunState()
+    except RunRecordError as exc:
+        return {"host_name": name, "status": "unreadable", "error": str(exc)}
     process_pid, state_pid = process.pid, state.pid
     pid = process_pid if process_pid is not None else state_pid
     alive = pid is not None and pid_alive(pid)

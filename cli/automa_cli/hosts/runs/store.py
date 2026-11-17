@@ -20,6 +20,7 @@ from autonomy.runtime.session import RunConfiguration
 from ...shared.io.json_files import read_json, write_json_atomically
 from ...shared.paths import display_path
 from ...shared.timestamps import timestamp_ms
+from ..errors import RuntimeHostError
 from ..host_formatting import perception_stream_command
 from ..publications.host_publications import observation_component
 from ..staging import automation_dir as host_automation_dir
@@ -30,6 +31,16 @@ RUN_STATE_SCHEMA = "automa_automation_run_state"
 
 # Every run's host applies its own wheel commands.
 CONTROL_SOURCE = "runtime_host"
+
+
+class RunRecordError(RuntimeHostError):
+    """A persisted run record is unreadable; the message names its recovery."""
+
+    def __init__(self, path: Path, problem: Exception) -> None:
+        super().__init__(
+            f"Could not read run record {path}: {problem}. "
+            f"Recovery: once no worker is running, remove {path} and retry."
+        )
 
 
 def control_application(configuration: RunConfiguration) -> str:
@@ -255,8 +266,12 @@ def run_directory(host_name: str, *, create: bool = False) -> Path:
 
 
 def read_process_record(automation_dir: Path) -> WorkerProcess | None:
-    payload = _read_record(automation_dir / "process.json")
-    return None if payload is None else WorkerProcess.from_dict(payload)
+    path = automation_dir / "process.json"
+    try:
+        payload = _read_record(path)
+        return None if payload is None else WorkerProcess.from_dict(payload)
+    except (FieldError, OSError, UnicodeError) as exc:
+        raise RunRecordError(path, exc) from exc
 
 
 def read_stop_count(automation_dir: Path) -> int:
@@ -272,8 +287,12 @@ def write_stop_count(automation_dir: Path, stops: int) -> None:
 
 
 def read_run_state(automation_dir: Path) -> RunState | None:
-    payload = _read_record(automation_dir / "state.json")
-    return None if payload is None else RunState.from_dict(payload)
+    path = automation_dir / "state.json"
+    try:
+        payload = _read_record(path)
+        return None if payload is None else RunState.from_dict(payload)
+    except (FieldError, OSError, UnicodeError) as exc:
+        raise RunRecordError(path, exc) from exc
 
 
 def _read_record(path: Path) -> dict | None:

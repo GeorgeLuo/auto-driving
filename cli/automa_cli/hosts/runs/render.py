@@ -17,7 +17,7 @@ from ..host_formatting import host_block, perception_stream_command, viewer_comm
 from ..step_formatting import format_activation_problems, selection_label, step_lines
 from .models import (
     AppliedStep, ComparedStep, HostRun, RestartResult, RunDecision, RunProcess, RunRelease, RunState,
-    RunStatusState, StartResult, StopResult, WorkerProcess, status_reason,
+    RunStatusState, StartResult, StopResult, UnreadableRun, WorkerProcess, status_reason,
 )
 
 # A run's host owns its wheel commands. The label is the words status and the
@@ -42,11 +42,13 @@ def _format_hosts_status(hosts: list[dict[str, object]], *, long: bool) -> str:
     )
 
 
-def _run_lines(item: HostRun | None) -> list[str]:
+def _run_lines(item: HostRun | UnreadableRun | None) -> list[str]:
     """A host's deployment, release, steps, worker, run and view, under its host block."""
 
     if item is None:
         return []
+    if "error" in item:
+        return ["  run: unreadable", f"  problem: {item['error']}"]
     decision, process, state = item["decision"], item["process"], item["state"]
     published_view, last_frame = item["published_view"], state["last_frame"]
     lines = [

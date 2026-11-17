@@ -35,9 +35,10 @@ class Run:
         return read_stop_count(self.directory)
 
     def claim(self) -> Claim:
+        pid = self.pid()
         stops = self.stops() + 1
         write_stop_count(self.directory, stops)
-        return Claim(stops, self.pid())
+        return Claim(stops, pid)
 
     def release(self, claim: Claim) -> None:
         """Give the claim back when this stop did not leave the run stopped."""

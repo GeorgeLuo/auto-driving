@@ -291,6 +291,12 @@ class HostRun(RunSection):
     published_view: Mapping[str, object]
 
 
+class UnreadableRun(TypedDict):
+    host_name: str
+    status: Literal["unreadable"]
+    error: str
+
+
 
 @dataclass(frozen=True)
 class RunResult:

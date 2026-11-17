@@ -9,7 +9,7 @@ from unittest.mock import patch
 from autonomy.fields import FieldError, MAX_SAFE_INT
 from cli.automa_cli.hosts.runs.models import RunState, WorkerProcess
 from cli.automa_cli.hosts.runs.store import (
-    convert_legacy_run_record, mark_automation_startup_error, read_process_record, read_run_state,
+    RunRecordError, convert_legacy_run_record, mark_automation_startup_error, read_process_record, read_run_state,
 )
 
 
@@ -22,9 +22,9 @@ class RunRecordTests(unittest.TestCase):
                 for text in ("{", "null", "[]", '"record"', "42"):
                     with self.subTest(name=name, text=text):
                         (root / name).write_text(text)
-                        with self.assertRaises(FieldError) as caught:
+                        with self.assertRaises(RunRecordError) as caught:
                             read(root)
-                        self.assertEqual(caught.exception.field_name, "$")
+                        self.assertEqual(caught.exception.__cause__.field_name, "$")
 
     def test_main_5f0cf136_records_load_and_round_trip(self):
         # Literal outputs of that build's to_dict, not documents from this branch's writer.
@@ -96,9 +96,9 @@ class RunRecordTests(unittest.TestCase):
                 with self.subTest(name=name, change=change), tempfile.TemporaryDirectory() as tmp:
                     root = Path(tmp)
                     (root / name).write_text(json.dumps(document))
-                    with self.assertRaises(FieldError) as caught:
+                    with self.assertRaises(RunRecordError) as caught:
                         read(root)
-                    self.assertEqual(caught.exception.field_name, field)
+                    self.assertEqual(caught.exception.__cause__.field_name, field)
         # A present invalid later field is never replaced by its default.
         for name, read, record, field in (
             ("state.json", read_run_state, RunState(), "session"),
@@ -109,9 +109,9 @@ class RunRecordTests(unittest.TestCase):
             with self.subTest(name=name), tempfile.TemporaryDirectory() as tmp:
                 root = Path(tmp)
                 (root / name).write_text(json.dumps(document))
-                with self.assertRaises(FieldError) as caught:
+                with self.assertRaises(RunRecordError) as caught:
                     read(root)
-                self.assertEqual(caught.exception.field_name, field)
+                self.assertEqual(caught.exception.__cause__.field_name, field)
 
     def test_invalid_counts_and_identifiers_are_rejected(self):
         for record, field, value in (

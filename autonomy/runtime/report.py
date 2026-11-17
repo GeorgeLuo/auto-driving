@@ -15,8 +15,10 @@ error.
 ``autonomy.decision_cycle.timing``: its total and each step's and plugin's
 duration. A host that does not record it writes ``null``.
 ``values.activation.steps`` is the step-activation payloads.
-``source_id`` is text, not an ascii id: the frame loop's
-``{runtime}:{host_name}`` can be longer than 64 characters.
+``source_id`` is an ascii id. ``source_id_for`` writes
+``{runtime}:{host_name}`` when that fits, and the host name when a
+64-character name leaves no room for the prefix. The telemetry join
+compares this id with the telemetry record's source id.
 """
 
 from __future__ import annotations
@@ -189,7 +191,7 @@ class ReportValues:
     timing: dict[str, object] | None = None
 
     def __post_init__(self) -> None:
-        object.__setattr__(self, "source_id", require_text(self.source_id, field_name="source_id"))
+        object.__setattr__(self, "source_id", require_ascii_id(self.source_id, field_name="source_id"))
         ceiling = require_safe_int(self.stale_after_ms, field_name="stale_after_ms")
         if ceiling == 0:
             raise FieldError("stale_after_ms", "must be positive")
@@ -327,6 +329,21 @@ class HostReport:
             status=document["status"],
             error=document["error"],
         )
+
+
+def source_id_for(runtime: str, host_name: str) -> str:
+    """An ascii id for one runtime's frames on this host.
+
+    ``{runtime}:{host_name}`` is the id when it matches. A host name of 64
+    characters leaves no room for the runtime prefix, and that name is already
+    an id, so it is the source id.
+    """
+
+    prefixed = f"{runtime}:{host_name}"
+    try:
+        return require_ascii_id(prefixed, field_name="source_id")
+    except FieldError:
+        return require_ascii_id(host_name, field_name="host_name")
 
 
 def _safe_int_or_null(value: object, *, field_name: str) -> int | None:

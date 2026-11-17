@@ -30,6 +30,7 @@ from autonomy.runtime.report import (
     ReportValues,
     delivery_values,
     report_from_host_result,
+    source_id_for,
 )
 from autonomy.runtime.session import RunConfiguration
 from autonomy.vehicle import FRONT_CAMERA_SENSOR_ID, SensorFrame, SensorReading
@@ -246,7 +247,7 @@ class FrameLoop:
         self._publication_revision = 0
         self._session_frame_id: str | None = None
         self.host_name = host_name
-        self.source_id = source_id or (f"{runtime}:{host_name}" if host_name else None)
+        self.source_id = source_id or (source_id_for(runtime, host_name) if host_name else None)
         self.run_id = run_id or f"{runtime}-run-{secrets.token_hex(12)}"
         host.register_status_provider("observation", self.observation_status)
 
@@ -434,7 +435,7 @@ class FrameLoop:
         generation_id = metadata["generation_id"]
         delivered_at_ms, delivery_error, receipt = delivery_values(result.application)
         values = ReportValues(
-            source_id=self.source_id or f"{self.runtime}:local",
+            source_id=self.source_id or source_id_for(self.runtime, "local"),
             activation=ReportActivation(metadata["step_activations"]),
             stale_after_ms=stale_after_ms(result.duration_ms),
             delivered_at_ms=delivered_at_ms,

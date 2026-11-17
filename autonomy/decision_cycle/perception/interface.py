@@ -8,7 +8,9 @@ plugin. ``PerceptionBackend`` is anything that runs perception on a
 from __future__ import annotations
 
 from dataclasses import asdict, dataclass, field
-from copy import deepcopy
+from collections.abc import Mapping
+
+from autonomy.serialization import deep_freeze, frozen_mapping_to_dict
 from typing import Any, Literal, Protocol, runtime_checkable
 
 from autonomy.decision_cycle.perception.feeds.context import PerceptionRequest
@@ -79,8 +81,18 @@ class PerceptionText:
     signals: tuple[PerceptionSignal, ...]
     things: tuple[PerceivedThing, ...]
     plugin_runs: tuple[PerceptionPluginRun, ...] = ()
-    measurements: dict[str, dict[str, Any]] = field(default_factory=dict)
+    measurements: Mapping[str, Mapping[str, object]] = field(default_factory=dict)
     limits: tuple[str, ...] = ()
+
+    def __post_init__(self) -> None:
+        if not isinstance(self.measurements, Mapping):  # pyright: ignore[reportUnnecessaryIsInstance] - validate runtime callers
+            raise FieldError("measurements", "must be an object")
+        try:
+            object.__setattr__(self, "measurements", deep_freeze(self.measurements, field_name="measurements"))
+        except ValueError as exc:
+            raise FieldError("measurements", str(exc)) from exc
+        for name in ("signals", "things", "plugin_runs", "limits"):
+            object.__setattr__(self, name, tuple(getattr(self, name)))
 
     @property
     def text(self) -> str:
@@ -100,7 +112,7 @@ class PerceptionText:
             "signals": tuple(signal.to_dict() for signal in self.signals),
             "things": tuple(thing.to_dict() for thing in self.things),
             "plugin_runs": tuple(run.to_dict() for run in self.plugin_runs),
-            "measurements": deepcopy(self.measurements), "limits": self.limits,
+            "measurements": frozen_mapping_to_dict(self.measurements), "limits": self.limits,
         }
 
     @classmethod

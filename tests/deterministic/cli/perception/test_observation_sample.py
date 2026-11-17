@@ -13,9 +13,8 @@ from urllib.error import HTTPError, URLError
 
 from PIL import Image
 
-from autonomy.decision_cycle.cycle import CYCLE_RECORD_KEYS
 from autonomy.runtime.frame_loop import FRAME_TRANSACTION_SCHEMA, FramePublication
-from autonomy.runtime.report import HostReport, ReportApplication, ReportValues
+from autonomy.runtime.report import HostReport, ReportCycle, ReportApplication, ReportValues
 from cli.automa_cli.hosts.publications import host_publications as publications
 from cli.automa_cli.hosts.views import view_feed as viewer
 
@@ -37,7 +36,7 @@ def _publication(frame_id="first") -> FramePublication:
         report=HostReport(
             host_name="fixture", run_id="run", generation_id="decision-test",
             frame_id=frame_id, frame_index=1, timestamp_ms=900, published_at_ms=1000,
-            cycle=dict.fromkeys(CYCLE_RECORD_KEYS),
+            cycle=ReportCycle(),
             application=ReportApplication(False, "observe_only", "idle", 0.0, 0.0),
             values=ReportValues.from_dict({
                 "source_id": "fixture:local", "stale_after_ms": 1000, "activation": {"steps": {}}, "delivered_at_ms": None, "delivery_error": None, "receipt": None, "timing": None,

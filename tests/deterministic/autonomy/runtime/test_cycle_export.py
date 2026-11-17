@@ -15,6 +15,7 @@ from autonomy.decision_cycle.action.result import ActionResult
 from autonomy.decision_cycle.activation import STEPS, activation_generation_id
 from autonomy.decision_cycle.context import DecisionFrameContext
 from autonomy.decision_cycle.cycle import DecisionCycle, DecisionCycleResult, DecisionSteps
+from autonomy.decision_cycle.memory.interface import MemoryReport, MemoryPluginReport
 from autonomy.decision_cycle.observation.values import Observation
 from autonomy.decision_cycle.plan.values import ActionPlan, PlanContribution
 from autonomy.decision_cycle.proposal.result import ProposalResult
@@ -27,7 +28,7 @@ from autonomy.decision_cycle.records import DecisionRecords
 from autonomy.runtime.control import AutonomyControl
 from autonomy.runtime.execution import ControlApplication
 from autonomy.runtime.recording import RunRecording
-from autonomy.runtime.report import ReportValues, report_from_host_result
+from autonomy.runtime.report import ReportCycle, ReportValues, report_from_host_result
 from autonomy.serialization import FrozenJsonObject
 from tests.shared.cli.workbench_fixtures import image_source
 from tests.shared.integration.plugin_flow_fixtures import frame
@@ -38,7 +39,7 @@ def _live_parts(root):
     context = replace(frame(root, 1), metadata={"step_activations": {step: None for step in STEPS},
                                                "generation_id": activation_generation_id({step: None for step in STEPS}, prefix="decision")})
     observation = Observation(context.frame_id, context.timestamp_ms, {}, metadata={"labels": ["first"]})
-    memory = {"schema": "memory_report", "plugins": [{"plugin_id": "fixture", "state": {"count": 1}}]}
+    memory = MemoryReport("memory_report", (MemoryPluginReport("fixture", {"count": 1}),))
     return context, observation, memory
 
 
@@ -116,7 +117,7 @@ def _populated_result() -> DecisionCycleResult:
         )
 
     observation = Observation(context.frame_id, context.timestamp_ms, {}, metadata={"labels": ["lane"]})
-    memory = {"schema": "memory_report", "plugins": [{"plugin_id": "fixture", "state": {"count": 1}}]}
+    memory = MemoryReport("memory_report", (MemoryPluginReport("fixture", {"count": 1}),))
     result = _finish_like_host(context, observation, memory, proposal=propose, plan=plan)
     assert isinstance(result.proposal.candidates[0].metadata, FrozenJsonObject)
     assert isinstance(result.plan.metadata, FrozenJsonObject)
@@ -157,8 +158,10 @@ class CycleExportTests(unittest.TestCase):
             exported = result.export_cycle()
             exported["memory"]["plugins"][0]["state"]["count"] = 10
             exported["observation"]["metadata"]["labels"].append("consumer")
-            result.memory["plugins"][0]["state"]["count"] = 20
-            result.observation.metadata["labels"].append("producer")
+            with self.assertRaises(TypeError):
+                result.memory.plugins[0].state["count"] = 20
+            with self.assertRaises(AttributeError):
+                result.observation.metadata["labels"].append("producer")
 
             retained = result.to_dict()
             self.assertEqual(retained["memory"]["plugins"][0]["state"]["count"], 1)
@@ -171,17 +174,22 @@ class CycleExportTests(unittest.TestCase):
                 "delivered_at_ms": None, "delivery_error": None, "receipt": None, "timing": None,
                 }),
             )
-            report.cycle["memory"]["plugins"][0]["state"]["count"] = 30
+            with self.assertRaises(TypeError):
+                report.cycle.memory.plugins[0].state["count"] = 30
             self.assertEqual(result.export_cycle()["memory"], retained["memory"])
 
     def test_replacing_a_step_record_starts_a_new_export(self):
         with image_source(1) as root:
             result = _completed_result(root)
             original = result.export_cycle()
-            replacement = replace(result, memory={"schema": "memory_report", "plugins": []})
+            replacement = replace(result, memory=MemoryReport("memory_report"))
 
-            self.assertEqual(replacement.export_cycle()["memory"], replacement.memory)
+            self.assertEqual(replacement.export_cycle()["memory"], replacement.memory.to_dict())
             self.assertEqual(result.export_cycle(), original)
+            cycle = ReportCycle.from_result(result)
+            changed = replace(cycle, memory=None)
+            self.assertIsNone(changed.to_dict()["memory"])
+            self.assertEqual(cycle.to_dict()["memory"], original["memory"])
 
     def test_populated_result_copies_pickles_and_keeps_one_export(self):
         result = _populated_result()

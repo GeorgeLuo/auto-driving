@@ -5,6 +5,8 @@ from __future__ import annotations
 from dataclasses import dataclass
 from typing import Any
 
+from autonomy.decision_cycle.memory.interface import MemoryReport
+
 
 @dataclass(frozen=True)
 class ViewState:
@@ -69,7 +71,7 @@ class MemoryPublication:
     reads for every renderer.
     """
 
-    report: dict[str, Any] | None = None
+    report: MemoryReport | None = None
     error: str | None = None
 
 

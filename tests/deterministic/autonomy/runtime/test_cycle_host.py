@@ -11,6 +11,7 @@ from dataclasses import replace
 from pathlib import Path
 from unittest.mock import patch
 
+from autonomy.decision_cycle.memory.interface import MemoryReport
 from autonomy.decision_cycle.observation.publication import OBSERVATION_KEY
 from autonomy.decision_cycle.action.publication import (
     CONTROL_APPLICATIONS_KEY, MODE_KEY, USER_STEERING_KEY, USER_THROTTLE_KEY,
@@ -111,8 +112,8 @@ def _host(**steps) -> tuple[AutonomyCycleHost, _RecordingProposal]:
     return host, proposal
 
 
-def _state(report: dict) -> dict:
-    return report["plugins"][-1]["state"]
+def _state(report: MemoryReport):
+    return report.plugins[-1].state
 
 
 class CycleHostMemoryTests(unittest.TestCase):
@@ -239,8 +240,10 @@ class CycleHostMemoryTests(unittest.TestCase):
             )
             result = host.run(DecisionFrameContext("frame_1", 0, 1_000))
             owned = host.shared_memory[STATE_KEY]
-            _state(result.memory)["records"][0]["properties"]["tamper"] = True
-            _state(result.memory)["record_count"] = 99
+            with self.assertRaises(TypeError):
+                _state(result.memory)["records"][0]["properties"]["tamper"] = True
+            with self.assertRaises(TypeError):
+                _state(result.memory)["record_count"] = 99
             self.assertEqual(owned["records"][0].properties, {})
             self.assertEqual(_state(step.report())["record_count"], 1)
 
@@ -314,13 +317,13 @@ class CycleHostMemoryTests(unittest.TestCase):
 
         def remember(context):
             context.shared_memory["test.previous"] = context.frame_id
-            return {"schema": "memory_report", "plugins": []}
+            return MemoryReport("memory_report")
 
         host, proposal = _host(observation=observe, memory=remember)
         for index in range(2):
             result = host.run(DecisionFrameContext(f"frame-{index}", index, index))
             self.assertIs(proposal.last_observation, result.observation)
-            self.assertEqual(result.memory["plugins"], [])
+            self.assertEqual(result.memory.plugins, ())
         self.assertEqual(seen, [None, "frame-0"])
 
 

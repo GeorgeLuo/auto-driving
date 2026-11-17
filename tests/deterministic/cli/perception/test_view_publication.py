@@ -1,9 +1,11 @@
 from __future__ import annotations
 
 import unittest
-from autonomy.decision_cycle.cycle import CYCLE_RECORD_KEYS
+from autonomy.decision_cycle.memory.interface import MemoryReport
+from autonomy.decision_cycle.perception.interface import PerceptionText
+from autonomy.decision_cycle.perception.evidence.values import PerceivedThing, ViewLocation
 from autonomy.runtime.frame_loop import FRAME_PUBLICATION_SCHEMA, FramePublication
-from autonomy.runtime.report import HostReport, ReportApplication, ReportValues
+from autonomy.runtime.report import HostReport, ReportCycle, ReportApplication, ReportValues
 from cli.automa_cli.shared.memory_report import evidence_publisher, plugin_states
 from cli.automa_cli.frontend.perception_view import _publication_payload
 from tests.support.memory_fixtures import TWO_PLUGIN_IDS, memory_report, two_plugin_runner
@@ -12,9 +14,14 @@ from tests.support.memory_fixtures import TWO_PLUGIN_IDS, memory_report, two_plu
 def _publication(
     *, frame_id: str, memory: dict, perception: dict | None = None, duration_ms: int = 12,
 ) -> FramePublication:
-    cycle = dict.fromkeys(CYCLE_RECORD_KEYS)
-    cycle["perception"] = perception if perception is not None else {"things": []}
-    cycle["memory"] = memory
+    perception_data = perception or {"things": []}
+    cycle = ReportCycle(
+        perception=PerceptionText("perception_text", "fixture", "ok", (), tuple(
+            PerceivedThing(item["thing_id"], item["kind"], item.get("label", item["kind"]), ViewLocation("image", "center"))
+            for item in perception_data["things"]
+        )),
+        memory=MemoryReport.from_dict(memory) if isinstance(memory, dict) else memory,
+    )
     return FramePublication(
         health="healthy",
         read_at_ms=110,
@@ -126,7 +133,7 @@ class MemoryViewPublicationTests(unittest.TestCase):
             generated_at_ms=200,
         )
         shown_memory = view_payload["report"]["cycle"]["memory"]
-        self.assertEqual(shown_memory, report)
+        self.assertEqual(shown_memory, report.to_dict())
         states = dict(plugin_states(shown_memory))
         self.assertEqual(tuple(states), TWO_PLUGIN_IDS)
         self.assertEqual(states["evidence_test"]["record_count"], 1)

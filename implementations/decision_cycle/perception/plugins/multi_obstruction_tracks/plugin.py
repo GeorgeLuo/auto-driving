@@ -221,7 +221,7 @@ class MultiObstructionTracksPlugin:
                 "candidate_count": len(candidates),
                 "active_track_count": len(things),
                 "track_ids": [thing.thing_id for thing in things],
-                "track_events": events,
+                "track_events": track_events,
                 "detector": detector_summary,
                 "association": association,
                 "floor_cutoff_y": tracker.floor_cutoff_y,

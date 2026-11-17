@@ -12,9 +12,10 @@ from urllib.request import Request, urlopen
 
 from PIL import Image
 
-from autonomy.decision_cycle.cycle import CYCLE_RECORD_KEYS
 from autonomy.runtime.frame_loop import FRAME_PUBLICATION_SCHEMA, FramePublication
-from autonomy.runtime.report import HostReport, ReportApplication, ReportValues
+from autonomy.decision_cycle.perception.interface import PerceptionText, PerceptionPluginRun
+from autonomy.decision_cycle.perception.evidence.values import PerceivedThing, ViewLocation
+from autonomy.runtime.report import HostReport, ReportCycle, ReportApplication, ReportValues
 from cli.automa_cli.frontend.server import RuntimeViewServer
 from cli.automa_cli.workbench.runner import ImageReplayRunner
 from cli.automa_cli.frontend.perception_view import (
@@ -198,53 +199,16 @@ def _image_id(frame_id: str) -> str:
 
 
 def _publication(*, frame_id: str = "frame_000004", frame_index: int = 4) -> FramePublication:
-    perception = {
-        "schema": "perception_text",
-        "status": "ok",
-        "confidence": 0.8,
-        "plugin_runs": [
-            {
-                "plugin_id": "test-plugin",
-                "status": "ok",
-                "duration_ms": 8,
-                "thing_count": 2,
-            }
-        ],
-        "things": [
-            {
-                "thing_id": "test-region",
-                "kind": "region",
-                "label": "test region",
-                "confidence": 0.8,
-                "location": {
-                    "frame": "image",
-                    "zone": "near_center",
-                    "bbox_xyxy_norm": [0.2, 0.25, 0.6, 0.75],
-                    "polygon_xy_norm": [
-                        [0.2, 0.25],
-                        [0.6, 0.3],
-                        [0.55, 0.75],
-                        [0.25, 0.7],
-                    ],
-                },
-                "properties": {},
-            },
-            {
-                "thing_id": "front_camera_frame",
-                "kind": "sensor_frame",
-                "label": "front camera frame",
-                "confidence": 1.0,
-                "location": {
-                    "frame": "image",
-                    "zone": "full_frame",
-                    "bbox_xyxy_norm": [0.0, 0.0, 1.0, 1.0],
-                },
-                "properties": {"width_px": 64, "height_px": 48},
-            },
-        ],
-    }
-    cycle = dict.fromkeys(CYCLE_RECORD_KEYS)
-    cycle["perception"] = perception
+    perception = PerceptionText(
+        "perception_text", "test-plugin", "ok", (), (
+            PerceivedThing("test-region", "region", "test region", ViewLocation(
+                "image", "near_center", (0.2, 0.25, 0.6, 0.75),
+                ((0.2, 0.25), (0.6, 0.3), (0.55, 0.75), (0.25, 0.7))), 0.8),
+            PerceivedThing("front_camera_frame", "sensor_frame", "front camera frame", ViewLocation(
+                "image", "full_frame", (0, 0, 1, 1)), 1.0, {"width_px": 64, "height_px": 48}),
+        ), (PerceptionPluginRun("test-plugin", "ok", 8, 0, 2),),
+    )
+    cycle = ReportCycle(perception=perception)
     return FramePublication(
         health="healthy",
         read_at_ms=1242,

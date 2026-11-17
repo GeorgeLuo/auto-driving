@@ -15,7 +15,7 @@ from tests.shared.autonomy.decision_cycle.memory.activation_fixtures import (
 
 
 def _state(report: dict) -> dict:
-    return report["plugins"][-1]["state"]
+    return report.plugins[-1].state
 
 
 class MemoryActivationTests(unittest.TestCase):
@@ -41,7 +41,7 @@ class MemoryActivationTests(unittest.TestCase):
                 DecisionSteps(memory=step),
             ).run(context)
             # no observation step => observation is None on first cycle
-            self.assertEqual(result.memory["schema"], MEMORY_REPORT_SCHEMA)
+            self.assertEqual(result.memory.schema, MEMORY_REPORT_SCHEMA)
             self.assertEqual(_state(result.memory)["record_count"], 0)
 
             shared[OBSERVATION_KEY] = observation
@@ -102,8 +102,10 @@ class MemoryActivationTests(unittest.TestCase):
             context = DecisionFrameContext("frame_7", 7, 700, shared_memory=shared)
             context.shared_memory[OBSERVATION_KEY] = Observation("obs_7", 690, {})
             report = step.update(context)
-            _state(report)["records"][0]["properties"]["extra"] = 1
-            _state(report)["record_count"] = 99
+            with self.assertRaises(TypeError):
+                _state(report)["records"][0]["properties"]["extra"] = 1
+            with self.assertRaises(TypeError):
+                _state(report)["record_count"] = 99
 
             self.assertEqual(shared["memory.recording_test.state"]["records"][0].properties, {})
             self.assertEqual(_state(step.report())["record_count"], 1)

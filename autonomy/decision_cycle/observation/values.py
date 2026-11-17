@@ -3,7 +3,9 @@
 from __future__ import annotations
 
 from dataclasses import dataclass, field
-from copy import deepcopy
+from collections.abc import Mapping
+
+from autonomy.serialization import deep_freeze, frozen_mapping_to_dict
 from typing import Any
 
 
@@ -23,13 +25,13 @@ class Observation:
 
     observation_id: str
     created_at_ms: int
-    sensor_frame: dict[str, Any]
+    sensor_frame: Mapping[str, object]
     perception_schema: str | None = None
     perception_plugin_id: str | None = None
     summary: tuple[str, ...] = ()
     things: tuple[PerceivedThing, ...] = ()
     signals: tuple[PerceptionSignal, ...] = ()
-    metadata: dict[str, Any] = field(default_factory=dict)
+    metadata: Mapping[str, object] = field(default_factory=dict)
     schema: str = OBSERVATION_SCHEMA
 
     def __post_init__(self) -> None:
@@ -49,13 +51,22 @@ class Observation:
             object.__setattr__(self, name, tuple(values))
         object.__setattr__(self, "summary", tuple(self.summary))
 
+        for name in ("sensor_frame", "metadata"):
+            value = getattr(self, name)
+            if not isinstance(value, Mapping):
+                raise FieldError(name, "must be an object")
+            try:
+                object.__setattr__(self, name, deep_freeze(value, field_name=name))
+            except ValueError as exc:
+                raise FieldError(name, str(exc)) from exc
+
     def to_dict(self) -> dict[str, Any]:
         return {
             "schema": self.schema, "observation_id": self.observation_id,
-            "created_at_ms": self.created_at_ms, "sensor_frame": deepcopy(self.sensor_frame),
+            "created_at_ms": self.created_at_ms, "sensor_frame": frozen_mapping_to_dict(self.sensor_frame),
             "perception_schema": self.perception_schema, "perception_plugin_id": self.perception_plugin_id,
             "summary": self.summary, "things": tuple(thing.to_dict() for thing in self.things),
-            "signals": tuple(signal.to_dict() for signal in self.signals), "metadata": deepcopy(self.metadata),
+            "signals": tuple(signal.to_dict() for signal in self.signals), "metadata": frozen_mapping_to_dict(self.metadata),
         }
 
     @classmethod

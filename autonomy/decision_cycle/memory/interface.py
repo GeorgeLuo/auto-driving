@@ -72,7 +72,7 @@ class MemoryPluginReport:
 
     ``state`` is that plugin's own status summary of JSON data, including
     None when the plugin offers none. Invalid status data becomes a visible
-    ``status_error`` on the plugin. the report freezes it so later plugin updates cannot change it.
+    ``status_error`` on the plugin. The report freezes it so later plugin updates cannot change it.
     """
 
     plugin_id: str
@@ -115,19 +115,19 @@ class MemoryReport:
 
     def __post_init__(self) -> None:
         require_choice(self.schema, (MEMORY_REPORT_SCHEMA,), field_name="schema")
-        if not isinstance(self.plugins, (list, tuple)):
+        if not isinstance(self.plugins, (list, tuple)):  # pyright: ignore[reportUnnecessaryIsInstance] - validate runtime callers
             raise FieldError("plugins", "must be an array")
-        if not all(isinstance(plugin, MemoryPluginReport) for plugin in self.plugins):
+        if not all(isinstance(plugin, MemoryPluginReport) for plugin in self.plugins):  # pyright: ignore[reportUnnecessaryIsInstance] - validate runtime callers
             raise FieldError("plugins", "must contain MemoryPluginReport values")
         object.__setattr__(self, "plugins", tuple(self.plugins))
         if self.evidence_publisher is not None:
             require_ascii_id(self.evidence_publisher, field_name="evidence_publisher")
         if self.beliefs is not None:
-            if not isinstance(self.beliefs, Mapping):
+            if not isinstance(self.beliefs, Mapping):  # pyright: ignore[reportUnnecessaryIsInstance] - validate runtime callers
                 raise FieldError("beliefs", "must be an object or null")
             for name, summary in self.beliefs.items():
                 require_ascii_id(name, field_name=f"beliefs.{name}")
-                if not isinstance(summary, Mapping):
+                if not isinstance(summary, Mapping):  # pyright: ignore[reportUnnecessaryIsInstance] - validate runtime callers
                     raise FieldError(f"beliefs.{name}", "must be an object")
             try:
                 object.__setattr__(self, "beliefs", deep_freeze(self.beliefs, field_name="beliefs"))
@@ -156,26 +156,30 @@ class MemoryReport:
 
 
 
-def evidence_records(report: object) -> list[dict[str, Any]] | None:
+def evidence_records(report: object) -> list[Mapping[str, object]] | tuple[Mapping[str, object], ...] | None:
     """The evidence publisher's retained records, or None when unavailable.
 
-    A report that is not a dict, a missing publisher, or a missing plugin list
-    yields None. Plugins whose state is not a dict are skipped. The publisher's
-    ``records`` list is returned, or None when that field is not a list.
+    Accept the typed cycle report or a JSON step status. Missing publishers
+    and plugins yield None. A plugin's opaque state may be any JSON value;
+    only an object with a records array supplies retained evidence.
     """
 
-    if not isinstance(report, dict):
+    if isinstance(report, MemoryReport):
+        publisher = report.evidence_publisher
+        plugins = ((plugin.plugin_id, plugin.state) for plugin in report.plugins)
+    elif isinstance(report, dict):
+        publisher = report.get("evidence_publisher")
+        entries = report.get("plugins")
+        if not isinstance(entries, list):
+            return None
+        plugins = ((entry.get("plugin_id"), entry.get("state")) for entry in entries if isinstance(entry, dict))
+    else:
         return None
-    publisher = report.get("evidence_publisher")
-    plugins = report.get("plugins")
-    if not isinstance(publisher, str) or not publisher or not isinstance(plugins, list):
+    if not isinstance(publisher, str) or not publisher:
         return None
-    for entry in plugins:
-        if not isinstance(entry, dict) or entry.get("plugin_id") != publisher:
-            continue
-        state = entry.get("state")
-        if not isinstance(state, dict):
+    for plugin_id, state in plugins:
+        if plugin_id != publisher or not isinstance(state, Mapping):
             continue
         records = state.get("records")
-        return records if isinstance(records, list) else None
+        return records if isinstance(records, (list, tuple)) else None
     return None

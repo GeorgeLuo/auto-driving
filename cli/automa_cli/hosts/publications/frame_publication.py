@@ -9,7 +9,6 @@ from __future__ import annotations
 from functools import partial
 
 from autonomy.decision_cycle.activation import activation_presets
-from autonomy.decision_cycle.perception.interface import PerceptionText
 from autonomy.decision_cycle.timing import step_timing
 from autonomy.runtime.frame_loop import FramePublication
 from autonomy.runtime.report import HostReport
@@ -122,9 +121,9 @@ def perception_text_from_publication(publication: FramePublication) -> str:
     """The perception text rendered from stored signals and things."""
 
     report = publication.report
-    perception = None if report is None else report.cycle.get("perception")
-    if isinstance(perception, dict):
-        text = PerceptionText.from_dict(perception).text
+    perception = None if report is None else report.cycle.perception
+    if perception is not None:
+        text = perception.text
         if text.strip():
             return text.strip()
     if report is not None and report.status == "error" and report.error:
@@ -166,7 +165,7 @@ def step_unavailable(publication: FramePublication | None, step: str) -> tuple[s
     if error is not None:
         return ("stale" if publication.health == "stale" else "error"), error
     report = publication.report
-    if report.status == "error" and report.cycle.get(step) is None:
+    if report.status == "error" and report.cycle.record(step) is None:
         return "error", (
             f"The cycle for frame {report.frame_id} raised before {step} recorded: {report.error}"
         )

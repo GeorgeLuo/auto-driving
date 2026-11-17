@@ -4,6 +4,7 @@ import json
 import unittest
 from unittest.mock import patch
 
+from autonomy.decision_cycle.memory.interface import MemoryReport, MemoryPluginReport
 from autonomy.decision_cycle.observation.publication import OBSERVATION_KEY
 from autonomy.decision_cycle.activation import STEPS
 from autonomy.decision_cycle.cycle import (
@@ -72,15 +73,9 @@ class DecisionStageFlowTests(unittest.TestCase):
                     location=ViewLocation(frame="image", zone="center"),
                 ),
         )
-        memory = {
-            "schema": "memory_report",
-            "plugins": [
-                {
-                    "plugin_id": "test_memory",
-                    "state": {"records": [record.to_dict() for record in records]},
-                }
-            ],
-        }
+        memory = MemoryReport("memory_report", (MemoryPluginReport(
+            "test_memory", {"records": [record.to_dict() for record in records]},
+        ),))
         control = AutonomyControl(
             steering=0.1,
             throttle=0.2,
@@ -175,7 +170,7 @@ class DecisionStageFlowTests(unittest.TestCase):
         serialized = result.to_dict()
         self.assertEqual(serialized["schema"], DECISION_CYCLE_RESULT_SCHEMA)
         self.assertEqual(serialized["context"]["frame_id"], "frame_007")
-        self.assertEqual(serialized["memory"], memory)
+        self.assertEqual(serialized["memory"], memory.to_dict())
         self.assertEqual(serialized["control"], control.to_dict())
         self.assertEqual(serialized["proposal"], result.proposal.to_dict())
         self.assertEqual(serialized["plan"], result.plan.to_dict())
@@ -187,7 +182,7 @@ class DecisionStageFlowTests(unittest.TestCase):
 
         self.assertIs(serialized["context"]["metadata"], context.metadata)
         serialized["memory"]["plugins"][0]["state"]["records"][0]["properties"]["mutated"] = True
-        self.assertNotIn("mutated", memory["plugins"][0]["state"]["records"][0]["properties"])
+        self.assertNotIn("mutated", memory.plugins[0].state["records"][0]["properties"])
 
 
 if __name__ == "__main__":

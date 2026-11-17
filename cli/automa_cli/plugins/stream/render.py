@@ -83,7 +83,7 @@ def _memory_screen(event: StreamEvent) -> str:
     ]
     if source.error:
         lines.append(f"publication memory: {source.error}")
-    elif isinstance(source.report, dict):
+    elif source.report is not None:
         lines.append(
             f"publication memory: evidence publisher {evidence_publisher(source.report) or 'none'}"
         )

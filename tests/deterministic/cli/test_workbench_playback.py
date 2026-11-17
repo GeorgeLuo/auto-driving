@@ -7,6 +7,7 @@ from functools import partial
 from unittest import mock
 from urllib.parse import urlencode
 from urllib.request import urlopen
+from autonomy.decision_cycle.memory.interface import MemoryReport, MemoryPluginReport
 from autonomy.decision_cycle.activation import STEPS, step_activation
 from autonomy.decision_cycle.perception.evidence.values import (
     PerceptionEvidenceBatch,
@@ -184,7 +185,7 @@ class WorkbenchTests(unittest.TestCase):
             self.assertEqual(reads[0], (None, None))
             self.assertIs(reads[1][0], published[0])
             self.assertEqual(reads[1][1], step_reads[0])
-            self.assertEqual(completed["cycle"]["memory"], reports[-1])
+            self.assertEqual(completed["cycle"]["memory"], reports[-1].to_dict())
             runner.start()
             self.assertEqual(runner.wait(5)["phase"], "completed")
             self.assertEqual(reads[2], (None, None))
@@ -296,7 +297,7 @@ class WorkbenchTests(unittest.TestCase):
                 state = self.report["plugins"][0]["state"]
                 state["records"].append({"record_id": context.frame_id})
                 state["record_count"] = len(state["records"])
-                return self.report
+                return MemoryReport("memory_report", (MemoryPluginReport("mutable", state),))
 
             def reset(self, shared_memory=None):
                 pass

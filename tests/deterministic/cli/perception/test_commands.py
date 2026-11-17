@@ -9,9 +9,8 @@ from pathlib import Path
 
 from PIL import Image
 
-from autonomy.decision_cycle.cycle import CYCLE_RECORD_KEYS
 from autonomy.runtime.frame_loop import FramePublication
-from autonomy.runtime.report import HostReport, ReportApplication, ReportValues
+from autonomy.runtime.report import HostReport, ReportCycle, ReportApplication, ReportValues
 from cli.automa_cli.frontend.server import RuntimeViewServer
 from cli.automa_cli.workbench.runner import ImageReplayRunner
 from tests.shared.cli.invoke import invoke_automa
@@ -43,7 +42,7 @@ class PerceptionCommandTests(unittest.TestCase):
                 report=HostReport(
                     host_name=host_name, run_id="run", generation_id="generation",
                     frame_id="frame_000002", frame_index=2, timestamp_ms=1000, published_at_ms=1000,
-                    cycle={**dict.fromkeys(CYCLE_RECORD_KEYS), "perception": {"things": [], "signals": []}},
+                    cycle=ReportCycle(),
                     application=ReportApplication(False, "observe_only", "idle", 0.0, 0.0),
                     values=ReportValues.from_dict({
                         "source_id": "fixture", "activation": {"steps": {}}, "stale_after_ms": 1000,

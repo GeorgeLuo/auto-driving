@@ -16,9 +16,8 @@ from unittest.mock import Mock, patch
 
 from dataclasses import replace
 
-from autonomy.decision_cycle.cycle import CYCLE_RECORD_KEYS
 from autonomy.runtime.frame_loop import FRAME_PUBLICATION_SCHEMA, FramePublication
-from autonomy.runtime.report import HostReport, ReportApplication, ReportValues
+from autonomy.runtime.report import HostReport, ReportCycle, ReportApplication, ReportValues
 from autonomy.decision_cycle.perception.interface import PerceptionPluginRun, PerceptionText
 from autonomy.decision_cycle.perception.evidence.values import PerceivedThing, PerceptionSignal, ViewLocation
 from cli.automa_cli.plugins.stream import decision, memory, perception, session
@@ -39,10 +38,7 @@ NORMALIZED = HostReport(
         "activation": {"steps": {"plan": {"plugins": []}}},
         "delivered_at_ms": None, "delivery_error": None, "receipt": None, "timing": None,
     }),
-    cycle={
-        "perception": None, "observation": None, "memory": None,
-        "proposal": {}, "plan": {}, "action": {},
-    },
+    cycle=ReportCycle(),
     application=ReportApplication(False, "observe_only", "observe-only", 0, 0),
 )
 # What the host serves for NORMALIZED; acceptance itself is patched.
@@ -90,7 +86,7 @@ def _frame_publication(*, health="healthy", status="ok", error=None, **cycle):
         values=ReportValues.from_dict({
             "source_id": "fixture:local", "stale_after_ms": 1000, "activation": {"steps": {}}, "delivered_at_ms": None, "delivery_error": None, "receipt": None, "timing": None,
         }),
-        cycle={**{step: None for step in CYCLE_RECORD_KEYS}, **cycle},
+        cycle=ReportCycle(**cycle),
         application=ReportApplication(False, "observe_only", "observe-only", 0, 0),
         status=status, error=error,
     )
@@ -229,7 +225,7 @@ class StreamOutputTests(unittest.TestCase):
         stale = replace(PUBLICATION, health="stale", result_age_ms=1500, stale_after_ms=1000)
         raised = replace(PUBLICATION, report=replace(
             PUBLICATION.report, status="error", error="RuntimeError: boom",
-            cycle={**PUBLICATION.report.cycle, "plan": None, "action": None},
+            cycle=replace(PUBLICATION.report.cycle, plan=None, action=None),
         ))
         for publication, status, reason in (
             (stale, "stale", "The latest frame is 1500 ms old, past its 1000 ms ceiling."),
@@ -263,7 +259,7 @@ class StreamOutputTests(unittest.TestCase):
     def test_perception_reports_a_stale_frame_with_its_fields(self):
         probe = perception._probe_perception(
             host_name="fixture", base_url="http://host.invalid", fetch_error=None,
-            publication=_frame_publication(health="stale", perception=PerceptionText("perception_text", "fixture", "empty", (), ()).to_dict()),
+            publication=_frame_publication(health="stale", perception=PerceptionText("perception_text", "fixture", "empty", (), ())),
         )
         self.assertEqual((probe["status"], probe["frame_id"], probe["signal_count"]), ("stale", "next", 0))
         self.assertEqual(probe["error"], "The latest frame is 1500 ms old, past its 1000 ms ceiling.")
@@ -326,7 +322,7 @@ class StreamOutputTests(unittest.TestCase):
 
     def test_memory_text_and_json_read_the_same_completed_report(self):
         report = NORMALIZED.to_dict()
-        report["cycle"]["memory"] = {"schema": "memory_report", "plugins": [], "evidence_publisher": None}
+        report["cycle"]["memory"] = {"schema": "memory_report", "plugins": [], "evidence_publisher": None, "beliefs": None}
         report["values"].update(source_id="fixture:local", stale_after_ms=1000)
         publication = FramePublication.from_dict({
             "schema": FRAME_PUBLICATION_SCHEMA, "ok": True, "health": "healthy", "read_at_ms": 1,
@@ -408,13 +404,13 @@ class StreamOutputTests(unittest.TestCase):
             "perception_text", "lightweight_observer", "ok",
             (PerceptionSignal("clear", True), PerceptionSignal("distance", 2)),
             (PerceivedThing("ahead", "obstacle", "ahead", ViewLocation("image", "center")),),
-        ).to_dict()
+        )
         summary = perception.perception_publication(FramePublication(
             health="healthy", read_at_ms=1040, result_age_ms=40, stale_after_ms=1000,
             report=HostReport(
                 host_name="fixture", run_id="run", generation_id="generation",
                 frame_id="f-12", frame_index=12, timestamp_ms=1000, published_at_ms=1000,
-                cycle={**dict.fromkeys(CYCLE_RECORD_KEYS), "perception": evidence},
+                cycle=ReportCycle(perception=evidence),
                 application=ReportApplication(False, "observe_only", "hold", 0.1, 0.2),
                 values=ReportValues.from_dict({
                     "source_id": "fixture:local",
@@ -426,7 +422,7 @@ class StreamOutputTests(unittest.TestCase):
             ),
         ))
         self.assertEqual((summary.frame_id, summary.signal_count, summary.thing_count, summary.text),
-                         ("f-12", 2, 1, PerceptionText.from_dict(evidence).text))
+                         ("f-12", 2, 1, evidence.text))
         self.assertEqual(perception.perception_publication(None), PerceptionPublication())
         text = render_stream(StreamEvent("perception", {"status": "live"}, source=summary), json_output=False)
         self.assertIn("presets: perception=lightweight_observer  mode: observe_only", text)

@@ -13,6 +13,7 @@ from pathlib import Path
 
 import numpy as np
 
+from autonomy.decision_cycle.memory.interface import MemoryReport, MemoryPluginReport
 from autonomy.decision_cycle.activation import DECISION_STEPS, STEPS, activation_generation_id, step_activation
 from autonomy.decision_cycle.steps import decision_steps
 from autonomy.plugins import PluginDefinition
@@ -149,20 +150,9 @@ class ObservationPublicationTests(unittest.TestCase):
                             bbox_xyxy_norm=(0.2, 0.3, 0.5, 0.8),
                         ),
             )
-            return {
-                "schema": "memory_report",
-                "plugins": [
-                    {
-                        "plugin_id": "test_memory",
-                        "state": {
-                            "health": "healthy",
-                            "record_count": 1,
-                            "records": [record.to_dict()],
-                        },
-                    }
-                ],
-                "evidence_publisher": "test_memory",
-            }
+            return MemoryReport("memory_report", (MemoryPluginReport("test_memory", {
+                "health": "healthy", "record_count": 1, "records": [record.to_dict()],
+            }),), evidence_publisher="test_memory")
 
         host = create_host(steps=DecisionSteps(memory=remember))
         part = AutonomyPilotPart(host=host)

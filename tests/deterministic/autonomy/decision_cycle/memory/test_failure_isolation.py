@@ -83,7 +83,7 @@ class MemoryFailureIsolationTests(unittest.TestCase):
                 {key: value for key, value in shared.items() if key != OBSERVATION_KEY},
                 {key: value for key, value in before.items() if key != OBSERVATION_KEY},
             )
-            self.assertEqual(step.report()["plugins"][0]["state"]["records"][0]["record_id"], "rec-obs_a")
+            self.assertEqual(step.report().plugins[0].state["records"][0]["record_id"], "rec-obs_a")
 
     def test_reset_failure_is_recorded_with_a_bounded_diagnostic(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:

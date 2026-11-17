@@ -1129,7 +1129,7 @@ class ImageReplayRunner:
         self._state["summary"] = frame_summary(
             perception=result.perception,
             observation=result.observation,
-            memory=cycle["memory"],
+            memory=result.memory,
             duration_ms=result.duration_ms,
             frames_completed=self._state["progress"]["completed"],
             frames_total=self._state["progress"].get("total", 0),

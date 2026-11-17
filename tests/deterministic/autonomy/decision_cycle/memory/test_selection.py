@@ -79,7 +79,7 @@ class MemorySelectionTests(unittest.TestCase):
             }), encoding="utf-8")
             empty = MemoryRunner.from_activation(read_step_activation(path, "memory"))
             self.assertEqual(empty.plugin_ids, ())
-            self.assertEqual(empty.report()["plugins"], [])
+            self.assertEqual(empty.report().plugins, ())
             self.assertEqual(step.plugin_ids, ("second",))
 
     def test_repeated_updates_keep_the_constructed_instance(self):
@@ -99,7 +99,7 @@ class MemorySelectionTests(unittest.TestCase):
         self.assertIsNone(shared["memory.first.previous"])
         self.assertEqual(shared["memory.second.previous"], "first")
         self.assertEqual(shared["memory.evidence"], "second")
-        self.assertEqual([item["plugin_id"] for item in report["plugins"]], ["first", "second"])
+        self.assertEqual([item.plugin_id for item in report.plugins], ["first", "second"])
         self.assertEqual([item["update_count"] for item in step.status()["plugins"]], [1, 1])
 
     def test_reset_without_a_map_resets_in_the_last_map(self):

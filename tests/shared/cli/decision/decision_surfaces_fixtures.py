@@ -52,7 +52,7 @@ def frame_inputs(frame: dict) -> dict:
     }
 
 
-def published_cycle(frame: dict) -> tuple[Observation, dict]:
+def published_cycle(frame: dict) -> tuple[Observation, MemoryReport]:
     """The observation and memory report a host publication carries for ``frame``."""
 
     records = list(frame["evidence"])
@@ -66,7 +66,7 @@ def published_cycle(frame: dict) -> tuple[Observation, dict]:
         ),
         evidence_publisher="bounded_evidence",
     )
-    return Observation.from_dict(frame["observation"]), memory.to_dict()
+    return Observation.from_dict(frame["observation"]), memory
 
 
 def packaged_decision_steps(action: str = "hold") -> dict:
@@ -96,7 +96,7 @@ def host_result_for_records(
     timestamp_ms: int,
     mode: str = "observe_only",
     observation: Observation | None = None,
-    memory: dict | None = None,
+    memory: MemoryReport | None = None,
 ) -> DecisionCycleResult:
     """A completed host cycle whose application the shared report can publish."""
 
@@ -140,7 +140,7 @@ def vehicle_report_for_records(
     mode: str = "observe_only",
     values: dict | None = None,
     observation: Observation | None = None,
-    memory: dict | None = None,
+    memory: MemoryReport | None = None,
 ) -> dict:
     """The ``host_report`` both viewers accept for these decision records."""
 

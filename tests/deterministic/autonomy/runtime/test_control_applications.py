@@ -2,7 +2,6 @@
 from __future__ import annotations
 
 import base64
-import json
 import tempfile
 import unittest
 from dataclasses import replace
@@ -18,11 +17,11 @@ from autonomy.decision_cycle.context import DecisionFrameContext
 from autonomy.decision_cycle.cycle import DecisionSteps
 from autonomy.runtime.cycle_host import AutonomyCycleHost
 from autonomy.runtime.control import AutonomyControl
+from autonomy.fields import FieldError
 from autonomy.runtime.execution import CONTROL_APPLICATION_LIMIT, ControlApplication
 from autonomy.runtime.recording import (
-    CONTROL_APPLICATION_CHANGE_FIELD, RECORDING_MANIFEST_NAME, RunRecording,
+    CONTROL_APPLICATION_CHANGE_FIELD, RECORDING_MANIFEST_NAME, RecordingWriter, RunRecording,
     control_application_windows,
-    write_recorded_frame,
 )
 from autonomy.runtime.session import RunConfiguration
 from autonomy.vehicle import FRONT_CAMERA_SENSOR_ID, SensorFrame, SensorReading
@@ -30,7 +29,7 @@ from cli.automa_cli.replay.frames import run_frame
 from cli.automa_cli.replay.source import load_image_source
 from cli.automa_cli.replay.models import SourceValidationError
 from implementations.runtime.picar.control import DonkeyControlTarget
-from tests.shared.autonomy.runtime.recording_fixtures import read_recording_entries
+from tests.shared.autonomy.runtime.recording_fixtures import read_recording_entries, read_recording_generations
 from tests.shared.cli.workbench_fixtures import image_source, write_manifest
 
 
@@ -68,7 +67,9 @@ class ControlApplicationRecordingTests(unittest.TestCase):
             self.assertTrue(all("action_policy" not in entry for entry in entries))
             self.assertEqual([entry["user_steering"] for entry in entries], [0, 0.1, 0.2, 0.3])
             self.assertTrue(all(entry["user_throttle"] == 0.4 for entry in entries))
-            self.assertTrue(all(set(entry["context"]) == {"timestamp_ms"} for entry in entries))
+            self.assertTrue(all(set(entry["context"]) == {"timestamp_ms", "metadata"} for entry in entries))
+            self.assertTrue(all("step_activations" not in entry["context"]["metadata"] for entry in entries))
+            self.assertTrue(all("steps" not in entry and "step_activations" not in entry for entry in entries))
             changes = [entry[CONTROL_APPLICATION_CHANGE_FIELD] for entry in entries]
             self.assertEqual([len(change["added"]) for change in changes], [1, 3, 1, 1])
             self.assertEqual(changes[1]["added"][-1], changes[1]["added"][-2])
@@ -77,13 +78,13 @@ class ControlApplicationRecordingTests(unittest.TestCase):
             self.assertEqual([item.delivered_at_ms for item in expected[1]], [2000, 2000, 1000, 1000])
             exported = root / "export"
             batch = recording.read(run_id=recording.run_id, after=0)
+            writer = RecordingWriter(exported, host_name="picar", run_id=recording.run_id)
+            for generation_id, steps in batch["generations"].items():
+                writer.store_generation(generation_id, steps, {}.get)
             for item in batch["frames"]:
                 frame = item["frame"]
-                saved = recording.root / "perception" / frame["frame_id"] / "perception.json"
-                saved_text = saved.read_text()
-                self.assertNotIn(CONTROL_APPLICATION_CHANGE_FIELD, saved_text)
-                recorded_frame = json.loads(saved_text)
-                self.assertNotIn("decision_cycle", recorded_frame)
+                self.assertNotIn(CONTROL_APPLICATION_CHANGE_FIELD, frame["context"])
+                self.assertNotIn("decision_cycle", frame)
                 for key in (
                     "perception",
                     "observation",
@@ -94,11 +95,11 @@ class ControlApplicationRecordingTests(unittest.TestCase):
                     "control",
                     "context",
                 ):
-                    self.assertIn(key, recorded_frame)
-                write_recorded_frame(exported, frame, base64.b64decode(item["image_base64"]),
-                                     item["image_extension"], {})
+                    self.assertIn(key, frame)
+                writer.commit(frame, base64.b64decode(item["image_base64"]), item["image_extension"])
             self.assertEqual((exported / RECORDING_MANIFEST_NAME).read_text(), header)
             self.assertEqual(read_recording_entries(exported), entries)
+            self.assertEqual(read_recording_generations(exported), read_recording_generations(recording.root))
             for directory in (recording.root, exported):
                 source = load_image_source(directory)
                 seen = []
@@ -123,7 +124,11 @@ class ControlApplicationRecordingTests(unittest.TestCase):
                 self.assertEqual(capture_times, [2003, 2001, 2000, 2002])
 
     def test_recording_encodes_partial_overlap_no_overlap_and_unchanged_windows(self):
-        records = tuple(ControlApplication(None, "autonomy", True, "idle", AutonomyControl(), 100)
+        records = tuple(ControlApplication(None, "autonomy", True, "idle", AutonomyControl(metadata={
+            "plugin_id": "query", "plugin_ids": ["query"], "proposal_id": "query:f0",
+            "proposal_ids": ["query:f0"], "selector_id": "follow_policy",
+            "plan_metadata": {"policy": {"name": "get free", "epoch": 4}},
+        }), 100)
                         for _ in range(5))
         windows = [records[:3], records[1:4], records[1:4], records[4:], None, (), records[:1]]
         with tempfile.TemporaryDirectory() as tmp:
@@ -194,7 +199,7 @@ class ControlApplicationRecordingTests(unittest.TestCase):
                         "image_path": "frame_00.png",
                         CONTROL_APPLICATION_CHANGE_FIELD: {"kept": 0, "added": [application]},
                     }]})
-                    with self.assertRaisesRegex(SourceValidationError, "invalid control applications"):
+                    with self.assertRaisesRegex(SourceValidationError, r"frames.0.control_application_change.added.0"):
                         load_image_source(root)
             for change in ({}, [], {"kept": 0}, {"kept": 0, "added": {}},
                            {"kept": True, "added": []}, {"kept": -1, "added": []},
@@ -204,6 +209,18 @@ class ControlApplicationRecordingTests(unittest.TestCase):
                                                       CONTROL_APPLICATION_CHANGE_FIELD: change}]})
                     with self.assertRaisesRegex(SourceValidationError, "frame 0 has invalid control applications"):
                         load_image_source(root)
+
+    def test_older_application_shapes_are_rejected_with_nested_field_paths(self):
+        valid = ControlApplication(None, "manual", False, "idle", AutonomyControl()).to_dict()
+        for parent, missing, field in (
+            (valid, "receipt", "receipt"),
+            (valid["control"], "metadata", "control.metadata"),
+        ):
+            removed = parent.pop(missing)
+            with self.subTest(field=field), self.assertRaises(FieldError) as caught:
+                control_application_windows([{"kept": 0, "added": [valid]}])
+            self.assertEqual(caught.exception.field_name, f"frames.0.control_application_change.added.0.{field}")
+            parent[missing] = removed
 
     def test_replay_removes_the_keys_when_the_source_recorded_none(self):
         application = ControlApplication(None, "autonomy", True, "idle", AutonomyControl(), 100)

@@ -12,7 +12,7 @@ from autonomy.decision_cycle.perception.evidence.values import ViewLocation
 class _RecordingMemory:
     """Test double used only by activation tests.
 
-    Keeps its epoch and records at ``<plugin_id>.state`` in the host map.
+    Keeps its epoch and records at ``memory.<plugin_id>.state`` in the host map.
     """
 
     contract = MemoryPluginContract(description="Record test observations.")
@@ -31,7 +31,7 @@ class _RecordingMemory:
 
     @property
     def state_key(self) -> str:
-        return f"{self.plugin_id}.state"
+        return f"memory.{self.plugin_id}.state"
 
     def state(self, shared_memory) -> dict:
         current = shared_memory.get(self.state_key) if shared_memory is not None else None

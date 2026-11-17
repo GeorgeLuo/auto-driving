@@ -66,6 +66,7 @@ def inspect_step(
         return InspectResult(2, error=f"Could not load plugins for {step} inspect: {type(exc).__name__}: {exc}")
 
     frames: list[dict[str, Any]] = []
+    records = []
     replay_inputs: list[dict[str, Any]] = []
     for replay_frame in image_source.frames[: count if frame is None else frame + 1]:
         try:
@@ -78,8 +79,9 @@ def inspect_step(
             replay_inputs.append(replay.recording_entry(replay_frame, outcome))
         if frame is not None and replay_frame.position != frame:
             continue
-        cycle = outcome.result.to_dict()
-        step_record = None if replay_frame.absent else cycle[step]
+        result = outcome.result
+        records.append(None if replay_frame.absent else result)
+        step_record = None if replay_frame.absent else getattr(result, step)
         frames.append({
             "position": replay_frame.position,
             "frame_id": replay_frame.frame_id,
@@ -87,11 +89,12 @@ def inspect_step(
             "timestamp_ms": replay_frame.timestamp_ms,
             "image_path": str(replay_frame.image_path) if replay_frame.image_path is not None else None,
             "absence_reason": replay_frame.absence_reason,
-            "record": step_record,
+            "record": None if step_record is None else step_record.to_dict(),
             "plugin_report": outcome.plugin_reports.get(step),
-            "timing": cycle["timing"],
+            "timing": result.timing,
             "steps": replay.step_payloads(),
-            **{name: cycle[name] for name in _INPUTS.get(step, ())},
+            **{name: None if getattr(result, name) is None else getattr(result, name).to_dict()
+               for name in _INPUTS.get(step, ())},
         })
 
     run_id = inspect_run_id(image_source.source_id)
@@ -116,4 +119,4 @@ def inspect_step(
             record_inspect_run(run_dir, report, image_source, replay_inputs)
         except (OSError, ValueError) as exc:
             return InspectResult(2, error=f"Could not record {step} inspect run {run_dir}: {exc}")
-    return InspectResult(0, report=report)
+    return InspectResult(0, report=report, records=tuple(records))

@@ -12,12 +12,11 @@ from dataclasses import replace
 from pathlib import Path
 from typing import Callable, NoReturn
 
+from autonomy.decision_cycle.restage import Restaged
 from autonomy.decision_cycle.activation import DECISION_STEPS, STEPS, StepActivation
 from autonomy.decision_cycle.cycle import CYCLE_RECORD_KEYS, cycle_result_of
-from autonomy.decision_cycle.perception.interface import PerceptionText
 from autonomy.plugins import LocalPluginCatalog
 from autonomy.runtime.plugin_catalog import PluginCatalogAPI
-from autonomy.runtime.recording import recorded_selections
 from implementations.decision_cycle.catalog import CUSTOM_PRESET
 
 from ..frontend.workbench_contract import (
@@ -658,15 +657,13 @@ class ImageReplayRunner:
         refresh = False
         try:
             if active_phase:
-                runners, activations, changed = replace_replay_pipeline(
+                changed = replace_replay_pipeline(
                     self._steps, self._replay_activations, {step: activation},
                     overrides=set(self._replay_activations) - {step},
                     build=self._runner_for,
                 )
-                if changed:
-                    self._steps = runners
-                    self._replay_activations = activations
-                    self._shared_memory = {}
+                if changed is not None:
+                    self._accept_changed_pipeline_locked(changed)
                     refresh = (
                         self._state["phase"] == "paused"
                         and self._state["latest_processed_position"] is not None
@@ -767,7 +764,7 @@ class ImageReplayRunner:
 
     def _build_steps(self, first_frame: ReplayFrame | None = None) -> dict[str, object]:
         """Restore the first frame's selections before constructing any selectable step."""
-        recorded = recorded_selections(first_frame.metadata) if first_frame else {}
+        recorded = first_frame.selections if first_frame else {}
         defaults = {step: default_selection(step) for step in STEPS}
         defaults.update(self._default_activations)
         activations = resolve_replay_activations(
@@ -890,7 +887,7 @@ class ImageReplayRunner:
         cached: dict[str, object],
     ) -> None:
         self._state["current_frame"] = frame.to_dict()
-        self._set_displayed_locked(cached["cycle"], cached["perception"])
+        self._set_displayed_locked(cached["cycle"], cached["perception_text"])
         # The live pipeline is updated in place. A cached frame keeps its own.
         if "pipeline" in cached:
             self._state["machine_detail"]["pipeline"] = copy.deepcopy(cached["pipeline"])
@@ -1049,8 +1046,8 @@ class ImageReplayRunner:
             try:
                 with self._condition:
                     try:
-                        runners, activations, changed = replace_replay_pipeline(
-                            steps, self._replay_activations, recorded_selections(frame.metadata),
+                        changed = replace_replay_pipeline(
+                            steps, self._replay_activations, frame.selections,
                             overrides=self._selection_overrides, build=self._runner_for,
                         )
                     except Exception as exc:
@@ -1060,9 +1057,9 @@ class ImageReplayRunner:
                         )
                         self._condition.notify_all()
                         return False
-                    if changed:
-                        steps = runners
-                        self._accept_changed_pipeline_locked(runners, activations)
+                    if changed is not None:
+                        steps = changed.steps
+                        self._accept_changed_pipeline_locked(changed)
                     self._apply_plugin_configuration_locked()
                 outcome = run_frame(frame, steps=steps, shared_memory=self._shared_memory)
                 result = outcome.result
@@ -1092,7 +1089,9 @@ class ImageReplayRunner:
                         if partial is not None
                         else {key: None for key in CYCLE_RECORD_KEYS}
                     )
-                    self._set_displayed_locked(cycle, cycle.get("perception"))
+                    self._set_displayed_locked(
+                        cycle, partial.perception.text if partial is not None and partial.perception is not None else None,
+                    )
                     self._state["timing"] = None if partial is None else copy.deepcopy(partial.timing)
                     self._set_failure_locked(
                         boundary=getattr(exc, "boundary", "pipeline"),
@@ -1102,15 +1101,11 @@ class ImageReplayRunner:
                     self._condition.notify_all()
                 return False
 
-    def _accept_changed_pipeline_locked(
-        self,
-        runners: dict[str, object],
-        activations: Mapping[str, StepActivation | None],
-    ) -> None:
-        self._steps = runners
-        self._replay_activations = activations
-        self._shared_memory = {}
-        for name, activation in activations.items():
+    def _accept_changed_pipeline_locked(self, changed: Restaged) -> None:
+        self._steps = changed.steps
+        self._replay_activations = changed.activations
+        self._shared_memory = changed.keep(self._shared_memory)
+        for name, activation in changed.activations.items():
             if name not in self._selection_overrides:
                 self._store_recorded_activation(name, activation)
 
@@ -1119,9 +1114,9 @@ class ImageReplayRunner:
 
         result = outcome.result
         cycle = result.export_cycle()
-        perception = cycle.get("perception")
+        perception_text = result.perception.text if result.perception is not None else None
         self._state["current_frame"] = frame.to_dict()
-        self._set_displayed_locked(cycle, perception)
+        self._set_displayed_locked(cycle, perception_text)
         self._state["progress"]["completed"] = frame.position + 1
         self._state["progress"]["percent"] = (
             round(
@@ -1134,7 +1129,7 @@ class ImageReplayRunner:
         self._state["summary"] = frame_summary(
             perception=result.perception,
             observation=result.observation,
-            memory=cycle["memory"],
+            memory=result.memory,
             duration_ms=result.duration_ms,
             frames_completed=self._state["progress"]["completed"],
             frames_total=self._state["progress"].get("total", 0),
@@ -1148,7 +1143,7 @@ class ImageReplayRunner:
         # updated in place for the next frame.
         self._history[frame.frame_id] = {
             "cycle": cycle,
-            "perception": perception,
+            "perception_text": perception_text,
             "pipeline": copy.deepcopy(pipeline),
             "summary": self._state["summary"],
             "timing": timing,
@@ -1330,15 +1325,16 @@ class ImageReplayRunner:
             "last_transition": None,
         }
 
-    def _set_displayed_locked(self, cycle: dict[str, object], perception: object) -> None:
+    def _set_displayed_locked(self, cycle: dict[str, object], perception_text: str | None) -> None:
         """Replace the displayed cycle and perception; the revision tells the page they changed.
 
-        The page shows the perception ``text`` rendered from the stored evidence.
+        The text comes from the typed result and is cached with its exported frame.
         """
 
         self._state["cycle"] = cycle
+        perception = cycle["perception"]
         self._state["perception"] = (
-            {**perception, "text": PerceptionText.from_dict(perception).text}
+            {**perception, "text": perception_text}
             if isinstance(perception, dict) else perception
         )
         self._state["steps_revision"] = int(self._state.get("steps_revision", 0)) + 1

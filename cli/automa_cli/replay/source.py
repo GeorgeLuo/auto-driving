@@ -2,8 +2,10 @@
 
 A recorded run stores manifest.json as a header. Its entries file holds one
 JSON object per frame, in record order, with archive-relative image paths.
-A manifest with an inline frames list is the same input: hand-authored image
-directories and inspect recordings use that form.
+Each entry names a generation whose step selections the run stores once, and
+the frames of one generation share them. A manifest with an inline frames list
+is the same input: hand-authored image directories and inspect recordings use
+that form, with steps on each frame.
 Frame indices order a recording. Timestamps may repeat at millisecond
 resolution, but cannot go backwards; replay keeps the recorded times.
 Unmanifested images use case-insensitive filename order and synthetic one-second
@@ -20,13 +22,15 @@ import os
 import re
 from pathlib import Path
 
+from autonomy.decision_cycle.activation import StepActivation
 from autonomy.plugins import add_uploaded_source_root
 from autonomy.runtime.execution import ControlApplication
 from autonomy.runtime.recording import (
     CONTROL_APPLICATION_CHANGE_FIELD,
+    RECORDING_ENTRIES_FIELD,
     UPLOADED_SOURCES_DIR,
     control_application_windows,
-    recorded_selections,
+    entry_selections,
     recording_entries,
 )
 
@@ -85,6 +89,10 @@ def normalize_image_directory(
         ])
     except ValueError as exc:
         raise SourceValidationError(str(exc)) from exc
+    try:
+        selections = entry_selections(source_path, manifest or {}, entries)
+    except (TypeError, ValueError) as exc:
+        raise SourceValidationError(f"invalid recorded selections: {exc}") from exc
     frames = tuple(
         _build_frame(
             source_id=source_id,
@@ -93,6 +101,7 @@ def normalize_image_directory(
             source_path=source_path,
             max_image_bytes=max_image_bytes,
             control_applications=windows[position],
+            selections=selections[position],
         )
         for position, entry in enumerate(entries)
     )
@@ -190,7 +199,13 @@ def _manifest_frame_entries(
 ) -> list[object]:
     name = manifest_path.name if manifest_path is not None else "manifest.json"
     try:
-        entries = recording_entries(source_path, manifest)
+        if RECORDING_ENTRIES_FIELD in manifest:
+            entries = recording_entries(source_path, manifest)
+        else:
+            frames = manifest.get("frames")
+            if not isinstance(frames, list):
+                raise ValueError("frames must be a list")
+            entries = list(frames)
     except ValueError as exc:
         raise _manifest_entries_error(name, exc) from exc
     return entries
@@ -310,18 +325,6 @@ def _frame_metadata(
             raise SourceValidationError(f"frame {position} context must be an object")
         metadata["context"] = copy.deepcopy(entry["context"])
     _copy_recording_identity(entry, metadata)
-    if "steps" not in entry:
-        return metadata
-    try:
-        selections = recorded_selections(entry)
-    except (TypeError, ValueError) as exc:
-        raise SourceValidationError(
-            f"frame {position} has invalid recorded selections: {exc}"
-        ) from exc
-    metadata["steps"] = {
-        step: activation.to_payload() if activation is not None else None
-        for step, activation in selections.items()
-    }
     return metadata
 
 
@@ -341,6 +344,7 @@ def _build_frame(
     source_path: Path,
     max_image_bytes: int,
     control_applications: tuple[ControlApplication, ...] | None = None,
+    selections: dict[str, StepActivation | None] | None = None,
 ) -> ReplayFrame:
     if not isinstance(entry, dict):
         raise SourceValidationError(
@@ -373,6 +377,7 @@ def _build_frame(
         content_type=content_type_for_path(image_path) if image_path else None,
         metadata=_frame_metadata(entry, position, image_metadata),
         control_applications=control_applications,
+        selections={} if selections is None else selections,
         mode=entry.get("mode"), user_steering=entry.get("user_steering"),
         user_throttle=entry.get("user_throttle"),
     )

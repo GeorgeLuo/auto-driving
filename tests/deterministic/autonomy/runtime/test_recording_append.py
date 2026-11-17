@@ -18,7 +18,6 @@ from autonomy.runtime.recording import (
     RECORDING_ENTRIES_NAME,
     RECORDING_MANIFEST_NAME,
     RunRecording,
-    write_recorded_frame,
 )
 from autonomy.vehicle import FRONT_CAMERA_SENSOR_ID, SensorFrame, SensorReading
 from tests.shared.autonomy.runtime.recording_fixtures import read_recording_entries
@@ -115,7 +114,7 @@ class RecordingAppendTests(unittest.TestCase):
                 recording.append(results[0], ())
             item = recording.read(run_id=recording.run_id, after=0)["frames"][0]
             with self.assertRaisesRegex(ValueError, "recorded frame_id must be unique within the run"):
-                write_recorded_frame(recording.root, item["frame"], camera.read_bytes(), ".png", {})
+                recording.writer.commit(item["frame"], camera.read_bytes(), ".png")
             self.assertEqual(entries_path.read_bytes(), committed)
             self.assertEqual((recording.root / RECORDING_MANIFEST_NAME).read_bytes(), header)
             self.assertEqual(recording.count, 2)

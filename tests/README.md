@@ -41,10 +41,8 @@ Run the tests your change reaches, not every suite. `commands` and `journeys` to
    blocking findings and report the result.
 4. For Python changes and reviews, inspect the review questions the same command
    lists for the final revision; the PR's Python quality summary lists them for
-   the committed head. Investigate material candidates and report their locations
-   and dispositions: fixed, retained with a code-based reason, or unresolved. If
-   a review check cannot run, the summary says why; report it. Review questions do not fail
-   the check, and a passing check does not mean they were reviewed.
+   the committed head. Report material ones as the
+   [engineer role](../docs/guidance/roles/engineer.md) step 6 describes.
 5. CI does not run `systems/`. Run the systems tests that drive the code you changed, chosen with a group and `-k`:
 
 | Change touches | Run |
@@ -80,19 +78,18 @@ python3 -m scripts.validation.check --text cli/draft.py < draft.py   # text, as 
 A change reports findings throughout its changed files, not just on changed
 lines. Project-wide checks also report findings introduced in other files, such
 as callers broken by a signature change. Each check compares the head with its
-merge base to identify those findings elsewhere. Whole files and text report all
-their findings; type checking needs the project and skips text.
+merge base to tell which findings the change introduced; only those block it,
+and the rest are review questions. Whole files and text report all their
+findings; type checking needs the project and skips text.
 
-Ruff, basedpyright, import-linter, the retired-vocabulary check, and the
-plugin-state check report blocking findings. The plugin-state check reads the
-plugins under `implementations/` for state kept on the instance between cycles,
-which belongs in shared memory; `python3 -m scripts.validation.plugin_state DIR`
-runs it on plugins outside the repository, such as an uploaded collection. The command exits 0 when clean, 1 for blocking findings, and 2
-when a required check cannot run. `--ruff-only` skips the slower checks while
-editing.
+Required checks report blocking findings. The command exits 0 when clean, 1 for
+blocking findings, and 2 when a required check cannot run. `--ruff-only` skips
+the slower checks while editing. `python3 -m scripts.validation.plugin_state DIR`
+runs the plugin-state check on plugins outside the repository, such as an
+uploaded collection.
 
-Three checks only ask review questions, and a failure of one is reported in the
-summary without failing the command:
+Review checks only ask questions, and a failure of one is reported in the
+summary without failing the command. They include:
 
 - QCA: opaque conditionals, duplicated functions, functions above its size,
   complexity, and nesting limits, and weak tests (assertions that read back an
@@ -101,16 +98,33 @@ summary without failing the command:
   assertion in four compares a string.
 - Vulture: production classes, functions, methods, properties, and attributes no
   production code refers to, with the tests that still use them. It matches names,
-  not bindings, so a name used anywhere counts as used, and code reached only by
-  reflection or configuration is reported. Findings sit at the definition.
+  not bindings, so a name used anywhere counts as used, and so does a plugin
+  spec in a `catalog.json`. Code reached only by other reflection or
+  configuration is reported. Findings sit at the definition.
 - Related functions: for each function, up to three in the same module, an
   importing module, or the same directory that make the same calls, weighted by how
   rare each call is. For functions in changed files, it asks whether similar
   ones need the same edit, or whether they should share code.
+- Recovered types: production code that parses back a value it encoded
+  (`from_dict(x.to_dict())`), checks a value read from a dict against a class
+  rather than a builtin or a shape such as `Mapping`, or asserts on a
+  `from_dict` result. It asks whether the value could have stayed typed.
+- Field rules: production code that checks a non-bool int, a nonempty string,
+  or a finite number itself instead of using `autonomy/fields.py`; leaves a key
+  out of a dict when its value is None or empty; or reads a key with `.get()`
+  in `from_dict`. Documents write every key and `None` as `null`.
+  `tests/deterministic/autonomy/test_documents.py` checks each document class
+  against those rules; a new class with `from_dict` and `to_dict` registers there.
+- Acceptance changes: when a change touches production Python, both sides
+  parse that file's samples and mutations with their own `from_dict` and write
+  them back with `to_dict`. Each document whose outcomes differ gets one question
+  naming the inputs it now rejects, accepts, or writes back differently, and the
+  summary tabulates them, along with inputs rejected by a different error class.
 
 Vulture, related functions, basedpyright, and import-linter read the whole project
 on both sides of a change, so a change answers for what it does to files it did
-not touch.
+not touch. A change's summary also reports each changed file's complexity and
+`isinstance`/`issubclass` calls on both sides.
 
 `--output DIR` writes `summary.md` and `findings.json`, whose findings share the
 fields described in [QCA's findings](../qca/README.md#findings-for-any-context).

@@ -19,6 +19,12 @@ from autonomy.serialization import (
 
 
 class SerializationTests(unittest.TestCase):
+    def test_freezing_reused_immutable_properties_keeps_them_typed(self):
+        nested = deep_freeze({"source": {"tags": ["near"]}})
+        merged = deep_freeze({**nested, "count": 2})
+        self.assertIs(merged["source"], nested["source"])
+        self.assertEqual(frozen_mapping_to_dict(merged), {"source": {"tags": ["near"]}, "count": 2})
+
     def test_canonical_encoding_and_round_trip(self) -> None:
         value = {"b": 1, "a": [True, None, 2]}
         encoded = b'{"a":[true,null,2],"b":1}'

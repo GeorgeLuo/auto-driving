@@ -12,8 +12,12 @@ contract's ``broken_contract_guidance`` option, if set, travels with them.
 from __future__ import annotations
 
 import json
+import os
 import sys
 from pathlib import Path
+
+os.environ.pop("FORCE_COLOR", None)
+os.environ["NO_COLOR"] = "1"
 
 from importlinter import api  # noqa: F401 - configures import-linter's adapters on import
 from importlinter.application import use_cases

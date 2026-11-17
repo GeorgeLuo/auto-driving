@@ -2,9 +2,11 @@
 
 from __future__ import annotations
 
-from typing import Any, Callable
+from typing import Callable
 
-from autonomy.runtime.frame_loop import LATEST_JSON_PATH
+from autonomy.decision_cycle.perception.interface import PerceptionText
+from autonomy.runtime.frame_loop import FramePublication, LATEST_JSON_PATH
+from autonomy.runtime.report import HostReport
 
 from ...hosts.publications.frame_publication import (
     perception_duration_ms,
@@ -23,7 +25,7 @@ from .session import StreamView, with_view
 PERCEPTION_LIVE_SCHEMA = "host_perception_live"
 
 
-def read_publication(base_url: str, *, timeout_s: float) -> tuple[dict[str, Any] | None, str | None]:
+def read_publication(base_url: str, *, timeout_s: float) -> tuple[FramePublication | None, str | None]:
     try:
         return fetch_frame_publication(base_url, timeout_s=timeout_s), None
     except ConnectionError as exc:
@@ -55,7 +57,7 @@ def stream_perception(
         )
     view = StreamView(host_name, base_url=base_url, timeout_s=timeout_s) if serve_view else None
 
-    def probe() -> tuple[dict[str, Any], PerceptionPublication]:
+    def probe() -> tuple[dict[str, object], PerceptionPublication]:
         publication, fetch_error = (view.read_observation() if view is not None
                                     else read_publication(base_url, timeout_s=timeout_s))
         if view is not None:
@@ -77,32 +79,36 @@ def stream_perception(
             view.close()
 
 
-def perception_publication(publication: dict[str, Any] | None) -> PerceptionPublication:
+def _perception_record(report: HostReport | None) -> PerceptionText | None:
+    if report is None:
+        return None
+    return report.cycle.perception
+
+
+def perception_publication(publication: FramePublication | None) -> PerceptionPublication:
     """The fields the perception screen shows, read from the host's observation publication."""
 
-    if not isinstance(publication, dict):
+    if publication is None:
         return PerceptionPublication()
-    report = publication.get("report") if isinstance(publication.get("report"), dict) else {}
-    cycle = report.get("cycle") if isinstance(report.get("cycle"), dict) else {}
-    perception = cycle.get("perception") if isinstance(cycle.get("perception"), dict) else {}
-    application = report.get("application") if isinstance(report.get("application"), dict) else {}
-    values = report.get("values") if isinstance(report.get("values"), dict) else {}
-    timing = values.get("timing") if isinstance(values.get("timing"), dict) else {}
-    signals, things = perception.get("signals"), perception.get("things")
+    report = publication.report
+    application = None if report is None else report.application
+    perception = _perception_record(report)
+    timing = None if report is None else report.values.timing
+    cycle_ms = None if timing is None else timing.get("duration_ms")
     return PerceptionPublication(
-        health=publication.get("health"),
+        health=publication.health,
         presets=publication_presets(publication),
-        mode=application.get("mode"),
-        steering=application.get("steering"),
-        throttle=application.get("throttle"),
-        reason=application.get("reason"),
-        cycle_ms=timing.get("duration_ms"),
-        age_ms=publication.get("result_age_ms"),
-        frame_id=report.get("frame_id"),
-        captured_at_ms=report.get("timestamp_ms"),
-        signal_count=len(signals) if isinstance(signals, list) else None,
-        thing_count=len(things) if isinstance(things, list) else None,
-        text=perception_text_from_publication(publication) if publication else "",
+        mode=None if application is None else application.mode,
+        steering=None if application is None else application.steering,
+        throttle=None if application is None else application.throttle,
+        reason=None if application is None else application.reason,
+        cycle_ms=cycle_ms,
+        age_ms=publication.result_age_ms,
+        frame_id=None if report is None else report.frame_id,
+        captured_at_ms=None if report is None else report.timestamp_ms,
+        signal_count=None if perception is None else len(perception.signals),
+        thing_count=None if perception is None else len(perception.things),
+        text=perception.text.strip() if perception is not None else perception_text_from_publication(publication),
     )
 
 
@@ -110,10 +116,10 @@ def _probe_perception(
     *,
     host_name: str,
     base_url: str,
-    publication: dict[str, Any] | None,
+    publication: FramePublication | None,
     fetch_error: str | None,
-) -> dict[str, Any]:
-    probe: dict[str, Any] = {
+) -> dict[str, object]:
+    probe: dict[str, object] = {
         "schema": PERCEPTION_LIVE_SCHEMA,
         "host_name": host_name,
         "endpoint": f"{base_url}{LATEST_JSON_PATH}",
@@ -122,23 +128,18 @@ def _probe_perception(
     if fetch_error is not None or publication is None:
         return {**probe, "status": "error", "error": fetch_error or "No publication was read."}
 
-    health = str(publication.get("health") or "unknown")
-    report = publication.get("report") if isinstance(publication.get("report"), dict) else {}
-    application = report.get("application") if isinstance(report.get("application"), dict) else {}
+    report = publication.report
+    application = None if report is None else report.application
     probe.update(
-        health=health,
+        health=publication.health or "unknown",
         presets=publication_presets(publication),
-        mode=application.get("mode"),
+        mode=None if application is None else application.mode,
     )
     unavailable = step_unavailable(publication, "perception")
-    if publication.get("report") is None:
+    if report is None:
         return {**probe, "status": unavailable[0], "error": unavailable[1]}
     # The host computes the result age on its own clock.
-    latest = _probe_latest_perception(
-        probe,
-        publication,
-        age_ms=publication.get("result_age_ms"),
-    )
+    latest = _probe_latest_perception(probe, publication)
     if unavailable is not None:
         # A stale or raised frame keeps its fields beside the reason it is not live.
         return {**latest, "status": unavailable[0], "error": unavailable[1]}
@@ -146,31 +147,26 @@ def _probe_perception(
 
 
 def _probe_latest_perception(
-    probe: dict[str, Any],
-    publication: dict[str, Any],
-    *,
-    age_ms: Any,
-) -> dict[str, Any]:
+    probe: dict[str, object],
+    publication: FramePublication,
+) -> dict[str, object]:
     """The latest frame's perception, as every provider's live probe reports it."""
 
-    report = publication.get("report") if isinstance(publication.get("report"), dict) else {}
-    cycle = report.get("cycle") if isinstance(report.get("cycle"), dict) else {}
+    report = publication.report
+    perception = _perception_record(report)
     frame = {
-        "frame_id": report.get("frame_id"),
-        "frame_index": report.get("frame_index"),
-        "captured_at_ms": report.get("timestamp_ms"),
-        "perception_completed_at_ms": report.get("published_at_ms"),
+        "frame_id": None if report is None else report.frame_id,
+        "frame_index": None if report is None else report.frame_index,
+        "captured_at_ms": None if report is None else report.timestamp_ms,
+        "perception_completed_at_ms": None if report is None else report.published_at_ms,
         "perception_duration_ms": perception_duration_ms(publication),
-        "age_ms": age_ms,
+        "age_ms": publication.result_age_ms,
     }
-    perception = cycle.get("perception")
-    signals = perception.get("signals") if isinstance(perception, dict) else None
-    things = perception.get("things") if isinstance(perception, dict) else None
     return {
         **probe,
         **frame,
         "status": "live",
-        "signal_count": len(signals) if isinstance(signals, list) else None,
-        "thing_count": len(things) if isinstance(things, list) else None,
-        "perception": perception if isinstance(perception, dict) else None,
+        "signal_count": None if perception is None else len(perception.signals),
+        "thing_count": None if perception is None else len(perception.things),
+        "perception": None if perception is None else perception.to_dict(),
     }

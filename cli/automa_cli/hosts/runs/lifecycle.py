@@ -35,9 +35,10 @@ class Run:
         return read_stop_count(self.directory)
 
     def claim(self) -> Claim:
+        pid = self.pid()
         stops = self.stops() + 1
         write_stop_count(self.directory, stops)
-        return Claim(stops, _pid(read_process_record(self.directory)))
+        return Claim(stops, pid)
 
     def release(self, claim: Claim) -> None:
         """Give the claim back when this stop did not leave the run stopped."""
@@ -46,12 +47,8 @@ class Run:
             write_stop_count(self.directory, claim.stops - 1)
 
     def pid(self) -> int | None:
-        return _pid(read_process_record(self.directory))
-
-
-def _pid(process: object) -> int | None:
-    pid = process.get("pid") if isinstance(process, dict) else None
-    return pid if type(pid) is int else None
+        process = read_process_record(self.directory)
+        return process.pid if process is not None else None
 
 
 @contextmanager

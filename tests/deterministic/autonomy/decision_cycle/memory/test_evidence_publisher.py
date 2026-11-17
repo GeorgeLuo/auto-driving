@@ -76,27 +76,27 @@ class EvidencePublisherTests(unittest.TestCase):
 
                 report = _update(runner, {})
 
-                self.assertEqual([entry["plugin_id"] for entry in report["plugins"]], list(order))
-                self.assertEqual(report["evidence_publisher"], "evidence")
+                self.assertEqual([entry.plugin_id for entry in report.plugins], list(order))
+                self.assertEqual(report.evidence_publisher, "evidence")
                 self.assertEqual(runner.status()["evidence_publisher"], "evidence")
 
     def test_no_publisher_before_any_plugin_writes_the_key(self) -> None:
         runner = _runner(_RecordingMemory())
 
-        self.assertIsNone(runner.report()["evidence_publisher"])
-        self.assertIsNone(_update(runner, {})["evidence_publisher"])
+        self.assertIsNone(runner.report().evidence_publisher)
+        self.assertIsNone(_update(runner, {}).evidence_publisher)
 
     def test_the_later_of_two_publishers_is_named(self) -> None:
         runner = _runner(
             _EvidenceMemory(plugin_id="first"), _EvidenceMemory(plugin_id="second"),
         )
 
-        self.assertEqual(_update(runner, {})["evidence_publisher"], "second")
+        self.assertEqual(_update(runner, {}).evidence_publisher, "second")
 
     def test_storing_the_object_already_there_keeps_the_publisher(self) -> None:
         runner = _runner(_EvidenceMemory(plugin_id="evidence"), _PassThroughMemory(plugin_id="copy"))
 
-        self.assertEqual(_update(runner, {})["evidence_publisher"], "evidence")
+        self.assertEqual(_update(runner, {}).evidence_publisher, "evidence")
 
     def test_a_cycle_that_leaves_the_key_alone_keeps_the_publisher(self) -> None:
         evidence = _EvidenceMemory(plugin_id="evidence")
@@ -106,12 +106,12 @@ class EvidencePublisherTests(unittest.TestCase):
 
         evidence.publish = False
 
-        self.assertEqual(_update(runner, shared, "f2")["evidence_publisher"], "evidence")
+        self.assertEqual(_update(runner, shared, "f2").evidence_publisher, "evidence")
 
     def test_a_plugin_that_removes_the_key_clears_the_publisher(self) -> None:
         runner = _runner(_EvidenceMemory(plugin_id="evidence"), _RemovingMemory(plugin_id="remover"))
 
-        self.assertIsNone(_update(runner, {})["evidence_publisher"])
+        self.assertIsNone(_update(runner, {}).evidence_publisher)
 
     def test_a_plugin_that_raises_after_writing_is_the_publisher(self) -> None:
         runner = _runner(
@@ -120,7 +120,7 @@ class EvidencePublisherTests(unittest.TestCase):
 
         with self.assertRaises(RuntimeError):
             _update(runner, {})
-        self.assertEqual(runner.report()["evidence_publisher"], "failing")
+        self.assertEqual(runner.report().evidence_publisher, "failing")
 
     def test_a_value_no_plugin_left_has_no_publisher(self) -> None:
         shared: dict = {}
@@ -128,10 +128,10 @@ class EvidencePublisherTests(unittest.TestCase):
         _update(runner, shared)
 
         shared[EVIDENCE_KEY] = ("written elsewhere",)
-        self.assertIsNone(runner.report()["evidence_publisher"])
+        self.assertIsNone(runner.report().evidence_publisher)
 
         shared.clear()
-        self.assertIsNone(runner.report()["evidence_publisher"])
+        self.assertIsNone(runner.report().evidence_publisher)
         self.assertIsNone(runner.status()["evidence_publisher"])
 
     def test_reset_names_the_publisher_while_the_key_is_kept(self) -> None:
@@ -145,16 +145,16 @@ class EvidencePublisherTests(unittest.TestCase):
 
         self.assertEqual(fresh[EVIDENCE_KEY], ())
         self.assertEqual(shared[EVIDENCE_KEY], ())
-        self.assertEqual(report["evidence_publisher"], "evidence")
-        self.assertEqual([entry["plugin_id"] for entry in report["plugins"]], ["recording_test", "evidence"])
+        self.assertEqual(report.evidence_publisher, "evidence")
+        self.assertEqual([entry.plugin_id for entry in report.plugins], ["recording_test", "evidence"])
 
         fresh = runner.reset(shared)
 
         # The second reset stored the same empty tuple; it is not fresh state.
         self.assertNotIn(EVIDENCE_KEY, fresh)
-        self.assertEqual(runner.report()["evidence_publisher"], "evidence")
+        self.assertEqual(runner.report().evidence_publisher, "evidence")
         shared.pop(EVIDENCE_KEY)
-        self.assertIsNone(runner.report()["evidence_publisher"])
+        self.assertIsNone(runner.report().evidence_publisher)
 
 
 

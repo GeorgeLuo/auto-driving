@@ -28,6 +28,7 @@ from typing import Any, Callable
 
 from autonomy.decision_cycle.action.result import ActionResult
 from autonomy.decision_cycle.context import DecisionFrameContext
+from autonomy.decision_cycle.memory.interface import MemoryReport
 from autonomy.decision_cycle.memory.errors import MemoryUpdateError
 from autonomy.decision_cycle.observation.publication import write_observation
 from autonomy.decision_cycle.observation.values import Observation
@@ -52,7 +53,7 @@ def timestamp_ms() -> int:
 
 PerceptionStep = Callable[[DecisionFrameContext], PerceptionText | None]
 ObservationStep = Callable[[DecisionFrameContext, PerceptionText | None], Observation | None]
-MemoryStep = Callable[[DecisionFrameContext], dict[str, Any] | None]
+MemoryStep = Callable[[DecisionFrameContext], MemoryReport | None]
 ProposalStep = Callable[[DecisionFrameContext], ProposalResult | None]
 PlanStep = Callable[[DecisionFrameContext, ProposalResult | None], ActionPlan | None]
 ActionStep = Callable[
@@ -88,7 +89,7 @@ class DecisionCycleResult:
     context: DecisionFrameContext
     perception: PerceptionText | None
     observation: Observation | None
-    memory: dict[str, Any] | None
+    memory: MemoryReport | None
     proposal: ProposalResult | None
     plan: ActionPlan | None
     action: ActionResult | None
@@ -235,7 +236,7 @@ def _cycle_result(
     *,
     perception: PerceptionText | None,
     observation: Observation | None,
-    memory: dict[str, Any] | None,
+    memory: MemoryReport | None,
     proposal: ProposalResult | None,
     plan: ActionPlan | None,
     action: ActionResult | None,
@@ -269,7 +270,7 @@ def cycle_result_of(exc: BaseException) -> DecisionCycleResult | None:
 
 def _run_memory_step(
     durations: dict[str, float | None], run: MemoryStep | None, context: DecisionFrameContext,
-) -> dict[str, Any] | None:
+) -> MemoryReport | None:
     """Run memory, translating failures at the cycle boundary for any callable."""
 
     if not run:
@@ -279,8 +280,8 @@ def _run_memory_step(
     try:
         # Memory plugins write the host map; the step returns a report.
         memory = run(context)
-        if memory is not None and not isinstance(memory, dict):
-            raise TypeError("memory step must return a report dict or None")
+        if memory is not None and not isinstance(memory, MemoryReport):  # pyright: ignore[reportUnnecessaryIsInstance] - validate runtime callers
+            raise TypeError("memory step must return MemoryReport or None")
     except MemoryUpdateError:
         raise
     except Exception as exc:

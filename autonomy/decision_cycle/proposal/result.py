@@ -8,10 +8,10 @@ fails closed.
 
 from __future__ import annotations
 
-from dataclasses import dataclass
+from dataclasses import dataclass, fields
 from typing import Any
 
-from autonomy.decision_cycle.action_identifiers import require_ascii_id
+from autonomy.fields import FieldError, require_ascii_id, require_choice, require_nested, require_schema
 from autonomy.decision_cycle.errors import CYCLE_ERROR_REASONS
 from autonomy.decision_cycle.proposal.values import ActionProposal
 
@@ -30,22 +30,21 @@ class ProposalResult:
         object.__setattr__(
             self, "frame_id", require_ascii_id(self.frame_id, field_name="frame_id")
         )
-        if self.schema != PROPOSAL_RESULT_SCHEMA:
-            raise ValueError(f"schema must be {PROPOSAL_RESULT_SCHEMA!r}; got {self.schema!r}")
+        require_choice(self.schema, (PROPOSAL_RESULT_SCHEMA,), field_name="schema")
+        require_choice(self.status, ("ok", "error"), field_name="status")
+        if not isinstance(self.candidates, (list, tuple)):  # pyright: ignore[reportUnnecessaryIsInstance] - validate runtime callers
+            raise FieldError("candidates", "must be an array")
         candidates = tuple(self.candidates)
         if not all(isinstance(item, ActionProposal) for item in candidates):
-            raise TypeError("candidates must be ActionProposal")
+            raise FieldError("candidates", "must contain ActionProposal values")
         object.__setattr__(self, "candidates", candidates)
         if self.status == "ok":
             if self.reason != "":
-                raise ValueError("ok reason must be empty")
+                raise FieldError("reason", "must be empty when status is ok")
         elif self.status == "error":
-            if self.reason not in CYCLE_ERROR_REASONS:
-                raise ValueError(f"unknown proposal error reason {self.reason!r}")
+            require_choice(self.reason, CYCLE_ERROR_REASONS, field_name="reason")
             if candidates:
-                raise ValueError("error requires no candidates")
-        else:
-            raise ValueError(f"invalid proposal status {self.status!r}")
+                raise FieldError("candidates", "must be empty when status is error")
 
     def to_dict(self) -> dict[str, Any]:
         return {
@@ -55,3 +54,16 @@ class ProposalResult:
             "reason": self.reason,
             "candidates": [candidate.to_dict() for candidate in self.candidates],
         }
+
+    @classmethod
+    def from_dict(cls, payload: object) -> ProposalResult:
+        document = require_schema(payload, PROPOSAL_RESULT_SCHEMA, {item.name for item in fields(cls)})
+        candidates = document["candidates"]
+        if not isinstance(candidates, (list, tuple)):
+            raise FieldError("candidates", "must be an array")
+        return cls(
+            schema=document["schema"], frame_id=document["frame_id"],
+            status=document["status"], reason=document["reason"],
+            candidates=tuple(require_nested(ActionProposal.from_dict, item, field_name=f"candidates.{index}")
+                             for index, item in enumerate(candidates)),
+        )

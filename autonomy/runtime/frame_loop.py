@@ -21,9 +21,17 @@ from typing import Callable
 from autonomy.decision_cycle.context import DecisionFrameContext
 from autonomy.decision_cycle.cycle import DecisionCycleResult
 from autonomy.decision_cycle.memory.errors import MemoryUpdateError
+from autonomy.fields import FieldError, require_choice, require_nested, require_safe_int, require_schema
 from autonomy.runtime.cycle_host import AutonomyCycleHost
 from autonomy.runtime.recording import RunRecording
-from autonomy.runtime.report import delivery_values, report_from_host_result
+from autonomy.runtime.report import (
+    HostReport,
+    ReportActivation,
+    ReportValues,
+    delivery_values,
+    report_from_host_result,
+    source_id_for,
+)
 from autonomy.runtime.session import RunConfiguration
 from autonomy.vehicle import FRONT_CAMERA_SENSOR_ID, SensorFrame, SensorReading
 
@@ -37,6 +45,69 @@ LATEST_JSON_PATH = "/host/observation/latest"
 PUBLICATION_HEALTH_WARMING = "warming"
 PUBLICATION_HEALTH_HEALTHY = "healthy"
 PUBLICATION_HEALTH_STALE = "stale"
+PUBLICATION_HEALTHS = (PUBLICATION_HEALTH_WARMING, PUBLICATION_HEALTH_HEALTHY, PUBLICATION_HEALTH_STALE)
+FRAME_PUBLICATION_KEYS = frozenset({
+    "schema", "ok", "health", "read_at_ms", "result_age_ms", "stale_after_ms", "report",
+})
+
+
+def _envelope(
+    *, health: str, read_at_ms: int, result_age_ms: int | None, stale_after_ms: int,
+    report: dict[str, object] | None,
+) -> dict[str, object]:
+    """The frame publication as served; ``report`` is used as given, not copied."""
+    return {
+        "schema": FRAME_PUBLICATION_SCHEMA,
+        "ok": report is not None,
+        "health": health,
+        "read_at_ms": read_at_ms,
+        "result_age_ms": result_age_ms,
+        "stale_after_ms": stale_after_ms,
+        "report": report,
+    }
+
+
+@dataclass(frozen=True)
+class FramePublication:
+    """The latest frame a host serves, as a reader parses it once.
+
+    ``from_dict`` is the only check of this envelope. The host serves the same
+    envelope without parsing its own report; a reader does not look through
+    the dict again.
+    """
+
+    health: str
+    read_at_ms: int
+    result_age_ms: int | None
+    stale_after_ms: int
+    report: HostReport | None
+
+    def to_dict(self) -> dict[str, object]:
+        return _envelope(
+            health=self.health, read_at_ms=self.read_at_ms, result_age_ms=self.result_age_ms,
+            stale_after_ms=self.stale_after_ms, report=None if self.report is None else self.report.to_dict(),
+        )
+
+    @classmethod
+    def from_dict(cls, payload: object) -> "FramePublication":
+        document = require_schema(payload, FRAME_PUBLICATION_SCHEMA, FRAME_PUBLICATION_KEYS)
+        health = require_choice(document["health"], PUBLICATION_HEALTHS, field_name="health")
+        read_at_ms = require_safe_int(document["read_at_ms"], field_name="read_at_ms")
+        ceiling = require_safe_int(document["stale_after_ms"], field_name="stale_after_ms")
+        if ceiling == 0:
+            raise FieldError("stale_after_ms", "must be positive")
+        raw_report, age = document["report"], document["result_age_ms"]
+        if document["ok"] is not (raw_report is not None):
+            raise FieldError("ok", "must be true exactly when there is a report")
+        if raw_report is None and age is not None:
+            raise FieldError("result_age_ms", "must be null without a report")
+        return cls(
+            health=health,
+            read_at_ms=read_at_ms,
+            result_age_ms=None if raw_report is None else require_safe_int(age, field_name="result_age_ms"),
+            stale_after_ms=ceiling,
+            report=None if raw_report is None else require_nested(HostReport.from_dict, raw_report, field_name="report"),
+        )
 
 
 def timestamp_ms() -> int:
@@ -176,7 +247,7 @@ class FrameLoop:
         self._publication_revision = 0
         self._session_frame_id: str | None = None
         self.host_name = host_name
-        self.source_id = source_id or (f"{runtime}:{host_name}" if host_name else None)
+        self.source_id = source_id or (source_id_for(runtime, host_name) if host_name else None)
         self.run_id = run_id or f"{runtime}-run-{secrets.token_hex(12)}"
         host.register_status_provider("observation", self.observation_status)
 
@@ -203,7 +274,7 @@ class FrameLoop:
                     "frame_index": latest.frame_index,
                     "captured_at_ms": latest.captured_at_ms,
                     "completed_at_ms": latest.completed_at_ms,
-                    "duration_ms": latest.report["values"].get("timing", {}).get("duration_ms", 0),
+                    "duration_ms": (latest.report["values"]["timing"] or {}).get("duration_ms", 0),
                 },
             }
 
@@ -346,35 +417,31 @@ class FrameLoop:
     def _publication_from_locked_state(self, *, read_at_ms: int) -> dict[str, object]:
         """The frame envelope, borrowing the completed report."""
         latest = self.latest_state
-        report = None
-        age_ms = None
-        ceiling_ms = stale_after_ms(None)
-        health = PUBLICATION_HEALTH_WARMING
-        if latest is not None:
-            report = latest.report
-            age_ms = max(0, read_at_ms - latest.completed_at_ms)
-            ceiling_ms = report["values"]["stale_after_ms"]
-            health = PUBLICATION_HEALTH_STALE if age_ms > ceiling_ms else PUBLICATION_HEALTH_HEALTHY
-        return {
-            "schema": FRAME_PUBLICATION_SCHEMA,
-            "ok": latest is not None,
-            "health": health,
-            "read_at_ms": read_at_ms,
-            "result_age_ms": age_ms,
-            "stale_after_ms": ceiling_ms,
-            "report": report,
-        }
+        if latest is None:
+            return _envelope(
+                health=PUBLICATION_HEALTH_WARMING, read_at_ms=read_at_ms, result_age_ms=None,
+                stale_after_ms=stale_after_ms(None), report=None,
+            )
+        age_ms = max(0, read_at_ms - latest.completed_at_ms)
+        ceiling_ms = latest.report["values"]["stale_after_ms"]
+        return _envelope(
+            health=PUBLICATION_HEALTH_STALE if age_ms > ceiling_ms else PUBLICATION_HEALTH_HEALTHY,
+            read_at_ms=read_at_ms, result_age_ms=age_ms, stale_after_ms=ceiling_ms, report=latest.report,
+        )
 
     def _capture_frame_report(self, result: DecisionCycleResult, *, error: str | None) -> dict[str, object]:
         """The report for this camera frame, naming the identity the host stamped on it."""
         metadata = result.context.metadata
         generation_id = metadata["generation_id"]
-        values: dict[str, object] = {
-            "source_id": self.source_id or f"{self.runtime}:local",
-            "activation": {"steps": metadata["step_activations"]},
-            "stale_after_ms": stale_after_ms(result.duration_ms),
-            **delivery_values(result.application),
-        }
+        delivered_at_ms, delivery_error, receipt = delivery_values(result.application)
+        values = ReportValues(
+            source_id=self.source_id or source_id_for(self.runtime, "local"),
+            activation=ReportActivation(metadata["step_activations"]),
+            stale_after_ms=stale_after_ms(result.duration_ms),
+            delivered_at_ms=delivered_at_ms,
+            delivery_error=delivery_error,
+            receipt=receipt,
+        )
         return report_from_host_result(
             result,
             host_name=self.host_name or self.runtime,

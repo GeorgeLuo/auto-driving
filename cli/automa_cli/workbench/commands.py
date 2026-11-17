@@ -4,7 +4,6 @@ from __future__ import annotations
 
 import argparse
 from collections.abc import Callable
-from typing import Any
 
 from ..replay.source import WORKBENCH_DEFAULT_MAX_FRAMES
 from ..shared.cli.selection_args import add_selection_args
@@ -15,7 +14,7 @@ from .replay import run_workbench_replay
 
 
 def register_workbench(
-    subcommands: argparse._SubParsersAction, *, view_server: Callable[..., Any],
+    subcommands: argparse._SubParsersAction, *, view_server: Callable[..., object],
 ) -> None:
     workbench = subcommands.add_parser(
         "workbench",
@@ -33,13 +32,13 @@ def register_workbench(
             "them; a preset keeps its plugin configs. Page checkboxes retain the order "
             "of selected plugins and append newly checked plugins. A one-plugin step "
             "is a single choice and cannot be cleared. A changed ordered "
-            "selection preserves definitions and configs but rebuilds every runner with an empty shared-memory map; "
+            "selection preserves definitions and configs but rebuilds changed steps and clears state from the first changed plugin onward; "
             "new plugins use defaults. The same ordered selection keeps the current "
             "configs and pass. Without --serve, one replay runs "
             "to a terminal state; --serve keeps the viewer's workbench page available for "
             "pause, step, reset, and another run. Changing a step's plugins in a "
             "running replay applies on the next frame without replaying history. While paused, "
-            "it refreshes only the latest frame on the empty map. Return to the latest "
+            "it refreshes only the latest frame using the surviving state. Return to the latest "
             "frame before editing plugins after a backward seek. Reset and Start replay from the beginning."
         ),
     )

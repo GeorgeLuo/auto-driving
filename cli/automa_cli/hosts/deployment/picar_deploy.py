@@ -17,6 +17,7 @@ from urllib.parse import urlparse
 
 from autonomy.decision_cycle.activation import STEPS, activation_presets
 from autonomy.runtime.layout import RuntimeLayout
+from autonomy.runtime.report import source_id_for
 
 from ...releases.paths import controller_bundle_paths, host_dir
 from ...shared.io import http_json
@@ -410,7 +411,7 @@ def _write_remote_activation_files(
             {
                 "schema": "automa_runtime_identity",
                 "host_name": target.host_name,
-                "source_id": f"donkeycar:{target.host_name}",
+                "source_id": source_id_for("donkeycar", target.host_name),
             },
             indent=2,
             sort_keys=True,

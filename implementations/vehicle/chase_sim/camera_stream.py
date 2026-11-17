@@ -193,19 +193,21 @@ class ChaseCameraStream:
             "actorId": frame["actorId"], "frameIdentity": identity,
             "playback": frame["playback"], "sensor": frame.get("sensor"),
         }
-        sensor = validate_chase_sensor_capture(envelope, include_validated_bytes=True, validate_pixels=False)
-        if sensor["image"]["content_type"] != "image/jpeg":
+        sensor = validate_chase_sensor_capture(envelope, validate_pixels=False)
+        if sensor.image.content_type != "image/jpeg":
             raise self._invalid("sensor.image.contentType", "camera stream must contain JPEG images")
 
         def load_image():
             if not self._ready.wait(self.client.timeout_s) or self._closed.is_set():
                 raise MetricsUiWebSocketError("Camera stream is not ready")
-            self._check_session(self._request_state(), sensor)
-            return validate_chase_sensor_capture(envelope, include_image_array=True)["image"]["image_array"]
+            self._check_session(
+                self._request_state(), sensor.identity.game_id, sensor.identity.simulation_epoch,
+            )
+            return sensor.image.image_array()
 
         capture = ChaseCameraCapture(
-            sensor["frame_id"], sensor["simulator_frame_index"], sensor["simulation_epoch"],
-            captured_at_ms, load_image, sensor["image"]["validated_bytes"],
+            sensor.identity.frame_id, sensor.identity.simulator_frame_index, sensor.identity.simulation_epoch,
+            captured_at_ms, load_image, sensor.image.validated_bytes,
         )
         with self._condition:
             if self._consumer is not None:
@@ -289,10 +291,10 @@ class ChaseCameraStream:
             with self._condition:
                 self._state_request_id, self._state_reply = None, None
 
-    def _check_session(self, state: dict[str, Any], sensor: dict[str, Any]) -> None:
+    def _check_session(self, state: dict[str, object], game_id: str, simulation_epoch: str) -> None:
         current = build_chase_session_fingerprint(state=state, debug={
-            "gameId": sensor["game_id"],
-            "simulationEpoch": sensor["simulation_epoch"],
+            "gameId": game_id,
+            "simulationEpoch": simulation_epoch,
         })
         receipt = compare_chase_session_fingerprints(
             self._session_baseline, current, field_names=RUN_STABLE_FIELDS,
@@ -310,7 +312,9 @@ class ChaseCameraStream:
             return
         self._last_idle_check_ms = now_ms
         state = self._request_state()
-        self._check_session(state, self._baseline)
+        self._check_session(
+            state, self._baseline["game_id"], self._baseline["simulation_epoch"],
+        )
         if _record(state.get("playback")).get("isPlaying") is False:
             return
         # Only a stalled stream needs this expensive diagnostic. Game-level

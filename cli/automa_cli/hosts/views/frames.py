@@ -67,7 +67,7 @@ class HostFrames:
         with frames.lock:
             try:
                 publication, jpeg = fetch_frame_sample(base_url, timeout_s=self.timeout_s, cache=frames.cache)
-                if publication.get("report") is None:
+                if publication.report is None:
                     frames.publisher.invalidate(health_error(publication))
                 else:
                     frames.publisher.publish(publication, jpeg)

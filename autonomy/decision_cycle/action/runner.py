@@ -20,7 +20,6 @@ from autonomy.decision_cycle.action.result import ActionResult
 from autonomy.decision_cycle.action.values import ActionDecision, build_authority
 from autonomy.decision_cycle.context import DecisionFrameContext
 from autonomy.decision_cycle.plan.values import ActionPlan
-from autonomy.decision_cycle.plugin_state import unchanged_instance
 from autonomy.decision_cycle.proposal.result import ProposalResult
 from autonomy.decision_cycle.proposal.values import ProposedVehicleCommand
 from autonomy.decision_cycle.runner import StepRunner, describe_exception
@@ -67,7 +66,7 @@ class ActionRunner(StepRunner[ActionPlugin]):
         error_reason: str | None,
     ) -> ActionResult:
         try:
-            with unchanged_instance(plugin):
+            with self._plugin_call(plugin, context.shared_memory):
                 if error_reason is None:
                     returned = plugin.decide(context, plan)
                 else:

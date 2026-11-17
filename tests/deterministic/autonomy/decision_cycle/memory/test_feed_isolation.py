@@ -8,7 +8,7 @@ from autonomy.decision_cycle.memory.runner import MemoryRunner
 from autonomy.vehicle import FRONT_CAMERA_SENSOR_ID, SensorFrame, SensorReading
 
 
-SEEN = "feed_probe.seen"
+SEEN = "memory.feed_probe.seen"
 
 
 class _FeedProbe:

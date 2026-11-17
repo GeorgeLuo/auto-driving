@@ -3,7 +3,6 @@ from __future__ import annotations
 import signal
 from collections.abc import Callable
 from pathlib import Path
-from typing import cast
 from urllib.parse import urlparse
 
 from autonomy.runtime.client import RuntimeClient
@@ -28,7 +27,7 @@ from ..step_activations import (
 )
 from ..vehicle_access import create_vehicle_access
 from .lifecycle import Claim, keep, section
-from .models import RestartResult, RunResult, StartResult, StopResult
+from .models import RestartResult, RunResult, RunState, StartResult, StopResult
 from .monitor import monitor_runtime
 from .process import (
     launch_worker,
@@ -40,6 +39,7 @@ from .process import (
     worker_command,
 )
 from .store import (
+    RunRecordError,
     control_application,
     decision_record,
     initialize_automation_startup,
@@ -70,10 +70,10 @@ def _host_name_at_host(host_url: str, *, timeout_s: float) -> str:
     """The host name reported by the runtime."""
 
     try:
-        status = cast(object, RuntimeClient(host_url, timeout_s=max(0.1, timeout_s)).host_status())
+        status = RuntimeClient(host_url, timeout_s=max(0.1, timeout_s)).host_status()
     except RuntimeError as exc:
         raise RuntimeHostError(f"Could not read the host at {host_url}: {exc}") from exc
-    host_name = status.get("host_name") if isinstance(status, dict) else None
+    host_name = status.get("host_name")
     if not isinstance(host_name, str) or not host_name.strip():
         raise RuntimeHostError(f"The host at {host_url} did not report a host name.")
     return host_name
@@ -133,7 +133,7 @@ def run_host_automation(
     unbounded: bool = False,
     take_control: bool = True,
     record: bool = False,
-    emit: Callable[[dict[str, object]], None] | None = None,
+    emit: Callable[[RunState], None] | None = None,
 ) -> RunResult:
     try:
         if host_name is not None:
@@ -215,28 +215,31 @@ def start_host_automation_background(
     if problems:
         return StartResult(2, "activation_invalid", problems=problems)
 
-    begun, started_at_ms, existing = _begin_start(
-        automation_dir, host_name=host_name, configuration=configuration, record=record, log_path=log_path,
-    )
-    if existing is not None:
-        return existing
-    return _launch_start(
-        automation_dir,
-        host_name=host_name,
-        command=worker_command(
+    try:
+        begun, started_at_ms, existing = _begin_start(
+            automation_dir, host_name=host_name, configuration=configuration, record=record, log_path=log_path,
+        )
+        if existing is not None:
+            return existing
+        return _launch_start(
+            automation_dir,
             host_name=host_name,
-            host_url=host_url,
-            timeout_s=timeout_s,
-            configuration=configuration,
-            take_control=take_control,
-            record=record,
-        ),
-        begun=begun,
-        started_at_ms=started_at_ms,
-        log_to_disk=log_to_disk,
-        log_path=log_path,
-        startup_wait_s=startup_wait_s,
-    )
+            command=worker_command(
+                host_name=host_name,
+                host_url=host_url,
+                timeout_s=timeout_s,
+                configuration=configuration,
+                take_control=take_control,
+                record=record,
+            ),
+            begun=begun,
+            started_at_ms=started_at_ms,
+            log_to_disk=log_to_disk,
+            log_path=log_path,
+            startup_wait_s=startup_wait_s,
+        )
+    except RunRecordError as exc:
+        return StartResult(2, "error", host_name=host_name, error=str(exc))
 
 
 def restart_host_automation(
@@ -307,10 +310,15 @@ def stop_host_automation(
     if failed is not None:
         return failed
     automation_dir = run_directory(host_name)
-    with section(automation_dir) as run:
-        claim = run.claim()
-    result = _stop_claimed(host_name, automation_dir, claim, wait_s)
-    if result.exit_code != 0:
+    claim = None
+    try:
+        with section(automation_dir) as run:
+            read_run_state(automation_dir)
+            claim = run.claim()
+        result = _stop_claimed(host_name, automation_dir, claim, wait_s)
+    except RunRecordError as exc:
+        result = StopResult(2, "error", host_name, error=str(exc))
+    if result.exit_code != 0 and claim is not None:
         with section(automation_dir) as run:
             run.release(claim)
     return result
@@ -349,17 +357,15 @@ def _existing_start(
     log_path: Path,
 ) -> StartResult | None:
     existing = read_process_record(automation_dir)
-    existing_pid = existing.get("pid") if isinstance(existing, dict) else None
-    if not isinstance(existing_pid, int) or not pid_alive(existing_pid):
+    state = read_run_state(automation_dir) or RunState()
+    existing_pid = existing.pid if existing is not None else None
+    if existing_pid is None or not pid_alive(existing_pid):
         return None
-    existing_state = read_run_state(automation_dir)
-    state = existing_state if isinstance(existing_state, dict) else {}
-    session = state.get("session")
-    session_status = session.get("status") if isinstance(session, dict) else None
+    session_status = (state.session or {}).get("status")
     state_path = automation_dir / "state.json"
-    if state.get("status") == "starting" or session_status == "starting":
+    if state.status == "starting" or session_status == "starting":
         return StartResult(2, "starting", host_name=host_name, pid=existing_pid, state_path=state_path)
-    state_pid = state.get("pid") if isinstance(state.get("pid"), int) else None
+    state_pid = state.pid
     if state_pid is not None and state_pid != existing_pid:
         return StartResult(
             2, "records_disagree", host_name=host_name, pid=existing_pid, state_pid=state_pid,
@@ -368,7 +374,7 @@ def _existing_start(
         "action_policy": configuration.mode,
         "control_application": control_application(configuration),
     }
-    actual = {key: state.get(key) for key in expected}
+    actual = {"action_policy": state.action_policy, "control_application": state.control_application}
     if actual != expected:
         return StartResult(
             2, "authority_mismatch", host_name=host_name, pid=existing_pid,

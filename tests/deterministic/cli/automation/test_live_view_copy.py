@@ -7,7 +7,8 @@ import unittest
 from pathlib import Path
 from unittest.mock import patch
 
-from autonomy.runtime.report import HostReport, ReportApplication
+from autonomy.runtime.frame_loop import FramePublication
+from autonomy.runtime.report import HostReport, ReportCycle, ReportApplication, ReportValues
 from cli.automa_cli.hosts.views import view_feed as viewer
 from cli.automa_cli.plugins.stream import decision, session
 
@@ -28,20 +29,20 @@ class LiveViewCopyTests(unittest.TestCase):
             feed.publish(publication)
 
     def test_decision_stream_pass_shares_one_observation_read_with_its_view(self):
-        publication = {
-            "schema": "host_frame_publication", "health": "healthy", "result_age_ms": 0,
-            "report": HostReport(
+        publication = FramePublication(
+            health="healthy", read_at_ms=1, result_age_ms=0, stale_after_ms=1000,
+            report=HostReport(
                 host_name="fixture", run_id="run", generation_id="generation",
                 frame_id="one", frame_index=0, timestamp_ms=1, published_at_ms=1,
-                values={"source_id": "fixture:local", "stale_after_ms": 1000,
-                        "activation": {"steps": {"plan": {"plugins": []}}}},
-                cycle={
-                    "perception": None, "observation": None, "memory": None,
-                    "proposal": {}, "plan": {}, "action": {},
-                },
+                values=ReportValues.from_dict({
+                    "source_id": "fixture:local", "stale_after_ms": 1000,
+                    "activation": {"steps": {"plan": {"plugins": []}}},
+        "delivered_at_ms": None, "delivery_error": None, "receipt": None, "timing": None,
+                }),
+                cycle=ReportCycle(),
                 application=ReportApplication(False, "observe_only", "observe-only", 0, 0),
-            ).to_dict(),
-        }
+            ),
+        )
         events = []
         with (
             tempfile.TemporaryDirectory() as tmp,

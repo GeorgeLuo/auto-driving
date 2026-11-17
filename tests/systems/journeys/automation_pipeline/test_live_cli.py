@@ -41,7 +41,7 @@ class LiveCommandsTests(LiveHostTestCase):
 
         def published() -> bool:
             try:
-                return name in json.dumps(fetch_frame_publication(self.host.base_url))
+                return name in json.dumps(fetch_frame_publication(self.host.base_url).to_dict())
             except (OSError, ValueError):
                 return False
 

@@ -7,10 +7,16 @@
 
 from __future__ import annotations
 
+from collections.abc import Mapping
 from dataclasses import asdict, dataclass, field
 from typing import Any
 
+from autonomy.serialization import frozen_mapping_to_dict
 from autonomy.decision_cycle.confidence import optional_confidence
+from autonomy.fields import (
+    FieldError, require_ascii_id as require_identifier, require_keys, require_nested,
+    require_number, require_safe_int as require_non_negative_int, require_text,
+)
 from autonomy.decision_cycle.perception.evidence.values import ViewLocation
 
 
@@ -56,21 +62,11 @@ class MemoryOrigin:
 
     @classmethod
     def from_dict(cls, data: dict[str, Any]) -> "MemoryOrigin":
-        return cls(
-            observation_id=str(data.get("observation_id") or ""),
-            observed_id=str(data.get("observed_id") or ""),
-            coordinate_frame=str(data.get("coordinate_frame") or "unknown"),
-            observed_at_ms=int(data.get("observed_at_ms") or 0),
-            updated_at_ms=int(data.get("updated_at_ms") or 0),
-            source_plugin_id=(
-                str(data["source_plugin_id"])
-                if data.get("source_plugin_id") is not None
-                else None
-            ),
-            frame_id=(
-                str(data["frame_id"]) if data.get("frame_id") is not None else None
-            ),
-        )
+        document = require_keys(data, (
+            "observation_id", "observed_id", "coordinate_frame", "observed_at_ms",
+            "updated_at_ms", "source_plugin_id", "frame_id",
+        ))
+        return cls(**document)
 
 
 @dataclass(frozen=True)
@@ -88,16 +84,16 @@ class RetainedEvidence:
     def __post_init__(self) -> None:
         require_identifier(self.record_id, field_name="record_id")
         require_identifier(self.kind, field_name="kind")
-        require_identifier(self.label, field_name="label")
+        require_text(self.label, field_name="label")
         object.__setattr__(
             self,
             "confidence",
             optional_confidence(self.confidence, field_name="confidence", clamp=True),
         )
         if not isinstance(self.origin, MemoryOrigin):
-            raise TypeError("retained evidence origin must be MemoryOrigin")
+            raise FieldError("origin", "must be MemoryOrigin")
         if self.location is not None and not isinstance(self.location, ViewLocation):
-            raise TypeError("retained evidence location must be ViewLocation or None")
+            raise FieldError("location", "must be ViewLocation or None")
 
     def to_dict(self) -> dict[str, Any]:
         return {
@@ -107,42 +103,25 @@ class RetainedEvidence:
             "confidence": self.confidence,
             "origin": self.origin.to_dict(),
             "location": self.location.to_dict() if self.location is not None else None,
-            "properties": self.properties,
+            "properties": frozen_mapping_to_dict(self.properties),
         }
 
     @classmethod
     def from_dict(cls, data: dict[str, Any]) -> "RetainedEvidence":
-        origin_data = data.get("origin")
-        if not isinstance(origin_data, dict):
-            raise ValueError("retained evidence requires origin")
-        location_data = data.get("location")
-        location = (
-            ViewLocation.from_dict(location_data)
-            if isinstance(location_data, dict)
-            else None
-        )
+        document = require_keys(data, ("record_id", "kind", "label", "origin", "confidence", "location", "properties"))
+        if not isinstance(document["properties"], Mapping):
+            raise FieldError("properties", "must be an object")
+        confidence = document["confidence"]
+        if confidence is not None:
+            confidence = require_number(confidence, field_name="confidence", bounds=(0, 1))
+        location = document["location"]
+        if location is not None:
+            if not isinstance(location, Mapping) or not location:
+                raise FieldError("location", "must be a nonempty object or null")
         return cls(
-            record_id=str(data.get("record_id") or ""),
-            kind=str(data.get("kind") or ""),
-            label=str(data.get("label") or ""),
-            confidence=data.get("confidence"),
-            origin=MemoryOrigin.from_dict(origin_data),
-            location=location,
-            properties=data.get("properties") or {},
+            record_id=document["record_id"], kind=document["kind"], label=document["label"],
+            confidence=confidence,
+            origin=require_nested(MemoryOrigin.from_dict, document["origin"], field_name="origin"),
+            location=require_nested(ViewLocation.from_dict, location, field_name="location") if location is not None else None,
+            properties=document["properties"],
         )
-
-
-
-def require_identifier(value: Any, *, field_name: str) -> None:
-    if not isinstance(value, str) or not value.strip():
-        raise ValueError(f"{field_name} must be a non-empty string")
-
-
-def require_non_negative_int(value: Any, *, field_name: str) -> int:
-    try:
-        normalized = int(value)
-    except (TypeError, ValueError) as exc:
-        raise ValueError(f"{field_name} must be an integer") from exc
-    if normalized < 0:
-        raise ValueError(f"{field_name} must be >= 0")
-    return normalized

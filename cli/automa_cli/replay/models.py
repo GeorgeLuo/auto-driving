@@ -5,8 +5,8 @@ from __future__ import annotations
 import copy
 from dataclasses import dataclass, field
 from pathlib import Path
-from typing import Any
 
+from autonomy.decision_cycle.activation import StepActivation
 from autonomy.runtime.execution import ControlApplication
 
 WORKBENCH_ADAPTER = "image_directory"
@@ -22,7 +22,7 @@ class ReplayFrame:
     image_path: Path | None
     absence_reason: str | None = None
     content_type: str | None = None
-    metadata: dict[str, Any] = field(default_factory=dict)
+    metadata: dict[str, object] = field(default_factory=dict)
     # The inputs the recording host wrote, or None where it recorded none.
     mode: str | None = None
     user_steering: float | None = None
@@ -33,12 +33,18 @@ class ReplayFrame:
         repr=False,
         compare=False,
     )
+    # The step selections this frame ran, shared by its generation's frames. Read-only.
+    selections: dict[str, StepActivation | None] = field(
+        default_factory=dict,
+        repr=False,
+        compare=False,
+    )
 
     @property
     def absent(self) -> bool:
         return self.absence_reason is not None or self.image_path is None
 
-    def to_dict(self, *, include_path: bool = True) -> dict[str, Any]:
+    def to_dict(self, *, include_path: bool = True) -> dict[str, object]:
         return {
             "source_id": self.source_id,
             "frame_id": self.frame_id,
@@ -64,7 +70,7 @@ class ImageSource:
     manifest_path: Path | None = None
     adapter: str = WORKBENCH_ADAPTER
 
-    def to_dict(self) -> dict[str, Any]:
+    def to_dict(self) -> dict[str, object]:
         """Return the public source summary, not the internal frame inventory."""
 
         return {
@@ -84,6 +90,6 @@ class SourceValidationError(ValueError):
 
 @dataclass(frozen=True)
 class FrameOutcome:
-    result: Any
+    result: object
     # Each step runner's plugin report after the frame, by step.
-    plugin_reports: dict[str, dict[str, Any] | None]
+    plugin_reports: dict[str, dict[str, object] | None]

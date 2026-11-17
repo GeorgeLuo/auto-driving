@@ -14,9 +14,10 @@ summaries across plugins.
 
 from __future__ import annotations
 
-from typing import Any
+from collections.abc import Mapping
 
 from autonomy.decision_cycle.memory.interface import (
+    MemoryReport,
     EPOCH_ID,
     HEALTH,
     LEDGER_SUMMARY_KEYS,
@@ -24,19 +25,21 @@ from autonomy.decision_cycle.memory.interface import (
 )
 
 
-def plugin_states(report: object) -> list[tuple[str, dict[str, Any] | None]]:
+def plugin_states(report: object) -> list[tuple[str, Mapping[str, object] | None]]:
     """``(plugin_id, state)`` of each applied plugin, in selection order.
 
     A state that is not a dict reads as None. An entry without a string
     ``plugin_id`` is skipped.
     """
 
+    if isinstance(report, MemoryReport):
+        return [(plugin.plugin_id, plugin.state if isinstance(plugin.state, Mapping) else None) for plugin in report.plugins]
     if not isinstance(report, dict):
         return []
     plugins = report.get("plugins")
     if not isinstance(plugins, list):
         return []
-    states: list[tuple[str, dict[str, Any] | None]] = []
+    states: list[tuple[str, Mapping[str, object] | None]] = []
     for entry in plugins:
         if not isinstance(entry, dict) or not isinstance(entry.get("plugin_id"), str):
             continue
@@ -48,18 +51,20 @@ def plugin_states(report: object) -> list[tuple[str, dict[str, Any] | None]]:
 def evidence_publisher(report: object) -> str | None:
     """The plugin whose value ``EVIDENCE_KEY`` holds, or None."""
 
+    if isinstance(report, MemoryReport):
+        return report.evidence_publisher
     publisher = report.get("evidence_publisher") if isinstance(report, dict) else None
     return publisher if isinstance(publisher, str) and publisher else None
 
 
-def ledger_summary(state: dict[str, Any] | None) -> dict[str, Any]:
+def ledger_summary(state: Mapping[str, object] | None) -> dict[str, object]:
     """The four ledger summary fields. A missing field is None."""
 
     state = state or {}
     return {key: state.get(key) for key in LEDGER_SUMMARY_KEYS}
 
 
-def plugin_ledgers(report: object) -> list[dict[str, Any]]:
+def plugin_ledgers(report: object) -> list[dict[str, object]]:
     """Each applied plugin's ``plugin_id`` with its four ledger summary fields."""
 
     return [
@@ -68,7 +73,7 @@ def plugin_ledgers(report: object) -> list[dict[str, Any]]:
     ]
 
 
-def memory_summary(state: dict[str, Any] | None) -> dict[str, Any]:
+def memory_summary(state: Mapping[str, object] | None) -> dict[str, object]:
     """Health, record count and epoch of one plugin state, as each frame reports them.
 
     Inspect frames report these three. ``record_count`` is 0 when the state
@@ -88,7 +93,7 @@ def memory_summary(state: dict[str, Any] | None) -> dict[str, Any]:
     }
 
 
-def plugin_summaries(report: object) -> list[dict[str, Any]]:
+def plugin_summaries(report: object) -> list[dict[str, object]]:
     """Each applied plugin's ``plugin_id`` with its health, record count and epoch.
 
     These are the rows inspect lists per frame and the workbench lists per

@@ -13,7 +13,7 @@ from autonomy.decision_cycle.activation import step_activation
 from autonomy.decision_cycle.steps import decision_steps
 from autonomy.plugins import uploaded_source
 from autonomy.runtime.plugin_loader import load_runner
-from autonomy.runtime.recording import RunRecording
+from autonomy.runtime.recording import GENERATIONS_DIR, RunRecording
 from autonomy.runtime.session import RunConfiguration
 from cli.automa_cli.frontend.server import RuntimeViewServer
 from cli.automa_cli.workbench.runner import ImageReplayRunner
@@ -51,7 +51,11 @@ class RecordedPluginFlows(unittest.TestCase):
             name = receipt["plugin"]["metadata"]["source_file"]
             self.assertEqual((recording.root / "plugins" / name).read_bytes(), file.read_bytes())
             entry = read_recording_entries(recording.root)[0]
-            self.assertEqual(entry["steps"]["proposal"]["plugin_specs"], {"prototype": f"{name}:Prototype"})
+            generation = json.loads(
+                (recording.root / GENERATIONS_DIR / f"{entry['generation_id']}.json").read_text(encoding="utf-8")
+            )
+            self.assertEqual(generation["proposal"]["plugin_specs"], {"prototype": f"{name}:Prototype"})
+            self.assertNotIn("steps", entry)
 
     def test_bundle_initialization_and_same_spec_source_transition_use_recorded_code(self):
         with image_source(1) as root:
@@ -130,7 +134,7 @@ class RecordedPluginFlows(unittest.TestCase):
                     shown = post_action(base, {"action": "seek", "run_id": run_id, "position": position})["state"]
                     restored = candidate(shown, "prototype-proposal")
                     self.assertEqual(restored["metadata"]["revision"], revision)
-                    self.assertEqual(restored["metadata"]["memory"]["count"], 1)
+                    self.assertEqual(restored["metadata"]["memory"]["count"], position)
                 # Seeking back must survive state polling and a live availability change.
                 earlier = post_action(base, {"action": "seek", "run_id": run_id, "position": 0})["state"]
                 self.assertEqual(earlier["active_perception_plugin_ids"], ["prototype-perception"])

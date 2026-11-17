@@ -8,6 +8,7 @@ from typing import Any
 from unittest import mock
 
 from autonomy.decision_cycle.activation import step_activation
+from cli.automa_cli.hosts.runs.models import RunState, WorkerProcess
 from implementations.decision_cycle.catalog import preset_activation, selection_activation
 
 
@@ -65,29 +66,29 @@ def write_runtime_fixture(
     )
     write_json(
         automation_process,
-        {
-            "schema": "automa_automation_process",
-            "host_name": host_name,
-            "pid": pid,
-            "log_to_disk": False,
-            "log_path": None,
-            "command": [str(AUTOMA_PATH), "hosts", "run", "--name", host_name],
-        },
+        WorkerProcess(
+            schema="automa_automation_process",
+            host_name=host_name,
+            pid=pid,
+            log_to_disk=False,
+            log_path=None,
+            command=[str(AUTOMA_PATH), "hosts", "run", "--name", host_name],
+        ).to_dict(),
     )
     write_json(
         automation_state,
-        {
-            "schema": "automa_automation_run_state",
-            "host_name": host_name,
-            "run_id": "test-run",
-            "status": "running",
-            "pid": pid,
-            "processed_count": 3,
-            "num_decisions": None,
-            "recording": False,
-            "control_source": "external_ws",
-            "action_policy": "cycle_idle",
-            "last_frame": {
+        RunState(
+            schema="automa_automation_run_state",
+            host_name=host_name,
+            run_id="test-run",
+            status="running",
+            pid=pid,
+            processed_count=3,
+            num_decisions=None,
+            recording=False,
+            control_source="external_ws",
+            action_policy="cycle_idle",
+            last_frame={
                 "frame_id": "frame_000002",
                 "things": 2,
                 "confidence": 0.75,
@@ -95,7 +96,7 @@ def write_runtime_fixture(
                 "cycle_duration_ms": 25,
                 "perception_completed_at_ms": 1000,
             },
-        },
+        ).to_dict(),
     )
     return RuntimeFixturePaths(
         bundle_root=bundle_root,

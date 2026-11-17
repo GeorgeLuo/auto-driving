@@ -9,7 +9,7 @@ them.
 from __future__ import annotations
 
 import math
-from typing import Sequence, cast
+from typing import Sequence
 
 from autonomy.decision_cycle.confidence import confidence_rank
 from autonomy.decision_cycle.proposal.values import (
@@ -19,7 +19,7 @@ from autonomy.decision_cycle.proposal.values import (
 )
 from autonomy.decision_cycle.context import DecisionFrameContext
 from autonomy.decision_cycle.memory.evidence import RetainedEvidence
-from autonomy.decision_cycle.action_identifiers import require_ascii_id
+from autonomy.fields import require_ascii_id
 from autonomy.decision_cycle.memory.publication import EVIDENCE_KEY
 
 DEFAULT_ACCEPTED_KINDS = ("floor_boundary", "obstacle", "obstruction_evidence")
@@ -361,7 +361,7 @@ class AvoidRecentObstruction:
         accepted_kinds: Sequence[str] = DEFAULT_ACCEPTED_KINDS,
         retained_max_age_ms: int = DEFAULT_RETAINED_MAX_AGE_MS,
         steer_magnitude: float = DEFAULT_STEER_MAGNITUDE,
-        evidence_key: str = EVIDENCE_KEY,
+        evidence_key: object = EVIDENCE_KEY,
     ) -> None:
         if type(accepted_kinds) not in (list, tuple):
             raise ValueError("accepted_kinds must be a list or tuple of kind ids")
@@ -382,14 +382,12 @@ class AvoidRecentObstruction:
             raise ValueError("steer_magnitude must be numeric") from exc
         if not math.isfinite(magnitude) or not (0.0 < magnitude <= 1.0):
             raise ValueError("steer_magnitude must satisfy 0 < value <= 1")
-        # Annotated str, but a caller can pass another type. Reject that with ValueError.
-        raw_key = cast(object, evidence_key)
-        if not isinstance(raw_key, str) or not raw_key.strip():
+        if not isinstance(evidence_key, str) or not evidence_key.strip():
             raise ValueError("evidence_key must be a non-empty string")
         self.accepted_kinds = kinds
         self.retained_max_age_ms = retained_max_age_ms
         self.steer_magnitude = magnitude
-        self.evidence_key = raw_key
+        self.evidence_key = evidence_key
 
     def propose(self, context: DecisionFrameContext) -> ActionProposal:
         return propose(

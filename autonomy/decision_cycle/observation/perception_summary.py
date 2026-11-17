@@ -49,8 +49,8 @@ def observation_from_perception(
         perception_schema=perception.schema,
         perception_plugin_id=perception.plugin_id,
         summary=(),
-        things=tuple(thing.to_dict() for thing in perception.things),
-        signals=tuple(signal.to_dict() for signal in perception.signals),
+        things=perception.things,
+        signals=perception.signals,
         metadata={
             "limits": list(perception.limits),
             **(metadata or {}),

@@ -57,8 +57,8 @@ class LiveCommandsTests(LiveHostTestCase):
         # The host may advance after the terminal's publication. The view must
         # use its transaction's findings and image even when decision is down.
         matched, jpeg = samples[0]
-        self.assertEqual(latest["report"]["frame_id"], matched["report"]["frame_id"])
-        self.assertEqual(latest["image"]["frame_id"], matched["report"]["frame_id"])
+        self.assertEqual(latest["report"]["frame_id"], matched.report.frame_id)
+        self.assertEqual(latest["image"]["frame_id"], matched.report.frame_id)
         self.assertIsInstance(latest["result_age_ms"], int)
         with urlopen(f"{feed.url.rstrip('/')}{latest['image']['url']}", timeout=5) as response:
             self.assertEqual(response.read(), jpeg)
@@ -142,7 +142,7 @@ class LiveCommandsTests(LiveHostTestCase):
     def test_the_viewer_says_why_a_host_whose_run_stopped_is_not_live(self) -> None:
         self.observe()
         self.client.stop()
-        wait_until(lambda: _read_publication(self.host.base_url, timeout_s=3.0)[0]["health"] == "stale",
+        wait_until(lambda: _read_publication(self.host.base_url, timeout_s=3.0)[0].health == "stale",
                    message="the stopped host's last frame never went stale")
         result, view_url, served = self.view_once("--host-url", self.host.base_url)
 

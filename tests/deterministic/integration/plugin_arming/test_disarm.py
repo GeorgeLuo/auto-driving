@@ -60,7 +60,7 @@ class PluginDisarmingFlows(unittest.TestCase):
                 rearmed = dict((definition.plugin_id, instance) for definition, instance in host.step("proposal").applied)
                 self.assertIsNot(rearmed["second"], instances["second"])
 
-    def test_proposal_deselection_reconstructs_memory_and_discards_its_history(self):
+    def test_proposal_deselection_keeps_memory_runner_and_history(self):
         with image_source(1) as root, plugin_host(root) as (host, base):
             for step, name in (("perception", "prototype-perception"), ("memory", "prototype-memory"),
                                ("proposal", "first"), ("proposal", "second")):
@@ -68,12 +68,12 @@ class PluginDisarmingFlows(unittest.TestCase):
                 write_plugin(file, step, name, 1)
                 upload(base, file, step, name, arm=True)
             host.run(frame(root, 1))
-            self.assertEqual(host.shared_memory["prototype.memory"]["count"], 1)
+            self.assertEqual(host.shared_memory["memory.prototype-memory.state"]["count"], 1)
             instance = host.step("memory").applied[0][1]
             self.disarm(base, "--name", "proposal/first")
             result = host.run(frame(root, 2))
-            self.assertIsNot(host.step("memory").applied[0][1], instance)
-            self.assertEqual(host.shared_memory["prototype.memory"]["count"], 1)
+            self.assertIs(host.step("memory").applied[0][1], instance)
+            self.assertEqual(host.shared_memory["memory.prototype-memory.state"]["count"], 2)
             self.assertEqual([candidate.plugin_id for candidate in result.proposal.candidates], ["second"])
 
     def test_clear_step_and_all_steps_without_changing_session_or_catalog(self):
@@ -84,7 +84,7 @@ class PluginDisarmingFlows(unittest.TestCase):
                     write_plugin(file, step, f"prototype-{step}", 1)
                     upload(base, file, step, f"prototype-{step}", arm=True)
                 host.run(frame(root, 1))
-                self.assertIn("prototype.memory", host.shared_memory)
+                self.assertIn("memory.prototype-memory.state", host.shared_memory)
                 before = catalog(base)
                 session = host.session_status()
                 human = self.disarm(base, "--step", "memory").stdout
@@ -93,7 +93,7 @@ class PluginDisarmingFlows(unittest.TestCase):
                 self.assertIn("Next:", human)
                 self.assertEqual(host.session_status(), session)
                 host.run(frame(root, 2))
-                self.assertNotIn("prototype.memory", host.shared_memory)
+                self.assertNotIn("memory.prototype-memory.state", host.shared_memory)
                 self.assertEqual(selected(catalog(base), "applied", "memory"), [])
                 self.assertEqual(selected(catalog(base), "applied", "proposal"), selected(before, "applied", "proposal"))
                 session = host.session_status()

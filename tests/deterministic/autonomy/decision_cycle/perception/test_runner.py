@@ -53,6 +53,7 @@ def provide_unavailable_feed(request, plugin_input):
     raise PerceptionFeedUnavailable("test feed is absent")
 
 
+RESET_CALLS: list[str] = []
 PERCEIVED_VALUES: list[int] = []  # WorkingPlugin's inputs, read by the tests; the plugin keeps nothing
 
 
@@ -64,11 +65,8 @@ class WorkingPlugin:
         emits=("signal test_ready", "thing test-region"),
     )
 
-    def __init__(self) -> None:
-        self.reset_count = 0
-
     def reset(self) -> None:
-        self.reset_count += 1
+        RESET_CALLS.append(self.plugin_id)
 
     def perceive(self, inputs):
         PERCEIVED_VALUES.append(inputs.require("value", dict)["value"])
@@ -93,11 +91,8 @@ class MemoryRequiredNoArgReset:
         state_mode="windowed",
     )
 
-    def __init__(self) -> None:
-        self.reset_count = 0
-
     def reset(self) -> None:
-        self.reset_count += 1
+        RESET_CALLS.append(self.plugin_id)
 
     def perceive(self, inputs):
         del inputs
@@ -240,12 +235,12 @@ class PluginRunnerTests(unittest.TestCase):
                 "frame": step_plugins("perception")["frame"]["spec"],
             },
         )
-        plugin = mapper.plugins["working"]
+        RESET_CALLS.clear()
 
         mapper.reset()
         mapper.reset()
 
-        self.assertEqual(plugin.reset_count, 2)
+        self.assertEqual(RESET_CALLS, ["working", "working"])
 
     def test_memory_required_plugin_with_no_argument_reset_is_reset(self) -> None:
         mapper = PerceptionRunner.from_selection(
@@ -255,9 +250,10 @@ class PluginRunnerTests(unittest.TestCase):
             },
         )
 
+        RESET_CALLS.clear()
         mapper.reset({})
 
-        self.assertEqual(mapper.plugins["memory_required_reset"].reset_count, 1)
+        self.assertEqual(RESET_CALLS, ["memory_required_reset"])
 
     def test_missing_input_short_circuits_plugin_as_unavailable(self) -> None:
         mapper = PerceptionRunner.from_selection(

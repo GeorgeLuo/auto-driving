@@ -2,7 +2,7 @@
 
 ``MemoryRunner`` is a ``StepRunner`` whose ``load_plugin`` wraps each
 selected plugin in a ``MemoryPluginRuntime``; it runs them in selection order.
-Its return value is the ``MemoryReport`` dict from ``interface``: each
+Its return value is the typed ``MemoryReport`` from ``interface``: each
 plugin's own state summary for diagnostics, the evidence publisher, the
 plugin whose value ``EVIDENCE_KEY`` holds, and the published beliefs.
 Decisions read plugin-published keys in the host map, not the report.
@@ -15,7 +15,7 @@ Update and reset failures follow ``FAILURE_POLICY`` in ``interface``.
 
 from __future__ import annotations
 
-from collections.abc import Mapping, Sequence
+from collections.abc import Callable, Mapping, Sequence
 from dataclasses import replace
 from pathlib import Path
 from typing import ClassVar
@@ -32,7 +32,6 @@ from autonomy.decision_cycle.memory.beliefs import Belief
 from autonomy.decision_cycle.memory.plugin import MemoryPlugin, MemoryPluginContract, plugin_status
 from autonomy.decision_cycle.memory.publication import BELIEF_KEY_PREFIX, EVIDENCE_KEY, belief_key
 from autonomy.decision_cycle.observation.publication import read_observation
-from autonomy.decision_cycle.plugin_state import unchanged_instance
 from autonomy.decision_cycle.runner import StepRunner, reset_plugin
 from autonomy.decision_cycle.timing import clock, elapsed_ms
 from autonomy.plugins import PluginDefinition
@@ -53,8 +52,11 @@ class MemoryPluginRuntime:
         definition: PluginDefinition,
         plugin: MemoryPlugin,
         *,
+        call: Callable,
         source_path: Path | None = None,
     ) -> None:
+        self._call = call
+        self.contract = plugin.contract
         self.definition = definition
         self.plugin_id = definition.plugin_id
         self.source_path = source_path
@@ -77,7 +79,7 @@ class MemoryPluginRuntime:
         if context.shared_memory is not None:
             self._shared_memory = context.shared_memory
         try:
-            with unchanged_instance(self.implementation):
+            with self._call(self.implementation, context.shared_memory):
                 self.implementation.update(context)
             self.last_error = None
         except Exception as exc:  # noqa: BLE001 - step isolation boundary
@@ -97,7 +99,8 @@ class MemoryPluginRuntime:
             if self._shared_memory is not None:
                 for key in self.belief_keys:
                     self._shared_memory.pop(key, None)
-            reset_plugin(self.implementation, self._shared_memory)
+            with self._call(self.implementation, self._shared_memory):
+                reset_plugin(self.implementation, self._shared_memory)
             self.last_error = None
         except Exception as exc:  # noqa: BLE001 - step isolation boundary
             self.failure_count += 1
@@ -111,7 +114,8 @@ class MemoryPluginRuntime:
         """The plugin's own summary of its state, or None when it offers none."""
 
         try:
-            return plugin_status(self.implementation, self._shared_memory)
+            with self._call(self.implementation, self._shared_memory):
+                return plugin_status(self.implementation, self._shared_memory)
         except Exception as exc:  # noqa: BLE001 - status must not fail the caller
             return {"status_error": _diagnostic(exc)}
 
@@ -178,7 +182,7 @@ class MemoryRunner(StepRunner[MemoryPluginRuntime]):
     def load_plugin(self, definition: PluginDefinition) -> MemoryPluginRuntime:
         plugin = super().load_plugin(definition)
         source_path = self.activation.source_path if self.activation else None
-        return MemoryPluginRuntime(definition, plugin, source_path=source_path)
+        return MemoryPluginRuntime(definition, plugin, call=self._plugin_call, source_path=source_path)
 
     def validate_plugin(self, plugin: object, definition: PluginDefinition) -> None:
         if not isinstance(getattr(plugin, "contract", None), MemoryPluginContract):
@@ -193,12 +197,12 @@ class MemoryRunner(StepRunner[MemoryPluginRuntime]):
 
     def __call__(
         self, context: DecisionFrameContext,
-    ) -> dict[str, object]:
+    ) -> MemoryReport:
         return self.update(context)
 
     def update(
         self, context: DecisionFrameContext,
-    ) -> dict[str, object]:
+    ) -> MemoryReport:
         """Run each selected plugin in order and return the memory report.
 
         A selection that cannot load raises here, before any plugin runs, and
@@ -286,13 +290,13 @@ class MemoryRunner(StepRunner[MemoryPluginRuntime]):
                 return None
             return self._publisher
 
-    def report(self) -> dict[str, object]:
+    def report(self) -> MemoryReport:
         """Each applied plugin's own state summary, as the cycle records it."""
 
         with self._runtime_lock:
             return self._report()
 
-    def _report(self) -> dict[str, object]:
+    def _report(self) -> MemoryReport:
         return MemoryReport(
             schema=MEMORY_REPORT_SCHEMA,
             plugins=tuple(
@@ -304,7 +308,7 @@ class MemoryRunner(StepRunner[MemoryPluginRuntime]):
             ),
             evidence_publisher=self.evidence_publisher,
             beliefs={key: belief.summary() for key, belief in _published_beliefs(self._shared_memory).items()},
-        ).to_dict()
+        )
 
     def status(self) -> dict[str, object]:
         with self._runtime_lock:

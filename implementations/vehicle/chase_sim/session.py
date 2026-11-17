@@ -1,8 +1,8 @@
 """Public Chase session identity and passive receipt contracts."""
 from __future__ import annotations
 
-import math
-from typing import Any
+from .control import validate_chase_control
+from .state import nested_get, play_sidebar_values
 
 RUN_STABLE_FIELDS = ("game_id", "scenario_id", "simulation_epoch", "control_source")
 
@@ -47,14 +47,14 @@ class ChasePassiveCaptureError(RuntimeError):
         *,
         code: str,
         message: str,
-        details: dict[str, Any] | None = None,
+        details: dict[str, object] | None = None,
     ):
         self.code = code
         self.detail = message
         self.details = details or {}
         super().__init__(f"{code}: {message}")
 
-    def to_dict(self) -> dict[str, Any]:
+    def to_dict(self) -> dict[str, object]:
         layer = {
             "simulator_unreachable": "simulator_server",
             "frontend_disconnected": "simulator_frontend",
@@ -74,7 +74,7 @@ class ChasePassiveCaptureError(RuntimeError):
         }
 
 
-def normalize_passive_receipt_fingerprint(value: Any) -> dict[str, Any]:
+def normalize_passive_receipt_fingerprint(value: object) -> dict[str, object]:
     source = value if isinstance(value, dict) else {}
     normalized = {
         normalized_name: source.get(protocol_name)
@@ -87,14 +87,7 @@ def normalize_passive_receipt_fingerprint(value: Any) -> dict[str, Any]:
             valid = protocol_name in source and (
                 field_value is None
                 or (
-                    isinstance(field_value, dict)
-                    and isinstance(field_value.get("source"), str)
-                    and bool(field_value["source"].strip())
-                    and isinstance(field_value.get("forward"), bool)
-                    and isinstance(field_value.get("reverse"), bool)
-                    and isinstance(field_value.get("steering"), (int, float))
-                    and not isinstance(field_value.get("steering"), bool)
-                    and math.isfinite(float(field_value["steering"]))
+                    validate_chase_control(field_value, bounded_steering=False) is not None
                 )
             )
         elif protocol_name == "playback":
@@ -119,9 +112,9 @@ def normalize_passive_receipt_fingerprint(value: Any) -> dict[str, Any]:
 
 
 def compare_passive_receipt_fingerprints(
-    before: dict[str, Any],
-    after: dict[str, Any],
-) -> dict[str, Any]:
+    before: dict[str, object],
+    after: dict[str, object],
+) -> dict[str, object]:
     field_names = tuple(PASSIVE_RECEIPT_FIELD_NAMES.values())
     unknown_fields = sorted(
         {
@@ -152,8 +145,8 @@ def compare_passive_receipt_fingerprints(
 
 
 def passive_receipt_environment(
-    fingerprint: dict[str, Any],
-) -> dict[str, Any]:
+    fingerprint: dict[str, object],
+) -> dict[str, object]:
     return {
         key: fingerprint.get(key)
         for key in (
@@ -169,12 +162,12 @@ def passive_receipt_environment(
 
 def build_chase_session_fingerprint(
     *,
-    state: dict[str, Any],
-    debug: dict[str, Any],
-) -> dict[str, Any]:
+    state: dict[str, object],
+    debug: dict[str, object],
+) -> dict[str, object]:
     """Build the documented read-only Chase session fields used for preservation."""
 
-    sidebar = _play_sidebar_values(state)
+    sidebar = play_sidebar_values(state)
     playback_source = state.get("playback")
     playback_source = playback_source if isinstance(playback_source, dict) else {}
     playback = {
@@ -183,15 +176,17 @@ def build_chase_session_fingerprint(
         if key in playback_source
     }
     control_input_source = _first_dict(
-        _nested_get(debug, ("actions", "chaserInput")),
-        _nested_get(debug, ("actors", "chaser", "input")),
+        nested_get(debug, ("actions", "chaserInput")),
+        nested_get(debug, ("actors", "chaser", "input")),
     )
-    control_input = _bounded_input(control_input_source)
+    control_input = validate_chase_control(
+        control_input_source, allow_motion=True, bounded_steering=False,
+    )
     control_source = _first_nonempty(
         sidebar.get("chaser-control-source"),
-        _nested_get(debug, ("actions", "chaserInput", "source")),
-        _nested_get(debug, ("actions", "chaserAction", "source")),
-        _nested_get(debug, ("actors", "chaser", "action", "source")),
+        nested_get(debug, ("actions", "chaserInput", "source")),
+        nested_get(debug, ("actions", "chaserAction", "source")),
+        nested_get(debug, ("actors", "chaser", "action", "source")),
     )
     fingerprint = {
         "game_id": _first_nonempty(debug.get("gameId"), state.get("gameId")),
@@ -201,11 +196,11 @@ def build_chase_session_fingerprint(
         ),
         "simulation_epoch": _first_nonempty(
             debug.get("simulationEpoch"),
-            _nested_get(debug, ("frameIdentity", "simulationEpoch")),
+            nested_get(debug, ("frameIdentity", "simulationEpoch")),
         ),
         "playback": playback or None,
         "control_source": control_source,
-        "control_input": control_input,
+        "control_input": control_input.to_dict() if control_input is not None else None,
     }
     unknown_fields = [
         field_name
@@ -220,11 +215,11 @@ def build_chase_session_fingerprint(
 
 
 def compare_chase_session_fingerprints(
-    before: dict[str, Any],
-    after: dict[str, Any],
+    before: dict[str, object],
+    after: dict[str, object],
     *,
     field_names: tuple[str, ...] | None = None,
-) -> dict[str, Any]:
+) -> dict[str, object]:
     """Compare session fingerprints.
 
     When field_names is set (continuous runs in every mode), only those fields
@@ -261,72 +256,12 @@ def compare_chase_session_fingerprints(
     }
 
 
-def _play_sidebar_values(state: dict[str, Any]) -> dict[str, Any]:
-    values: dict[str, Any] = {}
-    sections = state.get("playSidebarSections")
-    if not isinstance(sections, list):
-        return values
-    for section in sections:
-        if not isinstance(section, dict):
-            continue
-        rows = section.get("rows")
-        if not isinstance(rows, list):
-            continue
-        for row in rows:
-            if not isinstance(row, dict):
-                continue
-            row_id = row.get("id")
-            if isinstance(row_id, str) and "value" in row:
-                values[row_id] = row.get("value")
-    return values
-
-
-def _nested_get(record: dict[str, Any], path: tuple[str, ...]) -> Any:
-    value: Any = record
-    for key in path:
-        if not isinstance(value, dict):
-            return None
-        value = value.get(key)
-    return value
-
-
-def _first_nonempty(*values: Any) -> str | None:
+def _first_nonempty(*values: object) -> str | None:
     for value in values:
         if isinstance(value, str) and value.strip():
             return value.strip()
     return None
 
 
-def _first_dict(*values: Any) -> dict[str, Any] | None:
+def _first_dict(*values: object) -> dict[str, object] | None:
     return next((value for value in values if isinstance(value, dict)), None)
-
-
-def _bounded_input(value: dict[str, Any] | None) -> dict[str, Any] | None:
-    if not isinstance(value, dict):
-        return None
-    source = _first_nonempty(value.get("source"))
-    steering = value.get("steering")
-    if (
-        source is None
-        or isinstance(steering, bool)
-        or not isinstance(steering, (int, float))
-        or not math.isfinite(float(steering))
-    ):
-        return None
-    motion = _first_nonempty(value.get("motion"))
-    forward = value.get("forward")
-    reverse = value.get("reverse")
-    if motion is None and (
-        not isinstance(forward, bool) or not isinstance(reverse, bool)
-    ):
-        return None
-    result: dict[str, Any] = {
-        "source": source,
-        "steering": float(steering),
-    }
-    if motion is not None:
-        result["motion"] = motion
-    if isinstance(forward, bool) and isinstance(reverse, bool):
-        result["forward"] = forward
-        result["reverse"] = reverse
-    return result

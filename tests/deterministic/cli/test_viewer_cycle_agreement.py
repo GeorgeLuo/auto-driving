@@ -13,10 +13,12 @@ from PIL import Image
 
 from autonomy.decision_cycle.cycle import CYCLE_RECORD_KEYS, DecisionCycle, DecisionSteps
 from autonomy.decision_cycle.observation.values import Observation
+from autonomy.decision_cycle.perception.evidence.values import PerceivedThing, PerceptionSignal, ViewLocation
 from autonomy.decision_cycle.perception.runner import PerceptionRunner
 from autonomy.runtime.control import AutonomyControl
 from autonomy.runtime.execution import ControlApplication
-from autonomy.runtime.report import report_from_host_result
+from autonomy.runtime.frame_loop import FRAME_PUBLICATION_SCHEMA, FramePublication
+from autonomy.runtime.report import ReportValues, report_from_host_result
 from cli.automa_cli.frontend.perception_view import PerceptionView
 from cli.automa_cli.plugins.inspect.replay import read_replay_source
 from cli.automa_cli.replay.frames import run_frame
@@ -57,7 +59,8 @@ class ViewerCycleAgreementTests(unittest.TestCase):
             self.assertIsNone(cycle["plan"])
             self.assertIsNone(cycle["action"])
 
-            result.observation.metadata["injected"] = "source"
+            with self.assertRaises(TypeError):
+                result.observation.metadata["injected"] = "source"
             cycle["observation"]["metadata"]["injected"] = "caller"
             retained = result.export_cycle()
             self.assertNotIn("injected", retained["observation"]["metadata"])
@@ -87,8 +90,8 @@ class ViewerCycleAgreementTests(unittest.TestCase):
                 context.timestamp_ms,
                 {},
                 summary=("ahead",),
-                things=({"thing_id": "one", "kind": "obstacle"},),
-                signals=({"name": "range"},),
+                things=(PerceivedThing("one", "obstacle", "obstacle", ViewLocation("image", "center")),),
+                signals=(PerceptionSignal("range", True),),
                 metadata={"labels": ["first"]},
             )
             result = DecisionCycle(DecisionSteps(
@@ -108,11 +111,27 @@ class ViewerCycleAgreementTests(unittest.TestCase):
                 run_id="run",
                 generation_id="generation",
                 published_at_ms=published_at_ms,
-                values={"source_id": "runtime-host", "stale_after_ms": 5000},
+                values=ReportValues.from_dict({
+                    "source_id": "runtime-host", "stale_after_ms": 5000, "activation": {"steps": {}},
+                    "delivered_at_ms": None, "delivery_error": None, "receipt": None, "timing": None,
+                }),
             )
             view = PerceptionView(host_name="fixture")
-            view.publish(frame_record={"report": report.to_dict(), "host_telemetry": {"status": "unavailable", "reason": "publisher_missing"}}, frame_bytes=None)
-            report.cycle["observation"]["metadata"]["labels"].append("source")
+            view.publish(
+                publication=FramePublication.from_dict({
+                    "schema": FRAME_PUBLICATION_SCHEMA,
+                    "ok": True,
+                    "health": "healthy",
+                    "read_at_ms": published_at_ms,
+                    "result_age_ms": 0,
+                    "stale_after_ms": 5000,
+                    "report": report.to_dict(),
+                }),
+                host_telemetry={"status": "unavailable", "reason": "publisher_missing"},
+                frame_bytes=None,
+            )
+            with self.assertRaises(AttributeError):
+                report.cycle.observation.metadata["labels"].append("source")
             payload = json.loads(view.latest_json())
             cycle = payload["report"]["cycle"]
             self.assertEqual(set(cycle), set(CYCLE_RECORD_KEYS))

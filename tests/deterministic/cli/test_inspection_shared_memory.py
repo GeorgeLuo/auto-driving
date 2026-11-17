@@ -11,6 +11,8 @@ from unittest.mock import patch
 import numpy as np
 from PIL import Image
 
+from implementations.decision_cycle.memory.shared.evidence_ledger.ledger import LedgerBounds, empty_ledger
+
 from cli.automa_cli.app import build_parser
 from cli.automa_cli.plugins.inspect.commands import inspect_step
 from cli.automa_cli.replay.selections import SharedMemorySeed
@@ -161,7 +163,7 @@ class InspectionSharedMemoryTests(unittest.TestCase):
     def test_memory_inspect_starts_from_a_seeded_ledger(self) -> None:
         self.document["values"] = {LEDGER_KEY: {
             "$record": LEDGER_SPEC,
-            "data": {"memory_id": "memory-seeded", "epoch_id": "seeded", "bounds": {"max_records": 8}},
+            "data": empty_ledger(memory_id="memory-seeded", epoch_id="seeded", bounds=LedgerBounds(8), created_at_ms=0).to_dict(),
         }}
         self.write_seed()
         report = self.report(inspect_step(
@@ -179,6 +181,17 @@ class InspectionSharedMemoryTests(unittest.TestCase):
             shared_memory_file=self.seed_file, json_output=True,
         ))
         self.assertEqual(continued["frames"][0]["record"]["plugins"][0]["state"]["epoch_id"], "seeded")
+
+    def test_incomplete_legacy_ledger_seed_names_its_missing_field(self) -> None:
+        self.document["values"] = {LEDGER_KEY: {
+            "$record": LEDGER_SPEC,
+            "data": {"memory_id": "memory-seeded", "epoch_id": "seeded", "bounds": {"max_records": 8}},
+        }}
+        self.write_seed()
+        result = inspect_step("memory", source=str(self.image), plugins=["bounded_evidence"],
+                              shared_memory_file=self.seed_file, json_output=True)
+        self.assertEqual(result.exit_code, 2)
+        self.assertIn("FieldError: created_at_ms is missing", result.message)
 
     def test_a_recorded_step_inspect_keeps_the_seed_as_provenance(self) -> None:
         report = self.report(inspect_step(

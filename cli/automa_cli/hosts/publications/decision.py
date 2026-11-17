@@ -7,8 +7,8 @@ stays in the report.
 
 from __future__ import annotations
 
-from typing import Any
-
+from autonomy.runtime.frame_loop import FramePublication
+from autonomy.runtime.report import HostReport
 from ..step_activations import bundle_activation_problems
 from ..step_formatting import format_activation_problems
 from .frame_publication import (
@@ -28,7 +28,7 @@ class DecisionSurfaceError(Exception):
         message: str,
         *,
         host_name: str | None = None,
-        details: dict[str, Any] | None = None,
+        details: dict[str, object] | None = None,
         exit_code: int = 2,
     ) -> None:
         super().__init__(message)
@@ -45,8 +45,8 @@ def decision_error_payload(
     error: str,
     exit_code: int = 2,
     host_name: str | None = None,
-    details: dict[str, Any] | None = None,
-) -> dict[str, Any]:
+    details: dict[str, object] | None = None,
+) -> dict[str, object]:
     return {
         "schema": ERROR_SCHEMA,
         "exit_code": exit_code,
@@ -76,15 +76,14 @@ def require_valid_activations(
 
 
 def accept_decision_publication(
-    publication: object,
+    publication: FramePublication,
     *,
     host_name: str,
-    now_ms: int,
-) -> dict[str, Any]:
-    """Normalize and accept a host's decision publication without fabricating local state."""
+) -> HostReport:
+    """Accept a host's decision report without fabricating local state."""
 
     try:
-        return read_frame_publication(publication, host_name=host_name, now_ms=now_ms)
+        return read_frame_publication(publication, host_name=host_name)
     except FramePublicationError as exc:
         raise DecisionSurfaceError(
             "decision_publication_unavailable",

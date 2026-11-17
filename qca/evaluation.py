@@ -10,6 +10,8 @@ A context names the code in question:
 Evaluators see only a directory and the paths to inspect, so one evaluator
 serves every form. For a change, evaluators report findings throughout changed
 files and findings introduced elsewhere, such as a caller of a changed signature.
+Only findings the change introduces block it; the others it reports are review
+questions.
 
 A finding is a review question about a location, not a verdict.  Every
 evaluator returns the same fields, so findings from different tools can be
@@ -251,6 +253,9 @@ def _evaluate(evaluator: Evaluator, context: Context) -> list[Finding] | None:
         if not evaluator.covers(path):
             continue
         if in_scope(path, requested) or id(item) in new_ids:
+            item["evidence"]["introduced"] = id(item) in new_ids
+            if id(item) not in new_ids:
+                item["status"] = "review"
             findings.append(item)
     return findings
 
@@ -275,9 +280,11 @@ def introduced(base: list[Finding], head: list[Finding], *, base_tree: Path, hea
     """Return the head findings the base does not have.
 
     Findings match by tool, rule, file, enclosing symbol and source text, so
-    lines that only moved still match.  A measured finding matches a base
-    finding of at least the same value: a function may shrink while above a
-    limit, but growing past its base value is new.
+    lines that only moved still match.  A finding located at the definition it
+    names, such as an unused function, matches by its question instead, so
+    editing the definition does not make it new.  A measured finding matches a
+    base finding of at least the same value: a function may shrink while above
+    a limit, but growing past its base value is new.
     """
 
     available: defaultdict[tuple[str, ...], list[int]] = defaultdict(list)
@@ -316,10 +323,12 @@ class _Identities:
             (name for start, end, name in reversed(symbols) if start <= place["line"] <= end),
             "<module>",
         )
-        # A measured finding is the same finding at any size; its value is compared instead.
-        text = "" if item["measure"] else "\n".join(
-            line.strip() for line in lines[place["line"] - 1:place["end_line"]]
-        )
+        if item["measure"]:
+            text = ""  # The same finding at any size; its value is compared instead.
+        elif (place["line"], place.get("symbol")) in {(start, name) for start, _, name in symbols}:
+            text = item["question"]  # About the definition as a whole, however it is edited.
+        else:
+            text = "\n".join(line.strip() for line in lines[place["line"] - 1:place["end_line"]])
         return (item["tool"], item["rule"], place["path"], owner, text)
 
     def _file(self, path: str) -> tuple[list[str], list[tuple[int, int, str]]]:
@@ -347,13 +356,16 @@ def definitions(tree: ast.AST) -> list[tuple[ast.ClassDef | ast.FunctionDef | as
 
 
 def _symbols(source: str) -> list[tuple[int, int, str]]:
-    """Classes and functions as (start, end, qualified name), outermost first."""
+    """Classes and functions as (start, end, qualified name), outermost first; a start counts decorators."""
 
     try:
         tree = ast.parse(source)
     except (SyntaxError, ValueError):
         return []  # Text that is not Python has no symbols; its findings match by text.
-    return [(node.lineno, node.end_lineno or node.lineno, name) for node, name in definitions(tree)]
+    return [
+        (min([node.lineno, *(decorator.lineno for decorator in node.decorator_list)]), node.end_lineno or node.lineno, name)
+        for node, name in definitions(tree)
+    ]
 
 
 @contextmanager

@@ -17,11 +17,9 @@ from autonomy.decision_cycle.action_identifiers import (
     ActionInputError,
     ActionProposalMatrixError,
     proposal_id_for,
-    require_ascii_id,
-    require_safe_int,
 )
+from autonomy.fields import require_ascii_id, require_safe_int
 from autonomy.decision_cycle.context import DecisionFrameContext
-from autonomy.decision_cycle.plugin_state import unchanged_instance
 from autonomy.decision_cycle.proposal.plugin import ProposalPlugin
 from autonomy.decision_cycle.proposal.result import ProposalResult
 from autonomy.decision_cycle.proposal.values import (
@@ -62,25 +60,23 @@ def _admit_candidate(
             frame_id=frame_id,
             reason="plugin_invalid_return",
         )
-    # Re-validate the lifecycle matrix and admit a reconstructed copy so
-    # post-construction mutation of nested storage cannot change the candidate.
+    # Nested storage is immutable; validate the plugin's typed return directly.
     try:
-        plain = returned.to_dict()
-        validated = ActionProposal.from_dict(plain)
+        ActionProposal.validate(returned)
     except ActionProposalMatrixError:
         raise
     except Exception as exc:
         raise ActionProposalMatrixError(
             f"candidate fails lifecycle/bounds matrix: {exc}"
         ) from exc
-    identity = (validated.plugin_id, validated.proposal_id, validated.frame_id)
+    identity = (returned.plugin_id, returned.proposal_id, returned.frame_id)
     if identity != (invoked_plugin_id, expected_id, frame_id):
         return synthetic_error_proposal(
             plugin_id=invoked_plugin_id,
             frame_id=frame_id,
             reason="plugin_invalid_return",
         )
-    return validated
+    return returned
 
 
 class ProposalRunner(StepRunner[ProposalPlugin]):
@@ -145,7 +141,7 @@ class ProposalRunner(StepRunner[ProposalPlugin]):
         raised: BaseException | None = None
         returned: object = None
         try:
-            with unchanged_instance(plugin):
+            with self._plugin_call(plugin, context.shared_memory):
                 returned = plugin.propose(context)
         except BaseException as exc:  # noqa: BLE001 - fail closed per proposal
             raised = exc

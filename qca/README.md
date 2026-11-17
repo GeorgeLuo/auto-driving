@@ -58,9 +58,11 @@ three context forms and reports every finding in one shape:
 An evaluator is a name and a function from a directory and paths to findings, so
 one evaluator serves every form. For a change, each evaluator reports findings
 throughout changed files. It also compares both sides to identify new findings
-elsewhere. Findings match by tool, rule, file, enclosing symbol, and the
-location's source text, so moved code still matches; a finding with a `measure`
-matches a base finding of at least its value.
+elsewhere. Findings match by source identity, so moved code still matches;
+a finding at the definition its `symbol` names matches by its question, so
+editing the definition does not make it new; and a finding with a `measure`
+matches a base finding of at least its value. Only new findings keep a
+`blocking` status; the change's other findings are `review` questions.
 An evaluator's `roots` bound what it maintains, less any `excluded` paths under
 them: excluded files are never requested, and their findings are never reported.
 An evaluator whose `reach` is `project`, such as a type checker, reads its whole

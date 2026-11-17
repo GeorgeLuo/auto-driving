@@ -16,12 +16,15 @@ plugin to publish them.
 
 from __future__ import annotations
 
-from dataclasses import asdict, dataclass
+from collections.abc import Mapping
+from dataclasses import dataclass
 from typing import Any, Protocol, runtime_checkable
 
 from autonomy.decision_cycle.context import DecisionFrameContext
 from autonomy.decision_cycle.runner import FailurePolicy
 from autonomy.shared_memory import SharedMemory
+from autonomy.fields import FieldError, require_ascii_id, require_choice, require_keys, require_nested, require_schema
+from autonomy.serialization import deep_freeze, frozen_mapping_to_dict
 
 MEMORY_REPORT_SCHEMA = "memory_report"
 
@@ -46,7 +49,7 @@ class MemoryBackend(Protocol):
     def update(
         self,
         context: DecisionFrameContext,
-    ) -> dict[str, Any]:
+    ) -> MemoryReport:
         """Run one cycle. Return the memory report."""
 
 
@@ -69,24 +72,27 @@ class MemoryPluginReport:
 
     ``state`` is that plugin's own status summary of JSON data, including
     None when the plugin offers none. Invalid status data becomes a visible
-    ``status_error`` on the plugin. ``to_dict`` serializes that summary with ``asdict``.
+    ``status_error`` on the plugin. The report freezes it so later plugin updates cannot change it.
     """
 
     plugin_id: str
     state: Any = None
 
+    def __post_init__(self) -> None:
+        require_ascii_id(self.plugin_id, field_name="plugin_id")
+        try:
+            object.__setattr__(self, "state", deep_freeze(self.state, field_name="state"))
+        except ValueError as exc:
+            raise FieldError("state", str(exc)) from exc
+
     def to_dict(self) -> dict[str, Any]:
-        return asdict(self)
+        return {"plugin_id": self.plugin_id, "state": frozen_mapping_to_dict(self.state)}
 
     @classmethod
-    def from_dict(cls, data: dict[str, Any]) -> "MemoryPluginReport":
-        """Read an object status summary; a non-object state is treated as absent."""
+    def from_dict(cls, payload: object) -> MemoryPluginReport:
+        document = require_keys(payload, ("plugin_id", "state"))
+        return cls(plugin_id=document["plugin_id"], state=document["state"])
 
-        state = data.get("state")
-        return cls(
-            plugin_id=str(data.get("plugin_id") or "unknown"),
-            state=dict(state) if isinstance(state, dict) else None,
-        )
 
 
 @dataclass(frozen=True)
@@ -105,58 +111,75 @@ class MemoryReport:
     schema: str
     plugins: tuple[MemoryPluginReport, ...] = ()
     evidence_publisher: str | None = None
-    beliefs: dict[str, dict[str, Any]] | None = None
+    beliefs: Mapping[str, Mapping[str, object]] | None = None
+
+    def __post_init__(self) -> None:
+        require_choice(self.schema, (MEMORY_REPORT_SCHEMA,), field_name="schema")
+        if not isinstance(self.plugins, (list, tuple)):  # pyright: ignore[reportUnnecessaryIsInstance] - validate runtime callers
+            raise FieldError("plugins", "must be an array")
+        if not all(isinstance(plugin, MemoryPluginReport) for plugin in self.plugins):  # pyright: ignore[reportUnnecessaryIsInstance] - validate runtime callers
+            raise FieldError("plugins", "must contain MemoryPluginReport values")
+        object.__setattr__(self, "plugins", tuple(self.plugins))
+        if self.evidence_publisher is not None:
+            require_ascii_id(self.evidence_publisher, field_name="evidence_publisher")
+        if self.beliefs is not None:
+            if not isinstance(self.beliefs, Mapping):  # pyright: ignore[reportUnnecessaryIsInstance] - validate runtime callers
+                raise FieldError("beliefs", "must be an object or null")
+            for name, summary in self.beliefs.items():
+                require_ascii_id(name, field_name=f"beliefs.{name}")
+                if not isinstance(summary, Mapping):  # pyright: ignore[reportUnnecessaryIsInstance] - validate runtime callers
+                    raise FieldError(f"beliefs.{name}", "must be an object")
+            try:
+                object.__setattr__(self, "beliefs", deep_freeze(self.beliefs, field_name="beliefs"))
+            except ValueError as exc:
+                raise FieldError("beliefs", str(exc)) from exc
 
     def to_dict(self) -> dict[str, Any]:
         return {
             "schema": self.schema,
             "plugins": [plugin.to_dict() for plugin in self.plugins],
             "evidence_publisher": self.evidence_publisher,
-            "beliefs": (
-                None if self.beliefs is None
-                else {belief_id: dict(belief) for belief_id, belief in self.beliefs.items()}
-            ),
+            "beliefs": frozen_mapping_to_dict(self.beliefs),
         }
 
     @classmethod
-    def from_dict(cls, data: dict[str, Any]) -> "MemoryReport":
-        publisher = data.get("evidence_publisher")
-        beliefs = data.get("beliefs")
+    def from_dict(cls, payload: object) -> MemoryReport:
+        document = require_schema(payload, MEMORY_REPORT_SCHEMA, ("schema", "plugins", "evidence_publisher", "beliefs"))
+        plugins = document["plugins"]
+        if not isinstance(plugins, (list, tuple)):
+            raise FieldError("plugins", "must be an array")
         return cls(
-            schema=str(data.get("schema") or MEMORY_REPORT_SCHEMA),
-            plugins=tuple(
-                MemoryPluginReport.from_dict(item)
-                for item in data.get("plugins") or ()
-                if isinstance(item, dict)
-            ),
-            evidence_publisher=publisher if isinstance(publisher, str) and publisher else None,
-            beliefs=(
-                {belief_id: dict(value) for belief_id, value in beliefs.items()}
-                if isinstance(beliefs, dict) else None
-            ),
+            schema=document["schema"], evidence_publisher=document["evidence_publisher"], beliefs=document["beliefs"],
+            plugins=tuple(require_nested(MemoryPluginReport.from_dict, plugin, field_name=f"plugins.{index}")
+                          for index, plugin in enumerate(plugins)),
         )
 
 
-def evidence_records(report: object) -> list[dict[str, Any]] | None:
+
+def evidence_records(report: object) -> list[Mapping[str, object]] | tuple[Mapping[str, object], ...] | None:
     """The evidence publisher's retained records, or None when unavailable.
 
-    A report that is not a dict, a missing publisher, or a missing plugin list
-    yields None. Plugins whose state is not a dict are skipped. The publisher's
-    ``records`` list is returned, or None when that field is not a list.
+    Accept the typed cycle report or a JSON step status. Missing publishers
+    and plugins yield None. A plugin's opaque state may be any JSON value;
+    only an object with a records array supplies retained evidence.
     """
 
-    if not isinstance(report, dict):
+    if isinstance(report, MemoryReport):
+        publisher = report.evidence_publisher
+        plugins = ((plugin.plugin_id, plugin.state) for plugin in report.plugins)
+    elif isinstance(report, dict):
+        publisher = report.get("evidence_publisher")
+        entries = report.get("plugins")
+        if not isinstance(entries, list):
+            return None
+        plugins = ((entry.get("plugin_id"), entry.get("state")) for entry in entries if isinstance(entry, dict))
+    else:
         return None
-    publisher = report.get("evidence_publisher")
-    plugins = report.get("plugins")
-    if not isinstance(publisher, str) or not publisher or not isinstance(plugins, list):
+    if not isinstance(publisher, str) or not publisher:
         return None
-    for entry in plugins:
-        if not isinstance(entry, dict) or entry.get("plugin_id") != publisher:
-            continue
-        state = entry.get("state")
-        if not isinstance(state, dict):
+    for plugin_id, state in plugins:
+        if plugin_id != publisher or not isinstance(state, Mapping):
             continue
         records = state.get("records")
-        return records if isinstance(records, list) else None
+        return records if isinstance(records, (list, tuple)) else None
     return None

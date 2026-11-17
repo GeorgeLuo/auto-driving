@@ -8,6 +8,8 @@ from .camera_stream import ChaseCameraStream
 from .defaults import DEFAULT_CHASE_UI_WS_URL, get_default_chase_ui_ws_url
 from .frame_identity import (
     ChaseCaptureValidationError,
+    ChaseEvaluatorReference,
+    ChaseSensorCapture,
     evaluate_chase_evaluator_reference,
     validate_chase_sensor_capture,
 )
@@ -48,48 +50,20 @@ from .session import (
     normalize_passive_receipt_fingerprint, compare_passive_receipt_fingerprints,
     passive_receipt_environment, build_chase_session_fingerprint,
 )
+from .state import nested_get, play_sidebar_values
 from .steering import chase_steering
-
-
-def _nested_get(record: dict[str, object], path: tuple[str, ...]) -> object:
-    value: object = record
-    for key in path:
-        if not isinstance(value, dict):
-            return None
-        value = value.get(key)
-    return value
 
 
 def _debug_chaser_action_sources(debug: dict[str, object]) -> dict[str, object]:
     return {
-        "actions.chaserInput.source": _nested_get(debug, ("actions", "chaserInput", "source")),
-        "actions.chaserAction.source": _nested_get(debug, ("actions", "chaserAction", "source")),
-        "actors.chaser.action.source": _nested_get(debug, ("actors", "chaser", "action", "source")),
+        "actions.chaserInput.source": nested_get(debug, ("actions", "chaserInput", "source")),
+        "actions.chaserAction.source": nested_get(debug, ("actions", "chaserAction", "source")),
+        "actors.chaser.action.source": nested_get(debug, ("actors", "chaser", "action", "source")),
     }
 
 
 def _debug_has_ws_chaser_source(debug: dict[str, object]) -> bool:
     return any(value == "ws" for value in _debug_chaser_action_sources(debug).values())
-
-
-def _play_sidebar_values(state: dict[str, object]) -> dict[str, object]:
-    values: dict[str, object] = {}
-    sections = state.get("playSidebarSections")
-    if not isinstance(sections, list):
-        return values
-    for section in sections:
-        if not isinstance(section, dict):
-            continue
-        rows = section.get("rows")
-        if not isinstance(rows, list):
-            continue
-        for row in rows:
-            if not isinstance(row, dict):
-                continue
-            row_id = row.get("id")
-            if isinstance(row_id, str) and "value" in row:
-                values[row_id] = row.get("value")
-    return values
 
 
 class ChaseSimCar(CarInterface):
@@ -261,7 +235,7 @@ class ChaseSimCar(CarInterface):
             latest = debug
             try:
                 state = self.client.get_state(timeout_s=min(1.0, max(0.1, deadline - time.monotonic())))
-                latest_sidebar_source = _play_sidebar_values(state).get("chaser-control-source")
+                latest_sidebar_source = play_sidebar_values(state).get("chaser-control-source")
             except MetricsUiWebSocketError:
                 latest_sidebar_source = None
             frame_index = debug.get("frameIndex")
@@ -403,12 +377,8 @@ class ChaseSimCar(CarInterface):
         before, preservation, declared_field_set = _receipt_preservation(
             passive_observation, supported=supported, reason_record=reason_record
         )
-        sensor: dict[str, object] | None = None
-        evaluator_status: dict[str, object] = {
-            "status": "unavailable",
-            "reason": "reference_missing",
-            "path": "evaluator.reference",
-        }
+        sensor: ChaseSensorCapture | None = None
+        evaluator_status = ChaseEvaluatorReference("unavailable", "reference_missing", "evaluator.reference")
         if supported:
             sensor, evaluator_status = _validated_capture(
                 capture, before=before, unknown_fields=preservation["unknown_fields"]
@@ -424,8 +394,8 @@ class ChaseSimCar(CarInterface):
             "status": status,
             "code": code,
             "reason": reason,
-            "sensor": sensor,
-            "evaluator_reference": evaluator_status,
+            "sensor": sensor.to_dict() if sensor is not None else None,
+            "evaluator_reference": evaluator_status.status_dict(),
             "session_preservation": preservation,
             "environment": _receipt_environment(before, fallback_environment),
             "timeout_s": operation_timeout,
@@ -601,12 +571,11 @@ def _validated_capture(
     *,
     before: dict[str, object],
     unknown_fields: list[str],
-) -> tuple[dict[str, object], dict[str, object]]:
+) -> tuple[ChaseSensorCapture, ChaseEvaluatorReference]:
     """The validated sensor and evaluator status; the receipt must match the sensor's identity."""
 
     sensor = validate_chase_sensor_capture(capture, expected_actor_id="chaser")
     evaluator = evaluate_chase_evaluator_reference(capture, sensor=sensor)
-    evaluator_status = {key: value for key, value in evaluator.items() if key != "reference" and value is not None}
     playback = _record(before.get("playback"))
     receipt_identity = {
         "game_id": before.get("game_id"),
@@ -616,10 +585,10 @@ def _validated_capture(
         "camera_id": before.get("camera_id"),
     }
     sensor_identity = {
-        "game_id": sensor.get("game_id"),
-        "simulation_epoch": sensor.get("simulation_epoch"),
-        "simulator_frame_index": sensor.get("simulator_frame_index"),
-        "actor_id": sensor.get("actor_id"),
+        "game_id": sensor.identity.game_id,
+        "simulation_epoch": sensor.identity.simulation_epoch,
+        "simulator_frame_index": sensor.identity.simulator_frame_index,
+        "actor_id": sensor.identity.actor_id,
         "camera_id": CHASE_PASSIVE_CAMERA_ID,
     }
     receipt_identity_fields = {
@@ -641,7 +610,7 @@ def _validated_capture(
             path="passiveObservation.preservation.before." + mismatched_identity[0],
             message=f"preservation receipt does not match the captured sensor identity ({mismatched_identity})",
         )
-    return sensor, evaluator_status
+    return sensor, evaluator
 
 
 def _receipt_status(

@@ -7,6 +7,8 @@ from copy import deepcopy
 from pathlib import Path
 from urllib.request import urlopen
 from PIL import Image
+
+from autonomy.runtime.frame_loop import FRAME_PUBLICATION_SCHEMA, FramePublication
 from cli.automa_cli.hosts.publications.decision_records import DecisionRunners
 from cli.automa_cli.frontend.server import RuntimeViewServer
 from cli.automa_cli.workbench.runner import ImageReplayRunner
@@ -119,8 +121,15 @@ class LiveRuntimeDecisionViewFixture:
         stream_frame = stream_frame or self._accepted_frame(run_id=run_id)
         frame_bytes = _jpeg_bytes(image_color)
         target.perception.publish(
-            frame_record={"schema": "host_frame_publication", "health": "healthy", "ok": True,
-                          "stale_after_ms": stream_frame["values"]["stale_after_ms"], "report": stream_frame},
+            publication=FramePublication.from_dict({
+                "schema": FRAME_PUBLICATION_SCHEMA,
+                "ok": True,
+                "health": "healthy",
+                "read_at_ms": stream_frame["published_at_ms"],
+                "result_age_ms": 0,
+                "stale_after_ms": stream_frame["values"]["stale_after_ms"],
+                "report": stream_frame,
+            }),
             frame_bytes=frame_bytes,
         )
         return stream_frame, frame_bytes

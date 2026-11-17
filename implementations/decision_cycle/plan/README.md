@@ -28,6 +28,12 @@ stages the default.
 | Preset | Plugins |
 |---|---|
 | `most_confident` (default) | `highest_confidence` |
+| `follow_policy` | `follow_policy` |
+
+Arm `follow_policy` on a host whose collection supplies a policy cycler and
+its executors; `plugins/README.md` says what it selects. Also append the
+packaged memory plugin by name with `plugins arm --name memory/control_runs`;
+it retains applied history without replacing the collection's memory selection.
 
 ## Finding the default business logic
 

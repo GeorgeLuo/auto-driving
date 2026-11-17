@@ -9,7 +9,7 @@ confidence counts checks, never samples.
 ``autonomy/decision_cycle/confidence.py``). Then it is
 ``(support + 1) / (checks + 2)`` over the retained checks, so it never reaches
 0 or 1. ``to_dict`` adds ``confidence``, ``by_method`` and ``corroborated`` for
-viewers; ``from_dict`` derives them again rather than reading them.
+viewers; ``from_dict`` checks them against the retained checks.
 
 The plugin that declares a belief keeps it at ``publication.belief_key``.
 """
@@ -21,6 +21,7 @@ from typing import Any, Literal
 
 from autonomy.decision_cycle.memory.evidence import require_identifier, require_non_negative_int
 from autonomy.serialization import canonical_json_utf8
+from autonomy.fields import FieldError, require_choice, require_keys, require_nested, require_number
 
 Outcome = Literal["support", "contradict"]
 
@@ -38,8 +39,12 @@ class Check:
     def __post_init__(self) -> None:
         object.__setattr__(self, "at_ms", require_non_negative_int(self.at_ms, field_name="at_ms"))
         require_identifier(self.method, field_name="method")
-        if self.outcome not in ("support", "contradict"):
-            raise ValueError("outcome must be support or contradict")
+        require_choice(self.outcome, ("support", "contradict"), field_name="outcome")
+        for name in ("predicted", "observed"):
+            try:
+                canonical_json_utf8(getattr(self, name))
+            except ValueError as exc:
+                raise FieldError(name, str(exc)) from exc
 
     def to_dict(self) -> dict[str, Any]:
         return {
@@ -49,7 +54,7 @@ class Check:
 
     @classmethod
     def from_dict(cls, data: dict[str, Any]) -> Check:
-        return cls(**data)
+        return cls(**require_keys(data, ("at_ms", "method", "outcome", "predicted", "observed")))
 
 
 @dataclass(frozen=True)
@@ -63,6 +68,10 @@ class Trial:
     properties: dict[str, Any] = field(default_factory=dict)
 
     def __post_init__(self) -> None:
+        try:
+            canonical_json_utf8(self.predicted)
+        except ValueError as exc:
+            raise FieldError("predicted", str(exc)) from exc
         require_identifier(self.trial_id, field_name="trial_id")
         require_identifier(self.method, field_name="method")
         object.__setattr__(
@@ -77,7 +86,10 @@ class Trial:
 
     @classmethod
     def from_dict(cls, data: dict[str, Any]) -> Trial:
-        return cls(**data)
+        document = require_keys(data, ("trial_id", "method", "started_at_ms", "predicted", "properties"))
+        if not isinstance(document["properties"], dict):
+            raise FieldError("properties", "must be an object")
+        return cls(**document)
 
 
 @dataclass(frozen=True)
@@ -93,20 +105,26 @@ class Belief:
     properties: dict[str, Any] = field(default_factory=dict)
 
     def __post_init__(self) -> None:
-        canonical_json_utf8(self.value)
+        try:
+            canonical_json_utf8(self.value)
+        except ValueError as exc:
+            raise FieldError("value", str(exc)) from exc
         require_identifier(self.belief_id, field_name="belief_id")
         require_identifier(self.source_plugin_id, field_name="source_plugin_id")
         object.__setattr__(
             self, "updated_at_ms", require_non_negative_int(self.updated_at_ms, field_name="updated_at_ms"),
         )
+        for name in ("checks", "trials"):
+            if not isinstance(getattr(self, name), (list, tuple)):
+                raise FieldError(name, "must be an array")
         object.__setattr__(self, "checks", tuple(self.checks))
         object.__setattr__(self, "trials", tuple(self.trials))
         if any(not isinstance(check, Check) for check in self.checks):
-            raise TypeError("checks must contain Check values")
+            raise FieldError("checks", "must contain Check values")
         if any(not isinstance(trial, Trial) for trial in self.trials):
-            raise TypeError("trials must contain Trial values")
+            raise FieldError("trials", "must contain Trial values")
         if len({trial.trial_id for trial in self.trials}) != len(self.trials):
-            raise ValueError("trial ids must be unique within a belief")
+            raise FieldError("trials", "trial ids must be unique within a belief")
 
     @property
     def confidence(self) -> float | None:
@@ -185,13 +203,39 @@ class Belief:
 
     @classmethod
     def from_dict(cls, data: dict[str, Any]) -> Belief:
-        return cls(
-            belief_id=data["belief_id"], value=data["value"],
-            source_plugin_id=data["source_plugin_id"], updated_at_ms=data["updated_at_ms"],
-            checks=tuple(Check.from_dict(item) for item in data["checks"]),
-            trials=tuple(Trial.from_dict(item) for item in data["trials"]),
-            properties=data["properties"],
+        document = require_keys(data, (
+            "belief_id", "value", "source_plugin_id", "updated_at_ms", "checks", "trials",
+            "properties", "confidence", "by_method", "corroborated",
+        ))
+        parsed = {}
+        for name, parse in (("checks", Check.from_dict), ("trials", Trial.from_dict)):
+            values = document[name]
+            if not isinstance(values, (list, tuple)):
+                raise FieldError(name, "must be an array")
+            parsed[name] = tuple(require_nested(parse, value, field_name=f"{name}.{index}")
+                                 for index, value in enumerate(values))
+        if not isinstance(document["properties"], dict):
+            raise FieldError("properties", "must be an object")
+        belief = cls(
+            belief_id=document["belief_id"], value=document["value"],
+            source_plugin_id=document["source_plugin_id"], updated_at_ms=document["updated_at_ms"],
+            properties=document["properties"], **parsed,
         )
+        confidence = document["confidence"]
+        if confidence is not None:
+            confidence = require_number(confidence, field_name="confidence", bounds=(0, 1))
+        if confidence != belief.confidence:
+            raise FieldError("confidence", "must agree with checks")
+        by_method = require_keys(document["by_method"], belief.by_method, field_name="by_method")
+        for method, expected in belief.by_method.items():
+            counts = require_keys(by_method[method], ("support", "contradict"), field_name=f"by_method.{method}")
+            for outcome, count in expected.items():
+                actual = require_non_negative_int(counts[outcome], field_name=f"by_method.{method}.{outcome}")
+                if actual != count:
+                    raise FieldError(f"by_method.{method}.{outcome}", "must agree with checks")
+        if type(document["corroborated"]) is not bool or document["corroborated"] != belief.corroborated:
+            raise FieldError("corroborated", "must agree with checks")
+        return belief
 
 
 def _bound(value: Any, name: str) -> int:

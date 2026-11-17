@@ -72,16 +72,18 @@ class _RecordsSource(_ConfiguredProposal):
         return super().propose(context)
 
 
+RESET_MAPS = []
+RESET_CALLS = []
+
+
 class _RecordsReset(_ConfiguredProposal):
     def reset(self, shared_memory) -> None:
-        self.reset_map = shared_memory
+        RESET_MAPS.append(shared_memory)
 
 
 class _ResetsWithoutMap(_ConfiguredProposal):
-    reset_count = 0
-
     def reset(self) -> None:
-        self.reset_count += 1
+        RESET_CALLS.append(True)
 
 
 def _spec(name: str) -> str:
@@ -201,18 +203,20 @@ class ProposalRunnerTests(unittest.TestCase):
         self.assertEqual(old_report["plugins"][0]["error"], "RuntimeError: propose failed")
 
     def test_optional_reset_receives_the_host_map_on_reset_and_selection_removal(self) -> None:
+        RESET_MAPS.clear()
+        RESET_CALLS.clear()
         mapped = _RecordsReset(plugin_id="mapped")
         unmapped = _ResetsWithoutMap(plugin_id="unmapped")
         runner = ProposalRunner.from_plugins({"mapped": mapped, "unmapped": unmapped})
         first_map = {"epoch": 1}
         runner.reset(first_map)
-        self.assertIs(mapped.reset_map, first_map)
-        self.assertEqual(unmapped.reset_count, 1)
+        self.assertIs(RESET_MAPS[-1], first_map)
+        self.assertEqual(len(RESET_CALLS), 1)
 
         second_map = {"epoch": 2}
         runner.reset(second_map)
-        self.assertIs(mapped.reset_map, second_map)
-        self.assertEqual(unmapped.reset_count, 2)
+        self.assertIs(RESET_MAPS[-1], second_map)
+        self.assertEqual(len(RESET_CALLS), 2)
         self.assertEqual(
             [item["plugin_id"] for item in runner.plugin_report()["plugins"]],
             ["mapped", "unmapped"],

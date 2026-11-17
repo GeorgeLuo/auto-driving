@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+from collections.abc import Mapping
+
 from dataclasses import dataclass
 import math
 from typing import Any
@@ -753,7 +755,7 @@ def clamp(value: float) -> float:
 def _json_safe(value: Any) -> Any:
     if isinstance(value, np.generic):
         return value.item()
-    if isinstance(value, dict):
+    if isinstance(value, Mapping):
         return {str(key): _json_safe(item) for key, item in value.items()}
     if isinstance(value, (tuple, list)):
         return [_json_safe(item) for item in value]

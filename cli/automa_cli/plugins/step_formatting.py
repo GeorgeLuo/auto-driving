@@ -5,10 +5,15 @@ from __future__ import annotations
 import json
 from typing import Any
 
-from autonomy.decision_cycle.action.hold import HoldAction, idle_output
+from autonomy.decision_cycle.action.result import ActionResult
 from autonomy.decision_cycle.confidence import confidence_text
-from autonomy.decision_cycle.memory.interface import evidence_records
+from autonomy.decision_cycle.memory.interface import MemoryReport, evidence_records
+from autonomy.decision_cycle.observation.values import Observation
 from autonomy.decision_cycle.timing import step_timing
+from autonomy.decision_cycle.proposal.result import ProposalResult
+from autonomy.decision_cycle.proposal.values import ActionProposal, ProposedVehicleCommand
+from autonomy.decision_cycle.plan.values import ActionPlan
+from autonomy.serialization import frozen_mapping_to_dict
 
 from ..shared.memory_report import evidence_publisher, plugin_summaries
 
@@ -38,24 +43,24 @@ def _ms(value: Any) -> str:
 
 
 def format_step_record(
-    step: str, record: dict[str, Any] | None, *,
-    observation: dict[str, Any] | None = None, memory: dict[str, Any] | None = None,
+    step: str, record: ProposalResult | ActionPlan | ActionResult | None, *,
+    observation: Observation | None = None, memory: MemoryReport | None = None,
 ) -> list[str]:
     if record is None:
         return [f"{step.capitalize()}: none (an earlier step failed or {step} is disabled)"]
-    if step == "proposal":
+    if isinstance(record, ProposalResult):
         return _proposal_lines(record, observation=observation, memory=memory)
-    if step == "plan":
+    if isinstance(record, ActionPlan):
         return _plan_lines(record)
     return _action_lines(record)
 
 
 def _proposal_lines(
-    record: dict[str, Any], *, observation: dict[str, Any] | None, memory: dict[str, Any] | None,
+    record: ProposalResult, *, observation: Observation | None, memory: MemoryReport | None,
 ) -> list[str]:
     lines = [
-        f"Proposal: status={record.get('status')} reason={record.get('reason') or '-'}",
-        f"Observation: {observation['observation_id'] if observation is not None else 'none'}",
+        f"Proposal: status={record.status} reason={record.reason or '-'}",
+        f"Observation: {observation.observation_id if observation is not None else 'none'}",
     ]
     lines.extend(
         f"Memory: plugin={item['plugin_id']} health={item['health']} "
@@ -69,52 +74,49 @@ def _proposal_lines(
             f"Retained: record_id={item.get('record_id')} kind={item.get('kind')} "
             f"confidence={confidence_text(item.get('confidence'))} frame_id={origin.get('frame_id')}"
         )
-    lines.extend(_candidate_lines(record.get("candidates"), selected=None))
+    lines.extend(_candidate_lines(record.candidates, selected=None))
     return lines
 
 
-def _plan_lines(record: dict[str, Any]) -> list[str]:
-    selected = record.get("selected_proposal_id")
-    contributions = record.get("contributions") if isinstance(record.get("contributions"), list) else []
+def _plan_lines(record: ActionPlan) -> list[str]:
+    selected = record.selected_proposal_id
     return [
-        f"Plan: status={record.get('status')} selector={record.get('selector_id')} selected={selected}",
-        f"Command: {json.dumps(_command(record.get('command')), sort_keys=True)} "
-        f"reason={record.get('reason')} confidence={confidence_text(record.get('confidence'))}",
-        *_candidate_lines(record.get("candidates"), selected=selected),
+        f"Plan: status={record.status} selector={record.selector_id} selected={selected}",
+        f"Command: {json.dumps(_command(record.command), sort_keys=True)} "
+        f"reason={record.reason} confidence={confidence_text(record.confidence)}",
+        *_candidate_lines(record.candidates, selected=selected),
         "Contributions: " + (", ".join(
-            f"{item.get('plugin_id')}(weight={item.get('weight')}, role={item.get('role')})"
-            for item in contributions if isinstance(item, dict)
+            f"{item.plugin_id}(weight={item.weight}, role={item.role})"
+            for item in record.contributions
         ) or "none"),
     ]
 
 
-def _action_lines(record: dict[str, Any]) -> list[str]:
-    authority = record.get("authority") if isinstance(record.get("authority"), dict) else {}
+def _action_lines(record: ActionResult) -> list[str]:
+    authority = record.authority
     return [
-        f"Action: status={record.get('status')} reason={record.get('reason') or '-'} "
-        f"gate={authority.get('gate_id') or HoldAction.plugin_id}",
-        f"Proposed: {json.dumps(authority.get('proposed'), sort_keys=True)}",
-        f"Authorized: {json.dumps(authority.get('authorized_output') or idle_output(), sort_keys=True)}",
+        f"Action: status={record.status} reason={record.reason or '-'} gate={authority.gate_id}",
+        f"Proposed: {json.dumps(None if authority.proposed is None else authority.proposed.to_dict(), sort_keys=True)}",
+        f"Authorized: {json.dumps(frozen_mapping_to_dict(authority.authorized_output), sort_keys=True)}",
         # The action step passed the proposal through; the host decides whether it reaches the vehicle.
-        f"Authorized as proposed: {str(authority.get('proposed_applied') is True).lower()}",
+        f"Authorized as proposed: {str(authority.proposed_applied).lower()}",
     ]
 
 
-def _candidate_lines(candidates: Any, *, selected: str | None) -> list[str]:
-    candidates = [item for item in (candidates if isinstance(candidates, list) else []) if isinstance(item, dict)]
+def _candidate_lines(candidates: tuple[ActionProposal, ...], *, selected: str | None) -> list[str]:
     if not candidates:
         return ["Candidates: none"]
     return [
-        ("* " if selected is not None and item.get("proposal_id") == selected else "- ")
-        + f"plugin={item.get('plugin_id')} proposal={item.get('proposal_id')} "
-        f"lifecycle={item.get('lifecycle')} freshness={item.get('freshness')} "
-        f"confidence={confidence_text(item.get('confidence'))} reason={item.get('reason')} "
-        f"command={json.dumps(_command(item.get('command')), sort_keys=True)}"
+        ("* " if selected is not None and item.proposal_id == selected else "- ")
+        + f"plugin={item.plugin_id} proposal={item.proposal_id} "
+        f"lifecycle={item.lifecycle} freshness={item.freshness} "
+        f"confidence={confidence_text(item.confidence)} reason={item.reason} "
+        f"command={json.dumps(_command(item.command), sort_keys=True)}"
         for item in candidates
     ]
 
 
-def _command(command: Any) -> dict[str, Any] | None:
-    if not isinstance(command, dict):
+def _command(command: ProposedVehicleCommand | None) -> dict[str, float] | None:
+    if command is None:
         return None
-    return {"steering": command.get("steering"), "throttle": command.get("throttle")}
+    return {"steering": command.steering, "throttle": command.throttle}

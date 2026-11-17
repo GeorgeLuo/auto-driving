@@ -13,7 +13,7 @@ from urllib.request import urlopen
 from cli.automa_cli.hosts.discovery import runtime_base_url
 from cli.automa_cli.hosts.local import stop_chase_host
 from implementations.decision_cycle.catalog import PRESET_STEPS, packaged_activation
-from tests.shared.autonomy.runtime.recording_fixtures import read_recording_entries
+from tests.shared.autonomy.runtime.recording_fixtures import read_recording_entries, read_recording_generations
 from tests.shared.cli.invoke import invoke_automa
 from tests.shared.cli.workbench_fixtures import image_source
 from tests.shared.integration.plugin_flow_fixtures import (
@@ -196,6 +196,7 @@ class PluginArmingFlows(unittest.TestCase):
                 exported_entries = read_recording_entries(exported_root)
                 self.assertEqual(exported_entries, read_recording_entries(host_root))
                 self.assertEqual(len(exported_entries), state["recorded_count"])
+                self.assertEqual(read_recording_generations(exported_root), read_recording_generations(host_root))
                 # The host outlives the run and keeps live deselections, like a PiCar's.
                 after = json.loads(run_automa("plugins", "list", "--host-name", "chase-sim-chaser", "--step", "proposal",
                                               "--json", runtime_root=runtime, extra_env=env).stdout)

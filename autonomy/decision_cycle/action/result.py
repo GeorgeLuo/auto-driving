@@ -13,7 +13,7 @@ from dataclasses import dataclass
 from typing import Any
 
 from autonomy.decision_cycle.action.values import AuthorityResult
-from autonomy.fields import require_ascii_id
+from autonomy.fields import FieldError, require_ascii_id, require_choice, require_nested, require_schema
 from autonomy.decision_cycle.errors import CYCLE_ERROR_REASONS
 from autonomy.runtime.control import AutonomyControl
 
@@ -33,26 +33,22 @@ class ActionResult:
         object.__setattr__(
             self, "frame_id", require_ascii_id(self.frame_id, field_name="frame_id")
         )
-        if self.schema != ACTION_RESULT_SCHEMA:
-            raise ValueError(
-                f"schema must be {ACTION_RESULT_SCHEMA!r}; got {self.schema!r}"
-            )
-        if self.status not in {"ok", "error"}:
-            raise ValueError(f"invalid cycle status {self.status!r}")
+        require_choice(self.schema, (ACTION_RESULT_SCHEMA,), field_name="schema")
+        require_choice(self.status, ("ok", "error"), field_name="status")
         if not isinstance(self.authority, AuthorityResult):
-            raise TypeError("authority must be AuthorityResult")
+            raise FieldError("authority", "must be AuthorityResult")
         if self.status == "ok":
             if self.reason != "":
-                raise ValueError("ok reason must be empty")
-        elif self.reason not in CYCLE_ERROR_REASONS:
-            raise ValueError(f"unknown cycle error reason {self.reason!r}")
+                raise FieldError("reason", "must be empty when status is ok")
+        else:
+            require_choice(self.reason, CYCLE_ERROR_REASONS, field_name="reason")
         if (
             self.authority.cycle_status != self.status
             or self.authority.cycle_reason != self.reason
         ):
-            raise ValueError("authority cycle fields must match the action status")
+            raise FieldError("authority", "cycle fields must match the action status and reason")
         if self.authority.frame_id != self.frame_id:
-            raise ValueError("authority.frame_id must match cycle frame_id")
+            raise FieldError("authority.frame_id", "must match cycle frame_id")
         if self.control is None:
             object.__setattr__(
                 self, "control", AutonomyControl(**self.authority.authorized_output)
@@ -75,3 +71,11 @@ class ActionResult:
             "reason": self.reason,
             "authority": self.authority.to_dict(),
         }
+
+    @classmethod
+    def from_dict(cls, payload: object) -> ActionResult:
+        document = require_schema(payload, ACTION_RESULT_SCHEMA, ("schema", "frame_id", "status", "reason", "authority"))
+        return cls(
+            schema=document["schema"], frame_id=document["frame_id"], status=document["status"], reason=document["reason"],
+            authority=require_nested(AuthorityResult.from_dict, document["authority"], field_name="authority"),
+        )

@@ -78,15 +78,6 @@ class MemoryPluginReport:
     def to_dict(self) -> dict[str, Any]:
         return asdict(self)
 
-    @classmethod
-    def from_dict(cls, data: dict[str, Any]) -> "MemoryPluginReport":
-        """Read an object status summary; a non-object state is treated as absent."""
-
-        state = data.get("state")
-        return cls(
-            plugin_id=str(data.get("plugin_id") or "unknown"),
-            state=dict(state) if isinstance(state, dict) else None,
-        )
 
 
 @dataclass(frozen=True)
@@ -118,23 +109,6 @@ class MemoryReport:
             ),
         }
 
-    @classmethod
-    def from_dict(cls, data: dict[str, Any]) -> "MemoryReport":
-        publisher = data.get("evidence_publisher")
-        beliefs = data.get("beliefs")
-        return cls(
-            schema=str(data.get("schema") or MEMORY_REPORT_SCHEMA),
-            plugins=tuple(
-                MemoryPluginReport.from_dict(item)
-                for item in data.get("plugins") or ()
-                if isinstance(item, dict)
-            ),
-            evidence_publisher=publisher if isinstance(publisher, str) and publisher else None,
-            beliefs=(
-                {belief_id: dict(value) for belief_id, value in beliefs.items()}
-                if isinstance(beliefs, dict) else None
-            ),
-        )
 
 
 def evidence_records(report: object) -> list[dict[str, Any]] | None:

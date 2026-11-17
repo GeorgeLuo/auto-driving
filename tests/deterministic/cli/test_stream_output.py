@@ -19,7 +19,8 @@ from dataclasses import replace
 from autonomy.decision_cycle.cycle import CYCLE_RECORD_KEYS
 from autonomy.runtime.frame_loop import FRAME_PUBLICATION_SCHEMA, FramePublication
 from autonomy.runtime.report import HostReport, ReportApplication
-from autonomy.decision_cycle.perception.interface import PerceptionText
+from autonomy.decision_cycle.perception.interface import PerceptionPluginRun, PerceptionText
+from autonomy.decision_cycle.perception.evidence.values import PerceivedThing, PerceptionSignal, ViewLocation
 from cli.automa_cli.plugins.stream import decision, memory, perception, session
 from cli.automa_cli.plugins.stream.commands import stream_host_step
 from cli.automa_cli.plugins.stream.models import PerceptionPublication, StreamEvent, ViewState
@@ -257,15 +258,16 @@ class StreamOutputTests(unittest.TestCase):
     def test_perception_reports_a_stale_frame_with_its_fields(self):
         probe = perception._probe_perception(
             host_name="fixture", base_url="http://host.invalid", fetch_error=None,
-            publication=_frame_publication(health="stale", perception={"signals": [], "things": []}),
+            publication=_frame_publication(health="stale", perception=PerceptionText("perception_text", "fixture", "empty", (), ()).to_dict()),
         )
         self.assertEqual((probe["status"], probe["frame_id"], probe["signal_count"]), ("stale", "next", 0))
         self.assertEqual(probe["error"], "The latest frame is 1500 ms old, past its 1000 ms ceiling.")
 
     def test_a_plugin_error_stays_inside_its_detail_field(self):
-        text = PerceptionText.from_dict({"plugin_runs": [
-            {"plugin_id": "lens", "status": "error", "error": "bad frame\nretry later"},
-        ]}).text
+        text = PerceptionText(
+            "perception_text", "fixture", "error", (), (),
+            (PerceptionPluginRun("lens", "error", 0, 0, 0, "bad frame\nretry later"),),
+        ).text
         self.assertIn("plugin_status id=lens status=error detail=bad_frame_retry_later", text.splitlines())
 
     def test_decision_once_writes_one_frame_without_a_view(self):
@@ -397,11 +399,11 @@ class StreamOutputTests(unittest.TestCase):
         self.assertEqual(render_stream(replace_view(event), json_output=False), "offline")
 
     def test_perception_screen_formats_the_summary_the_stream_read(self):
-        evidence = {
-            "schema": "perception_text", "plugin_id": "lightweight_observer",
-            "signals": [{"signal_id": "clear", "value": True}, {"signal_id": "distance", "value": 2}],
-            "things": [{"thing_id": "ahead", "kind": "obstacle", "label": "ahead"}],
-        }
+        evidence = PerceptionText(
+            "perception_text", "lightweight_observer", "ok",
+            (PerceptionSignal("clear", True), PerceptionSignal("distance", 2)),
+            (PerceivedThing("ahead", "obstacle", "ahead", ViewLocation("image", "center")),),
+        ).to_dict()
         summary = perception.perception_publication(FramePublication(
             health="healthy", read_at_ms=1040, result_age_ms=40, stale_after_ms=1000,
             report=HostReport(

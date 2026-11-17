@@ -71,7 +71,7 @@ class PerceptionView:
             "url": f"/frame?v={quote(image_id, safe='')}" if frame_bytes else None,
         }
         # Projected once per publish; every read of the latest frame serves it.
-        evidence = report_evidence(report.to_dict())
+        evidence = report_evidence(report)
         with self._lock:
             if frame_bytes:
                 self._frames[image_id] = (frame_bytes, _CONTENT_TYPE)

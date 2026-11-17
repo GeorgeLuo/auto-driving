@@ -183,6 +183,7 @@ class ObservationPublicationTests(unittest.TestCase):
         from autonomy.decision_cycle.cycle import DecisionSteps
         from autonomy.decision_cycle.memory.runner import MemoryRunner
         from autonomy.decision_cycle.observation.values import Observation
+        from autonomy.decision_cycle.perception.evidence.values import PerceivedThing, ViewLocation
         from tests.shared.autonomy.decision_cycle.memory.activation_fixtures import _EvidenceMemory, _RecordingMemory
 
         def observe(context, perception):
@@ -190,13 +191,7 @@ class ObservationPublicationTests(unittest.TestCase):
                 observation_id=context.frame_id,
                 created_at_ms=context.timestamp_ms,
                 sensor_frame={},
-                things=({
-                    "thing_id": "a",
-                    "kind": "floor_boundary",
-                    "label": "boundary",
-                    "confidence": 0.9,
-                    "location": {"frame": "image", "zone": "center"},
-                },),
+                things=(PerceivedThing("a", "floor_boundary", "boundary", ViewLocation("image", "center"), 0.9),),
             )
 
         memory = MemoryRunner.from_plugins({

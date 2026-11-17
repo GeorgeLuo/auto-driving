@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import json
 import unittest
+from autonomy.fields import FieldError
 
 from autonomy.decision_cycle.memory.evidence import (
     MemoryOrigin,
@@ -52,7 +53,9 @@ class RetainedEvidenceTests(unittest.TestCase):
     def test_missing_confidence_round_trips_as_none(self) -> None:
         payload = self.retained().to_dict()
         del payload["confidence"]
-        self.assertIsNone(RetainedEvidence.from_dict(payload).confidence)
+        with self.assertRaises(FieldError) as missing:
+            RetainedEvidence.from_dict(payload)
+        self.assertEqual(missing.exception.field_name, "confidence")
         payload["confidence"] = None
         restored = RetainedEvidence.from_dict(payload)
         self.assertIsNone(restored.confidence)

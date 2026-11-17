@@ -4,6 +4,9 @@ import unittest
 from copy import deepcopy
 from urllib.request import urlopen
 from autonomy.decision_cycle.memory.interface import evidence_records
+from autonomy.runtime.report import HostReport
+from autonomy.fields import FieldError
+from cli.automa_cli.frontend.decision_view import report_evidence
 from tests.deterministic.cli.decision.live_runtime_decision_view_fixtures import LiveRuntimeDecisionViewFixture
 
 
@@ -59,6 +62,13 @@ class LiveRuntimeDecisionViewTests(LiveRuntimeDecisionViewFixture, unittest.Test
         self.assertEqual(projected["reason"], "")
         retained = evidence_records(payload["report"]["cycle"]["memory"])
         self.assertEqual(projected["record"], retained[0])
+
+    def test_host_evidence_rejects_incomplete_documents_by_nested_field(self) -> None:
+        report = self._accepted_frame_with_evidence()
+        del report["cycle"]["memory"]["plugins"][0]["state"]["records"][0]["origin"]["observed_id"]
+        with self.assertRaises(FieldError) as invalid:
+            report_evidence(HostReport.from_dict(report))
+        self.assertEqual(invalid.exception.field_name, "records.0.origin.observed_id")
 
     def test_unmatched_retained_evidence_preserves_origin_without_overlay(
         self,

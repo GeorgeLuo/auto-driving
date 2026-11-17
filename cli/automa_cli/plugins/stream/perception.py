@@ -4,6 +4,7 @@ from __future__ import annotations
 
 from typing import Callable
 
+from autonomy.decision_cycle.perception.interface import PerceptionText
 from autonomy.runtime.frame_loop import FramePublication, LATEST_JSON_PATH
 from autonomy.runtime.report import HostReport
 
@@ -78,18 +79,11 @@ def stream_perception(
             view.close()
 
 
-def _perception_record(report: HostReport | None) -> dict[str, object] | None:
+def _perception_record(report: HostReport | None) -> PerceptionText | None:
     if report is None:
         return None
-    perception = report.cycle.get("perception")
-    return perception if isinstance(perception, dict) else None
-
-
-def _listed(record: dict[str, object] | None, key: str) -> int | None:
-    if record is None:
-        return None
-    items = record.get(key)
-    return len(items) if isinstance(items, list) else None
+    perception = report.cycle["perception"]
+    return None if perception is None else PerceptionText.from_dict(perception)
 
 
 def perception_publication(publication: FramePublication | None) -> PerceptionPublication:
@@ -113,9 +107,9 @@ def perception_publication(publication: FramePublication | None) -> PerceptionPu
         age_ms=publication.result_age_ms,
         frame_id=None if report is None else report.frame_id,
         captured_at_ms=None if report is None else report.timestamp_ms,
-        signal_count=_listed(perception, "signals"),
-        thing_count=_listed(perception, "things"),
-        text=perception_text_from_publication(publication),
+        signal_count=None if perception is None else len(perception.signals),
+        thing_count=None if perception is None else len(perception.things),
+        text=perception.text.strip() if perception is not None else perception_text_from_publication(publication),
     )
 
 
@@ -173,7 +167,7 @@ def _probe_latest_perception(
         **probe,
         **frame,
         "status": "live",
-        "signal_count": _listed(perception, "signals"),
-        "thing_count": _listed(perception, "things"),
-        "perception": perception,
+        "signal_count": None if perception is None else len(perception.signals),
+        "thing_count": None if perception is None else len(perception.things),
+        "perception": None if perception is None else perception.to_dict(),
     }

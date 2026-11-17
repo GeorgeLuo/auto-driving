@@ -148,7 +148,7 @@ def deep_freeze(value: object, *, field_name: str = "value") -> object:
             deep_freeze(item, field_name=f"{field_name}[{index}]")
             for index, item in enumerate(value)
         )
-    if value is None or type(value) is bool:
+    if value is None or type(value) is bool or isinstance(value, FrozenJsonObject):
         return value
     if isinstance(value, str):
         return _freeze_string(value)

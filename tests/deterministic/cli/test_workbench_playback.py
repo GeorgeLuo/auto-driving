@@ -267,6 +267,7 @@ class WorkbenchTests(unittest.TestCase):
             self.assertEqual(cached["current_frame"]["frame_id"], first_id)
             self.assertEqual(cached["current_frame"]["position"], 0)
             self.assertEqual(cached["cycle"]["action"]["frame_id"], first_id)
+            self.assertEqual(cached["perception"]["text"], paused["perception"]["text"])
             self.assertEqual(cached["timing"], paused["timing"])
             self.assertEqual(cached["summary"], paused["summary"])
             self.assertEqual(len(perception_step.calls), calls_after_first + 2)
@@ -336,7 +337,7 @@ class WorkbenchTests(unittest.TestCase):
                 frame_id = paused["current_frame"]["frame_id"]
                 owned = runner._history[frame_id]
                 self.assertIs(runner._state["cycle"], owned["cycle"])
-                self.assertIs(owned["perception"], owned["cycle"]["perception"])
+                self.assertEqual(owned["perception_text"], paused["perception"]["text"])
                 self.assertIs(runner._state["summary"], owned["summary"])
                 self.assertIs(runner._state["timing"], owned["timing"])
                 self.assertIsNot(runner._state["machine_detail"]["pipeline"], owned["pipeline"])

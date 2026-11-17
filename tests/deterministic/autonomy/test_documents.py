@@ -17,12 +17,21 @@ import importlib
 import json
 import math
 import unittest
+
+import numpy as np
 from collections.abc import Callable, Iterator
 from copy import deepcopy
 from dataclasses import dataclass
 from pathlib import Path
 
+from autonomy.decision_cycle.memory.beliefs import Belief, Check, Trial
+from autonomy.decision_cycle.memory.evidence import MemoryOrigin, RetainedEvidence
+from implementations.decision_cycle.memory.shared.evidence_ledger.ledger import EvidenceLedger, LedgerBounds
+from implementations.decision_cycle.perception.shared.image.stored import StoredImage
 from autonomy.decision_cycle.cycle import CYCLE_RECORD_KEYS
+from autonomy.decision_cycle.observation.values import Observation
+from autonomy.decision_cycle.perception.evidence.values import PerceivedThing, PerceptionSignal, ViewLocation
+from autonomy.decision_cycle.perception.interface import PerceptionPluginRun, PerceptionText
 from autonomy.decision_cycle.proposal.values import ActionProposal, ProposedVehicleCommand, SourceRef
 from autonomy.fields import ROOT, FieldError
 from autonomy.runtime.frame_loop import FramePublication
@@ -71,7 +80,86 @@ def _run_state() -> RunState:
     )
 
 
+def _location(full: bool = False) -> ViewLocation:
+    return ViewLocation("image", "center", (0.1, 0.2, 0.8, 0.9) if full else None,
+                        ((0.1, 0.2), (0.8, 0.2), (0.8, 0.9)) if full else None)
+
+
+def _thing(full: bool = False) -> PerceivedThing:
+    return PerceivedThing("region", "obstacle", "a region", _location(full),
+                          0.8 if full else None, {"tags": ["near"]}, "fixture" if full else None)
+
+
+def _signal(full: bool = False) -> PerceptionSignal:
+    # The signal value is a scalar union, including null; exercise other scalar types beside the registry.
+    return PerceptionSignal("ready", None, 0.8 if full else None,
+                            {"frames": [1, 2]}, "fixture" if full else None)
+
+
+def _perception(full: bool = False) -> PerceptionText:
+    return PerceptionText("perception_text", "fixture", "ok", (_signal(full),), (_thing(full),),
+                          (PerceptionPluginRun("fixture", "ok", 1.5, 1, 1, "failed" if full else None),),
+                          {"fixture": {"count": 1}}, ("image_relative_only",))
+
+
+def _origin(full: bool = False) -> MemoryOrigin:
+    return MemoryOrigin("frame-1", "region", "image", 100, 110,
+                        "fixture" if full else None, "frame-1" if full else None)
+
+
+def _retained(full: bool = False) -> RetainedEvidence:
+    return RetainedEvidence("thing:region", "obstacle", "a region", _origin(full),
+                            0.8 if full else None, _location(True) if full else None, {"tags": ["near"]})
+
+
+def _bounds(full: bool = False) -> LedgerBounds:
+    return LedgerBounds(4, 1000 if full else None, "oldest_first", 4096 if full else None, 262144 if full else None)
+
+
+def _belief(full: bool = False) -> Belief:
+    return Belief("fixture.row", None, "fixture", 110,
+                  (Check(100, "arrival", "support", {"row": 12}, {"row": 13}),) if full else (),
+                  (Trial("trial-1", "arrival", 100, {"row": 12} if full else None, {"frame": "frame-1"}),), {"samples": 3})
+
+
 DOCUMENTS = {
+    # Null samples keep polymorphic JSON fields free of a single-kind claim; full values are tested in test_beliefs.
+    "autonomy.decision_cycle.memory.beliefs.Check": Document(lambda: [
+        Check(100, "arrival", "support"), Check(100, "arrival", "contradict"),
+    ], opaque=("predicted", "observed")),
+    "autonomy.decision_cycle.memory.beliefs.Trial": Document(lambda: [
+        Trial("trial-1", "arrival", 100, None), Trial("trial-1", "arrival", 100, None, {"frame": "frame-1"}),
+    ], opaque=("predicted", "properties")),
+    "autonomy.decision_cycle.memory.beliefs.Belief": Document(
+        lambda: [_belief(), _belief(True)], opaque=("value", "properties")),
+    "autonomy.decision_cycle.memory.evidence.MemoryOrigin": Document(lambda: [_origin(), _origin(True)]),
+    "autonomy.decision_cycle.memory.evidence.RetainedEvidence": Document(
+        lambda: [_retained(), _retained(True)], opaque=("properties",)),
+    "implementations.decision_cycle.memory.shared.evidence_ledger.ledger.LedgerBounds": Document(
+        lambda: [_bounds(), _bounds(True)]),
+    "implementations.decision_cycle.memory.shared.evidence_ledger.ledger.EvidenceLedger": Document(lambda: [
+        EvidenceLedger("memory-1", "epoch-1", "empty", _bounds(), 100),
+        EvidenceLedger("memory-1", "epoch-1", "healthy", _bounds(True), 100, (_retained(True),),
+                       ("retained_count=1",), "bounded_evidence", {"conflict_count": 0}),
+    ], opaque=("metadata",)),
+    "implementations.decision_cycle.perception.shared.image.stored.StoredImage": Document(lambda: [
+        StoredImage(np.array([[0, 255], [128, 1]], dtype=np.uint8)),
+    ]),
+    "autonomy.decision_cycle.observation.values.Observation": Document(lambda: [
+        Observation("frame-1", 100, {}, things=(_thing(),), signals=(_signal(),)),
+        Observation("frame-1", 100, {"readings": {}}, "perception_text", "fixture", ("present",),
+                    (_thing(True),), (_signal(True),), {"source": "fixture"}),
+    ], opaque=("sensor_frame", "metadata")),
+    "autonomy.decision_cycle.perception.evidence.values.ViewLocation": Document(lambda: [_location(), _location(True)]),
+    "autonomy.decision_cycle.perception.evidence.values.PerceivedThing": Document(
+        lambda: [_thing(), _thing(True)], opaque=("properties",)),
+    "autonomy.decision_cycle.perception.evidence.values.PerceptionSignal": Document(
+        lambda: [_signal(), _signal(True)], opaque=("properties",)),
+    "autonomy.decision_cycle.perception.interface.PerceptionPluginRun": Document(lambda: [
+        PerceptionPluginRun("fixture", "ok", 1.5, 1, 1), PerceptionPluginRun("fixture", "error", 0, 0, 0, "failed"),
+    ]),
+    "autonomy.decision_cycle.perception.interface.PerceptionText": Document(
+        lambda: [_perception(), _perception(True)], opaque=("measurements",)),
     "autonomy.decision_cycle.proposal.values.SourceRef": Document(lambda: [
         SourceRef("observation", "frame-1"),
         SourceRef("memory_record", "thing:1:7:fixture:6:object", frame_id="frame-1",
@@ -117,24 +205,7 @@ DOCUMENTS = {
     ], opaque=("report.values",)),
 }
 # Documents that predate the field rules. Remove a name when its class follows autonomy.fields and registers above.
-PENDING = frozenset({
-    "autonomy.decision_cycle.memory.beliefs.Belief",
-    "autonomy.decision_cycle.memory.beliefs.Check",
-    "autonomy.decision_cycle.memory.beliefs.Trial",
-    "autonomy.decision_cycle.memory.evidence.MemoryOrigin",
-    "autonomy.decision_cycle.memory.evidence.RetainedEvidence",
-    "autonomy.decision_cycle.memory.interface.MemoryPluginReport",
-    "autonomy.decision_cycle.memory.interface.MemoryReport",
-    "autonomy.decision_cycle.observation.values.Observation",
-    "autonomy.decision_cycle.perception.evidence.values.PerceivedThing",
-    "autonomy.decision_cycle.perception.evidence.values.PerceptionSignal",
-    "autonomy.decision_cycle.perception.evidence.values.ViewLocation",
-    "autonomy.decision_cycle.perception.interface.PerceptionPluginRun",
-    "autonomy.decision_cycle.perception.interface.PerceptionText",
-    "implementations.decision_cycle.memory.shared.evidence_ledger.ledger.EvidenceLedger",
-    "implementations.decision_cycle.memory.shared.evidence_ledger.ledger.LedgerBounds",
-    "implementations.decision_cycle.perception.shared.image.stored.StoredImage",
-})
+PENDING: frozenset[str] = frozenset()
 
 
 class DocumentTests(unittest.TestCase):

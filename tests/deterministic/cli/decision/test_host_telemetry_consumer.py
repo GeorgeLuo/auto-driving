@@ -13,7 +13,7 @@ from unittest.mock import patch
 from PIL import Image
 
 from autonomy.decision_cycle.activation import step_activation
-from autonomy.runtime.frame_loop import FRAME_PUBLICATION_SCHEMA
+from autonomy.runtime.frame_loop import FRAME_PUBLICATION_SCHEMA, FramePublication
 from autonomy.runtime.report import HostReport
 from autonomy.runtime.routes import TELEMETRY_SCHEMA
 from cli.automa_cli.frontend.perception_view import PerceptionView
@@ -153,9 +153,8 @@ def _normalized_decision() -> dict:
     """The publication join and identity actually read: one HostReport."""
 
     return read_frame_publication(
-        _physical_publication(),
+        FramePublication.from_dict(_physical_publication()),
         host_name="piracer",
-        now_ms=NOW_MS,
     )
 
 
@@ -187,7 +186,7 @@ class HostTelemetryConsumerTests(unittest.TestCase):
         published, joined_against = seen[0]
         self.assertEqual(published, normalized["report"].to_dict())
         self.assertIs(joined_against, normalized)
-        self.assertEqual(adapter.publication["host_telemetry"], joined)
+        self.assertEqual(adapter.host_telemetry, joined)
 
     def test_telemetry_failure_still_publishes_the_decision_image(self) -> None:
         perception = PerceptionView(host_name="piracer")
@@ -205,8 +204,8 @@ class HostTelemetryConsumerTests(unittest.TestCase):
         shown = json.loads(perception.latest_json())
         self.assertEqual(shown["image"]["frame_id"], "frame-1")
         self.assertIsNotNone(shown["image"]["url"])
-        self.assertEqual(adapter.publication["report"]["frame_id"], "frame-1")
-        panel = adapter.publication["host_telemetry"]
+        self.assertEqual(adapter.publication.report.frame_id, "frame-1")
+        panel = adapter.host_telemetry
         self.assertEqual(
             (panel["status"], panel["reason"], panel["joined"]), ("unavailable", "publisher_missing", False)
         )

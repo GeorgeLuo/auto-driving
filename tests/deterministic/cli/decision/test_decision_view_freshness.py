@@ -6,6 +6,7 @@ from urllib.error import HTTPError
 from urllib.request import urlopen
 from unittest.mock import patch
 
+from autonomy.runtime.frame_loop import FRAME_PUBLICATION_SCHEMA, FramePublication
 from tests.deterministic.cli.decision.live_runtime_decision_view_fixtures import LiveRuntimeDecisionViewFixture
 from tests.shared.cli.decision.decision_surfaces_fixtures import STALE_AFTER_MS
 
@@ -43,7 +44,17 @@ class LiveRuntimeDecisionViewTests(LiveRuntimeDecisionViewFixture, unittest.Test
         self._publish_exact_transaction()
         report = deepcopy(self._accepted_frame())
         report["frame_id"] = "missing-image"
-        self.server.perception.publish(frame_record={"report": report}, frame_bytes=None)
+        self.server.perception.publish(
+            publication=FramePublication.from_dict({
+                "schema": FRAME_PUBLICATION_SCHEMA,
+                "health": "healthy",
+                "read_at_ms": report["published_at_ms"],
+                "result_age_ms": 0,
+                "stale_after_ms": report["values"]["stale_after_ms"],
+                "report": report,
+            }),
+            frame_bytes=None,
+        )
         payload = self._latest_payload()
         self.assertEqual(payload["report"], report)
         self.assertIsNone(payload["image"]["url"])

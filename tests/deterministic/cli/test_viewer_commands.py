@@ -16,6 +16,9 @@ from urllib.request import Request, urlopen
 
 from PIL import Image
 
+from autonomy.decision_cycle.cycle import CYCLE_RECORD_KEYS
+from autonomy.runtime.frame_loop import FramePublication
+from autonomy.runtime.report import HostReport, ReportApplication
 from cli.automa_cli import viewer_commands
 from cli.automa_cli.frontend.server import RuntimeViewServer
 from cli.automa_cli.hosts.deployment.models import CreateResult, UpdateResult
@@ -26,6 +29,19 @@ from cli.automa_cli.viewer_commands import VIEWER_READS, VIEWER_WRITES
 from tests.shared.cli.workbench_fixtures import ImageReplayRunner
 from tests.support.fake_metrics_ui import fake_metrics_ui
 from tests.support.runtime_fixtures import runtime_root_env
+
+
+def _publication(frame_id: str) -> FramePublication:
+    return FramePublication(
+        health="healthy", read_at_ms=5, result_age_ms=0, stale_after_ms=1000,
+        report=HostReport(
+            host_name="framed", run_id="run", generation_id="decision",
+            frame_id=frame_id, frame_index=1, timestamp_ms=5, published_at_ms=5,
+            cycle=dict.fromkeys(CYCLE_RECORD_KEYS),
+            application=ReportApplication(False, "observe_only", "idle", 0.0, 0.0),
+            values={"stale_after_ms": 1000},
+        ),
+    )
 
 
 class HostFrameCacheTests(unittest.TestCase):
@@ -42,9 +58,7 @@ class HostFrameCacheTests(unittest.TestCase):
         cache = frames.HostFrames(frame_route="/api/hosts/frame")
         buffer = io.BytesIO()
         Image.new("RGB", (2, 2)).save(buffer, format="JPEG")
-        report = {"frame_id": "one", "frame_index": 1, "run_id": "run", "generation_id": "decision",
-                  "status": "ok", "timestamp_ms": 5, "cycle": {}}
-        publication = {"schema": "host_frame_publication", "health": "healthy", "ok": True, "report": report}
+        publication = _publication("one")
         with (mock.patch.object(frames, "MAX_HOSTS", 2),
               mock.patch.object(frames, "runtime_base_url", return_value="http://host.invalid") as resolve,
               mock.patch.object(frames, "fetch_frame_sample", return_value=(publication, buffer.getvalue()))):
@@ -202,9 +216,7 @@ class ViewerCommandTests(unittest.TestCase):
     def test_a_hosts_latest_frame_names_its_image_at_the_frame_route(self) -> None:
         buffer = io.BytesIO()
         Image.new("RGB", (8, 6), (20, 40, 60)).save(buffer, format="JPEG")
-        report = {"frame_id": "frame 1", "frame_index": 1, "run_id": "run", "generation_id": "decision",
-                  "status": "ok", "timestamp_ms": 5, "cycle": {}}
-        publication = {"schema": "host_frame_publication", "health": "healthy", "ok": True, "report": report}
+        publication = _publication("frame-1")
         with (mock.patch.object(frames, "runtime_base_url", return_value="http://host.invalid"),
               mock.patch.object(frames, "fetch_frame_sample", return_value=(publication, buffer.getvalue()))):
             latest = self.get("/api/hosts/latest?host_name=framed")
@@ -212,9 +224,9 @@ class ViewerCommandTests(unittest.TestCase):
             image = response.status, response.headers["Content-Type"], response.read()
 
         self.assertEqual((latest["schema"], latest["host_name"], latest["report"]["frame_id"]),
-                         ("host_frame_publication", "framed", "frame 1"))
+                         ("host_frame_publication", "framed", "frame-1"))
         self.assertEqual(latest["image"]["url"],
-                         "/api/hosts/frame?host_name=framed&v=%5B%22run%22%2C%22decision%22%2C%22frame+1%22%5D")
+                         "/api/hosts/frame?host_name=framed&v=%5B%22run%22%2C%22decision%22%2C%22frame-1%22%5D")
         self.assertEqual(image, (200, "image/jpeg", buffer.getvalue()))
         self.assertEqual(self.refused("/api/hosts/frame?host_name=framed&v=gone"),
                          (400, {"ok": False, "error": "That frame's image is no longer available."}))

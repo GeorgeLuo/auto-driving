@@ -13,7 +13,6 @@ import logging
 import secrets
 import threading
 import time
-from copy import deepcopy
 from dataclasses import dataclass, field, replace
 from pathlib import Path
 from typing import Callable
@@ -23,7 +22,7 @@ from autonomy.decision_cycle.cycle import DecisionCycleResult
 from autonomy.decision_cycle.memory.errors import MemoryUpdateError
 from autonomy.runtime.cycle_host import AutonomyCycleHost
 from autonomy.runtime.recording import RunRecording
-from autonomy.runtime.report import delivery_values, report_from_host_result
+from autonomy.runtime.report import HostReport, delivery_values, report_from_host_result
 from autonomy.runtime.session import RunConfiguration
 from autonomy.vehicle import FRONT_CAMERA_SENSOR_ID, SensorFrame, SensorReading
 
@@ -37,6 +36,75 @@ LATEST_JSON_PATH = "/host/observation/latest"
 PUBLICATION_HEALTH_WARMING = "warming"
 PUBLICATION_HEALTH_HEALTHY = "healthy"
 PUBLICATION_HEALTH_STALE = "stale"
+
+
+def _publication_int(value: object, field: str) -> int:
+    if type(value) is not int:
+        raise ValueError(f"frame publication {field} must be an int")
+    return value
+
+
+@dataclass(frozen=True)
+class FramePublication:
+    """The latest frame a host serves, parsed once at the boundary.
+
+    ``from_dict`` is the only check of this envelope. The host builds one and
+    serves ``to_dict``; a reader does not look through the dict again.
+    """
+
+    health: str
+    read_at_ms: int
+    result_age_ms: int | None
+    stale_after_ms: int
+    report: HostReport | None
+
+    def to_dict(self) -> dict[str, object]:
+        return {
+            "schema": FRAME_PUBLICATION_SCHEMA,
+            "ok": self.report is not None,
+            "health": self.health,
+            "read_at_ms": self.read_at_ms,
+            "result_age_ms": self.result_age_ms,
+            "stale_after_ms": self.stale_after_ms,
+            "report": None if self.report is None else self.report.to_dict(),
+        }
+
+    @classmethod
+    def from_dict(cls, payload: object) -> "FramePublication":
+        if not isinstance(payload, dict):
+            raise ValueError("frame publication must be an object")
+        if payload.get("schema") != FRAME_PUBLICATION_SCHEMA:
+            raise ValueError(
+                f"frame publication schema must be {FRAME_PUBLICATION_SCHEMA!r}"
+            )
+        health = payload.get("health")
+        if type(health) is not str or not health:
+            raise ValueError("frame publication health must be a string")
+        read_at_ms = _publication_int(payload.get("read_at_ms"), "read_at_ms")
+        age = payload.get("result_age_ms")
+        if age is not None:
+            age = _publication_int(age, "result_age_ms")
+            if age < 0:
+                raise ValueError("frame publication result_age_ms must be non-negative")
+        ceiling = _publication_int(payload.get("stale_after_ms"), "stale_after_ms")
+        if ceiling <= 0:
+            raise ValueError("frame publication stale_after_ms must be positive")
+        raw_report = payload.get("report")
+        if raw_report is None:
+            if age is not None:
+                raise ValueError("frame publication result_age_ms must be null without a report")
+            report = None
+        else:
+            if age is None:
+                raise ValueError("frame publication result_age_ms is required with a report")
+            report = HostReport.from_dict(raw_report)
+        return cls(
+            health=health,
+            read_at_ms=read_at_ms,
+            result_age_ms=age,
+            stale_after_ms=ceiling,
+            report=report,
+        )
 
 
 def timestamp_ms() -> int:
@@ -212,20 +280,19 @@ class FrameLoop:
         read_at_ms = timestamp_ms() if now_ms is None else int(now_ms)
         with self._lock:
             publication = self._publication_from_locked_state(read_at_ms=read_at_ms)
-        return deepcopy(publication)
+        return publication.to_dict()
 
     def read_transaction(self) -> tuple[dict[str, object], LatestObservationState | None, str]:
-        """Borrow the frame publication and the state it was built from.
+        """The frame publication and the state it was built from.
 
         Completed frame data is replaced, rather than updated in place. The
-        route may retain these references across JPEG work without copying
-        the report, including when an ETag avoids serialization entirely.
-        Callers must only read the borrowed nested values.
+        publication is the shared contract's ``to_dict``. The capture is
+        borrowed: callers must only read it.
         """
         with self._lock:
             publication = self._publication_from_locked_state(read_at_ms=timestamp_ms())
             revision = f"{self.run_id}:frame:{self._publication_revision}:{self._queue_generation}"
-            return publication, self.latest_state, revision
+            return publication.to_dict(), self.latest_state, revision
 
     @staticmethod
     def frame_jpeg(frame: LatestCameraFrame | LatestObservationState) -> bytes:
@@ -343,27 +410,28 @@ class FrameLoop:
         self._pending_frame = None
         self._queue_generation += 1
 
-    def _publication_from_locked_state(self, *, read_at_ms: int) -> dict[str, object]:
-        """The frame envelope, borrowing the completed report."""
+    def _publication_from_locked_state(self, *, read_at_ms: int) -> FramePublication:
+        """The frame envelope. A stored report is the one ``to_dict`` will serve."""
         latest = self.latest_state
-        report = None
-        age_ms = None
-        ceiling_ms = stale_after_ms(None)
-        health = PUBLICATION_HEALTH_WARMING
-        if latest is not None:
-            report = latest.report
-            age_ms = max(0, read_at_ms - latest.completed_at_ms)
-            ceiling_ms = report["values"]["stale_after_ms"]
-            health = PUBLICATION_HEALTH_STALE if age_ms > ceiling_ms else PUBLICATION_HEALTH_HEALTHY
-        return {
-            "schema": FRAME_PUBLICATION_SCHEMA,
-            "ok": latest is not None,
-            "health": health,
-            "read_at_ms": read_at_ms,
-            "result_age_ms": age_ms,
-            "stale_after_ms": ceiling_ms,
-            "report": report,
-        }
+        if latest is None:
+            return FramePublication(
+                health=PUBLICATION_HEALTH_WARMING,
+                read_at_ms=read_at_ms,
+                result_age_ms=None,
+                stale_after_ms=stale_after_ms(None),
+                report=None,
+            )
+        report = HostReport.from_dict(latest.report)
+        age_ms = max(0, read_at_ms - report.published_at_ms)
+        ceiling_ms = _publication_int(report.values.get("stale_after_ms"), "stale_after_ms")
+        health = PUBLICATION_HEALTH_STALE if age_ms > ceiling_ms else PUBLICATION_HEALTH_HEALTHY
+        return FramePublication(
+            health=health,
+            read_at_ms=read_at_ms,
+            result_age_ms=age_ms,
+            stale_after_ms=ceiling_ms,
+            report=report,
+        )
 
     def _capture_frame_report(self, result: DecisionCycleResult, *, error: str | None) -> dict[str, object]:
         """The report for this camera frame, naming the identity the host stamped on it."""

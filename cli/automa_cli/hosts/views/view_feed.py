@@ -3,7 +3,8 @@
 from __future__ import annotations
 
 from contextlib import suppress
-from typing import Any
+
+from autonomy.runtime.frame_loop import FramePublication
 
 from ...frontend.server import RuntimeViewServer
 from .decision_live import DecisionViewAdapter
@@ -31,7 +32,7 @@ class ViewFeed:
         self.error: str | None = None
         self.decision_error: str | None = None
         self._observation_cache = TransactionCache()
-        self._observation: tuple[dict[str, Any], bytes | None] | None = None
+        self._observation: tuple[FramePublication, bytes | None] | None = None
         self.observation: ObservationPublisher | None = None
         try:
             # Assigned before it starts, so stop() also releases a partial start.
@@ -68,7 +69,7 @@ class ViewFeed:
             page = "/decision"
         return self.url, self.error, page, self.decision_error
 
-    def read_observation(self) -> tuple[dict[str, Any] | None, str | None]:
+    def read_observation(self) -> tuple[FramePublication | None, str | None]:
         try:
             self._observation = fetch_frame_sample(self.base_url, timeout_s=self.timeout_s,
                                                          cache=self._observation_cache)
@@ -80,7 +81,7 @@ class ViewFeed:
                 self.observation.invalidate(self.error)
             return None, self.error
 
-    def publish(self, publication: dict[str, Any] | None) -> None:
+    def publish(self, publication: FramePublication | None) -> None:
         if self.server is None or self.decision is None or self.observation is None:
             return
         if publication is None:
@@ -89,12 +90,14 @@ class ViewFeed:
             pair = self._observation
             if pair is None or pair[0] is not publication:
                 publication, error = self.read_observation()
-                if error is not None:
+                if error is not None or publication is None:
                     return
                 pair = self._observation
+            if pair is None:
+                return
             publication, jpeg = pair
             # A stale, raised, or imageless frame stays on the page.
-            if publication.get("report") is None:
+            if publication.report is None:
                 self.observation.invalidate(health_error(publication))
                 return
             try:

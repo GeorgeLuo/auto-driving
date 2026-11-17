@@ -16,6 +16,7 @@ from autonomy.decision_cycle.observation.values import Observation
 from autonomy.decision_cycle.perception.runner import PerceptionRunner
 from autonomy.runtime.control import AutonomyControl
 from autonomy.runtime.execution import ControlApplication
+from autonomy.runtime.frame_loop import FRAME_PUBLICATION_SCHEMA, FramePublication
 from autonomy.runtime.report import report_from_host_result
 from cli.automa_cli.frontend.perception_view import PerceptionView
 from cli.automa_cli.plugins.inspect.replay import read_replay_source
@@ -111,7 +112,18 @@ class ViewerCycleAgreementTests(unittest.TestCase):
                 values={"source_id": "runtime-host", "stale_after_ms": 5000},
             )
             view = PerceptionView(host_name="fixture")
-            view.publish(frame_record={"report": report.to_dict(), "host_telemetry": {"status": "unavailable", "reason": "publisher_missing"}}, frame_bytes=None)
+            view.publish(
+                publication=FramePublication.from_dict({
+                    "schema": FRAME_PUBLICATION_SCHEMA,
+                    "health": "healthy",
+                    "read_at_ms": published_at_ms,
+                    "result_age_ms": 0,
+                    "stale_after_ms": 5000,
+                    "report": report.to_dict(),
+                }),
+                host_telemetry={"status": "unavailable", "reason": "publisher_missing"},
+                frame_bytes=None,
+            )
             report.cycle["observation"]["metadata"]["labels"].append("source")
             payload = json.loads(view.latest_json())
             cycle = payload["report"]["cycle"]

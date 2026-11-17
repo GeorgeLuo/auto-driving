@@ -11,16 +11,15 @@ import binascii
 import json
 import urllib.error
 import urllib.request
-from dataclasses import dataclass
+from dataclasses import dataclass, replace
 from copy import deepcopy
-from typing import Any
 
 from autonomy.runtime.frame_loop import (
     FRAME_TRANSACTION_SCHEMA,
+    FramePublication,
     LATEST_JSON_PATH,
     OBSERVATION_TRANSACTION_PATH,
 )
-from autonomy.runtime.report import HostReport
 from autonomy.runtime.routes import (
     STATUS_PATH,
     TELEMETRY_LATEST_PATH,
@@ -32,7 +31,7 @@ from .host_telemetry import HostTelemetryError
 @dataclass
 class TransactionCache:
     etag: str | None = None
-    payload: dict[str, Any] | None = None
+    payload: dict[str, object] | None = None
     image: tuple[bytes, str] | None = None
 
     def clear(self) -> None:
@@ -41,27 +40,28 @@ class TransactionCache:
         self.image = None
 
 
-def _cached_transaction(cache: TransactionCache, read_at_ms: int | None = None) -> dict[str, Any]:
+def _cached_transaction(cache: TransactionCache, read_at_ms: int | None = None) -> dict[str, object]:
     payload = deepcopy(cache.payload)
     if payload is None:
         raise ConnectionError("Host returned 304 without a cached transaction")
-    publication = payload.get("publication") or {}
-    if read_at_ms is not None and isinstance(publication, dict):
-        publication["read_at_ms"] = read_at_ms
-        report = publication.get("report") if isinstance(publication.get("report"), dict) else {}
-        completed = report.get("published_at_ms")
-        if type(completed) is int:
-            publication["result_age_ms"] = max(0, read_at_ms - completed)
+    publication = payload.get("publication")
+    if not isinstance(publication, FramePublication):
+        raise ConnectionError("Host returned 304 without a cached transaction")
+    if read_at_ms is not None:
+        age = publication.result_age_ms
+        if publication.report is not None:
+            age = max(0, read_at_ms - publication.report.published_at_ms)
+        payload["publication"] = replace(publication, read_at_ms=read_at_ms, result_age_ms=age)
     return payload
 
 
-def _json_object(body: bytes, url: str, status_code: int) -> dict[str, Any]:
+def _json_object(body: bytes, url: str, status_code: int) -> dict[str, object]:
     payload = http_json.json_object(body, url, status_code)
     payload.setdefault("http_status", status_code)
     return payload
 
 
-def _get_json(base_url: str, path: str, *, timeout_s: float) -> dict[str, Any]:
+def _get_json(base_url: str, path: str, *, timeout_s: float) -> dict[str, object]:
     """Read a JSON object; an HTTP error's JSON body is the answer."""
     url = f"{base_url.rstrip('/')}{path}"
     status_code, _headers, body = http_json.request(url, timeout_s=timeout_s)
@@ -69,7 +69,7 @@ def _get_json(base_url: str, path: str, *, timeout_s: float) -> dict[str, Any]:
 
 
 def _get_transaction(base_url: str, path: str, *, timeout_s: float,
-                     cache: TransactionCache | None) -> dict[str, Any]:
+                     cache: TransactionCache | None) -> dict[str, object]:
     """Read a transaction under the current conditional-image contract.
 
     Only a 304 keeps the cache; every other outcome clears it, and a 200
@@ -103,13 +103,13 @@ def _get_transaction(base_url: str, path: str, *, timeout_s: float,
     return payload
 
 
-def fetch_autonomy_status(base_url: str, *, timeout_s: float = 3.0) -> dict[str, Any]:
+def fetch_autonomy_status(base_url: str, *, timeout_s: float = 3.0) -> dict[str, object]:
     """GET /host/status from a runtime host."""
 
     return _get_json(base_url, STATUS_PATH, timeout_s=timeout_s)
 
 
-def host_state(base_url: str, *, host_name: str | None = None, timeout_s: float) -> dict[str, Any]:
+def host_state(base_url: str, *, host_name: str | None = None, timeout_s: float) -> dict[str, object]:
     """A runtime host's state as its ``/host/status`` reports it; never raises.
 
     ``state`` is the session status the host reports, ``not answering`` when no
@@ -118,7 +118,7 @@ def host_state(base_url: str, *, host_name: str | None = None, timeout_s: float)
     status object the host answered with.
     """
 
-    result: dict[str, Any] = {
+    result: dict[str, object] = {
         "state": "not answering", "mode": None, "decision_count": None, "error_count": None,
         "last_frame_at_ms": None, "error": None, "reply": None,
     }
@@ -155,7 +155,7 @@ def host_state(base_url: str, *, host_name: str | None = None, timeout_s: float)
     }
 
 
-def observation_component(autonomy: dict[str, Any]) -> dict[str, Any]:
+def observation_component(autonomy: dict[str, object]) -> dict[str, object]:
     """The observation component a host's ``/host/status`` ``host`` reports, or ``{}``."""
 
     components = autonomy.get("components") if isinstance(autonomy.get("components"), dict) else {}
@@ -170,74 +170,84 @@ def _no_answer(exc: ConnectionError, timeout_s: float) -> str:
     return getattr(cause, "strerror", None) or str(cause or exc)
 
 
-def _validate_frame_report(publication: dict[str, Any]) -> None:
-    if publication.get("report") is not None:
-        try:
-            HostReport.from_dict(publication["report"])
-        except (TypeError, ValueError) as exc:
-            raise ConnectionError(f"Invalid host report: {exc}") from exc
+def _parse_frame(publication: object) -> FramePublication:
+    try:
+        return FramePublication.from_dict(publication)
+    except (TypeError, ValueError) as exc:
+        raise ConnectionError(f"Invalid host report: {exc}") from exc
 
 
-def fetch_frame_publication(base_url: str, *, timeout_s: float = 3.0) -> dict[str, Any]:
-    """Read the host's completed frame envelope and validate its HostReport."""
+def fetch_frame_publication(base_url: str, *, timeout_s: float = 3.0) -> FramePublication:
+    """Read the host's completed frame envelope."""
 
-    publication = _get_json(base_url, LATEST_JSON_PATH, timeout_s=timeout_s)
-    _validate_frame_report(publication)
-    return publication
+    return _parse_frame(_get_json(base_url, LATEST_JSON_PATH, timeout_s=timeout_s))
 
 
-def fetch_frame_sample(
-    base_url: str, *, timeout_s: float = 3.0, cache: TransactionCache | None = None,
-) -> tuple[dict[str, Any], bytes | None]:
-    """Read one completed frame and, when the JPEG names that frame, its image."""
-    payload = _get_transaction(base_url, OBSERVATION_TRANSACTION_PATH, timeout_s=timeout_s, cache=cache)
+def _frame_from_transaction(
+    payload: dict[str, object], cache: TransactionCache | None,
+) -> FramePublication:
     publication = payload.get("publication")
+    if isinstance(publication, FramePublication):
+        return publication
+    if payload.get("http_status") == 503 and isinstance(publication, dict) and (
+        payload.get("schema") != FRAME_TRANSACTION_SCHEMA
+    ):
+        return _parse_frame(publication)
     if not isinstance(publication, dict) or payload.get("schema") != FRAME_TRANSACTION_SCHEMA:
-        if payload.get("http_status") == 503 and isinstance(publication, dict):
-            return publication, None
         raise ConnectionError("Invalid frame transaction")
     try:
-        _validate_frame_report(publication)
+        frame = _parse_frame(publication)
     except ConnectionError:
         if cache is not None:
             cache.clear()
         raise
-    report = publication.get("report") if isinstance(publication.get("report"), dict) else None
+    if cache is not None and cache.payload is not None:
+        cache.payload["publication"] = frame
+    return frame
+
+
+def fetch_frame_sample(
+    base_url: str, *, timeout_s: float = 3.0, cache: TransactionCache | None = None,
+) -> tuple[FramePublication, bytes | None]:
+    """Read one completed frame and, when the JPEG names that frame, its image."""
+    payload = _get_transaction(base_url, OBSERVATION_TRANSACTION_PATH, timeout_s=timeout_s, cache=cache)
+    frame = _frame_from_transaction(payload, cache)
+    report = frame.report
     if payload.get("http_status") == 503 or report is None:
-        return publication, None
+        return frame, None
     encoded = payload.get("image_base64")
     image_matches = (
         isinstance(encoded, str)
         and encoded
         and payload.get("image_error") in (None, "")
         and payload.get("image_content_type") == "image/jpeg"
-        and payload.get("image_frame_id") == report.get("frame_id")
+        and payload.get("image_frame_id") == report.frame_id
     )
-    if not image_matches:
-        return publication, None
+    if not image_matches or not isinstance(encoded, str):
+        return frame, None
     if cache is not None and cache.image is not None:
-        return publication, cache.image[0]
+        return frame, cache.image[0]
     try:
         jpeg = base64.b64decode(encoded, validate=True)
     except (ValueError, binascii.Error):
-        return publication, None
+        return frame, None
     if not jpeg:
-        return publication, None
+        return frame, None
     if cache is not None:
         cache.image = jpeg, "image/jpeg"
-    return publication, jpeg
+    return frame, jpeg
 
 
 class _RejectTelemetryRedirect(urllib.request.HTTPRedirectHandler):
     """Keep the telemetry client on the exact read-only route it requested."""
 
-    def redirect_request(
+    def redirect_request(  # noqa: PLR0917 - urllib's redirect hook takes these arguments
         self,
         req: urllib.request.Request,
-        fp: Any,
+        fp: object,
         code: int,
         msg: str,
-        headers: Any,
+        headers: object,
         newurl: str,
     ) -> None:
         del req, fp, code, msg, headers, newurl
@@ -248,7 +258,7 @@ def _fetch_host_telemetry_json(
     url: str,
     *,
     timeout_s: float,
-) -> dict[str, Any]:
+) -> dict[str, object]:
     request = urllib.request.Request(
         url,
         method="GET",
@@ -262,7 +272,7 @@ def _fetch_host_telemetry_json(
     except urllib.error.HTTPError as exc:
         status_code = int(exc.code)
         with exc:
-            body = exc.read() if exc.fp is not None and not 300 <= status_code < 400 else b""
+            body = b"" if 300 <= status_code < 400 else exc.read()
         if 300 <= status_code < 400:
             raise HostTelemetryError(
                 "redirect_rejected",
@@ -316,7 +326,7 @@ def fetch_host_telemetry_latest(
     base_url: str,
     *,
     timeout_s: float = 3.0,
-) -> dict[str, Any]:
+) -> dict[str, object]:
     """GET the latest host-boundary telemetry point without following redirects."""
 
     url = f"{base_url.rstrip('/')}{TELEMETRY_LATEST_PATH}"

@@ -3,7 +3,8 @@
 from __future__ import annotations
 
 import time
-from typing import Any
+
+from autonomy.runtime.frame_loop import FramePublication
 
 from ..publications.decision import accept_decision_publication
 from ..publications.host_publications import fetch_host_telemetry_latest
@@ -32,10 +33,13 @@ class DecisionViewAdapter:
         self.base_url = base_url
         self.publisher = publisher
         self.timeout_s = timeout_s
-        self.publication: dict[str, Any] | None = None
+        self.publication: FramePublication | None = None
+        self.host_telemetry: dict[str, object] | None = None
 
-    def publish_frame(self, normalized: dict[str, Any], jpeg: bytes | None) -> None:
+    def publish_frame(self, normalized: dict[str, object], jpeg: bytes | None) -> None:
         publication = normalized["publication"]
+        if not isinstance(publication, FramePublication):
+            raise TypeError("decision publication is missing its frame")
         if self.publication is None or publication_capture(publication) != publication_capture(self.publication):
             # A new frame shows before its telemetry read answers.
             self.publisher.publish(publication, jpeg)
@@ -43,24 +47,23 @@ class DecisionViewAdapter:
             self.base_url, normalized_decision=normalized,
             host_name=self.host_name, timeout_s=self.timeout_s,
         )
-        self.publication = {**publication, "host_telemetry": telemetry}
-        self.publisher.publish(self.publication, jpeg)
+        self.publication = publication
+        self.host_telemetry = telemetry
+        self.publisher.publish(publication, jpeg, host_telemetry=telemetry)
 
-    def publish_publication(self, publication: dict[str, Any], jpeg: bytes | None) -> None:
-        normalized = accept_decision_publication(
-            publication, host_name=self.host_name, now_ms=int(time.time() * 1000),
-        )
+    def publish_publication(self, publication: FramePublication, jpeg: bytes | None) -> None:
+        normalized = accept_decision_publication(publication, host_name=self.host_name)
         self.publish_frame(normalized, jpeg)
 
 
 def read_host_telemetry_panel(
     base_url: str,
     *,
-    normalized_decision: dict[str, Any],
+    normalized_decision: dict[str, object],
     host_name: str,
     timeout_s: float = 3.0,
     now_ms: int | None = None,
-) -> dict[str, Any]:
+) -> dict[str, object]:
     """Read one latest host telemetry point and join it to this decision.
 
     A refresh performs one latest read. Identity, freshness, and transport

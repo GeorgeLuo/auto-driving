@@ -33,6 +33,7 @@ class RestageTests(unittest.TestCase):
             ("plan change", "plan", activation("plan", "new"), keys[:10] + keys[12:]),
             ("perception append", "perception", activation("perception", "first", "middle", "last", "new"), keys[:3] + keys[12:]),
             ("middle config", "perception", replace(applied["perception"], plugin_configs={"middle": {"gain": 2}}), keys[:1] + keys[12:]),
+            ("middle revision", "perception", replace(applied["perception"], metadata={"plugin_revisions": {"middle": "new"}}), keys[:1] + keys[12:]),
             ("reorder", "perception", activation("perception", "first", "last", "middle"), keys[:1] + keys[12:]),
             ("remove beliefs owner", "memory", activation("memory", "other"), keys[:5] + keys[12:]),
             ("source identity", "perception", replace(applied["perception"], metadata={"host_name": "other"}), keys[12:]),

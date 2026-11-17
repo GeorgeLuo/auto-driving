@@ -12,6 +12,8 @@ from tests.deterministic.cli.test_replay_pipeline import recording
 from tests.shared.cli.workbench_fixtures import ImageReplayRunner, image_source, _wait_until
 from tests.support.action_fixtures import INACTIVE_PROPOSAL_SPEC, FIRST_ACTIVE_PLAN_SPEC
 from tests.support.perception_fixtures import local_perception
+from implementations.decision_cycle.catalog import packaged_activation
+from tests.support.lifecycle_fixtures import GATES, Gate, JUDGE_SPEC, CALL_KEY, ANSWERS_KEY
 
 
 class RestageAgreementTests(unittest.TestCase):
@@ -71,6 +73,55 @@ class RestageAgreementTests(unittest.TestCase):
                         if index == 2:
                             self.assertNotIn("perception.b.history", host.shared_memory)
                 workbench.dispatch("pause", run_id=run_id)
+
+
+    def test_live_deferred_call_survives_the_same_downstream_change_on_all_three_surfaces(self):
+        gate = GATES["lifecycle"] = Gate()
+        self.addCleanup(GATES.pop, "lifecycle")
+        self.addCleanup(gate.finish)
+        with image_source(4) as root:
+            source, selected = recording(root)
+            selected.update(
+                proposal=step_activation("proposal", ["judge"], {"judge": JUDGE_SPEC}),
+                plan=step_activation("plan", ["first_active"], {"first_active": FIRST_ACTIVE_PLAN_SPEC}),
+            )
+            host = AutonomyCycleHost(steps=decision_steps(selected))
+            self.addCleanup(host.close)
+            replay = StepReplay(source, steps=STEPS, overrides=selected)
+            replay.overrides.clear()
+            workbench = ImageReplayRunner(root, activations={key: selected[key] for key in ("perception", "memory", "proposal", "plan")}, cadence_ms=30000)
+            self.addCleanup(workbench.close)
+            host.run(DecisionFrameContext("host0", 0, 0))
+            replay.run(replace(source.frames[0], selections=selected))
+            run_id = workbench.start()["run_id"]
+            _wait_until(lambda: workbench.state()["position"] == 1)
+            workbench.dispatch("pause", run_id=run_id)
+            gate.wait_started(3)
+            original = (host.shared_memory, replay.shared_memory, workbench._shared_memory)
+            changed = packaged_activation("plan", ["highest_confidence"])
+            for catalog in (host.catalog, workbench.catalog):
+                catalog.include(selected_definitions(changed))
+            self.assertTrue(host.arm({"plan": changed.to_payload()})["ok"])
+            host.run(DecisionFrameContext("host1", 1, 1))
+            selected["plan"] = changed
+            replay.run(replace(source.frames[1], selections=dict(selected)))
+            workbench.dispatch("select_plugins", run_id=run_id, step="plan", active_plugin_ids=["highest_confidence"])
+            adopted = (host.shared_memory, replay.shared_memory, workbench._shared_memory)
+            for old, current in zip(original, adopted):
+                self.assertIsNot(old, current)
+                self.assertEqual(current[CALL_KEY]["current"]["status"], "pending")
+            gate.finish()  # completion is ordered strictly after every adoption
+            host.run(DecisionFrameContext("host2", 2, 2))
+            replay.run(replace(source.frames[2], selections=dict(selected)))
+            workbench.dispatch("step", run_id=run_id)
+            answers = []
+            for current in (host.shared_memory, replay.shared_memory, workbench._shared_memory):
+                self.assertEqual(len(current[ANSWERS_KEY]), 1)
+                answers.extend(current[ANSWERS_KEY])
+                self.assertEqual(current[CALL_KEY]["counts"]["abandoned"], 0)
+                self.assertEqual(current[CALL_KEY]["counts"]["asked"], 1)
+            self.assertEqual(len(set(answers)), 3)
+            self.assertEqual(gate.started, 3)
 
     def test_host_filters_writes_from_an_in_flight_frame_when_adopting(self):
         host = AutonomyCycleHost(steps=decision_steps({"perception": local_perception("a", "b")}))

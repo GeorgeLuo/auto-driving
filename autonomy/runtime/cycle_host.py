@@ -94,7 +94,6 @@ class AutonomyCycleHost:
         self._watched: dict[str, tuple[Path, StepActivation, StepActivation]] = {}
         self._last_staged_ids: dict[str, tuple[str, ...]] = {}
         self._applied_activations: dict[str, StepActivation | None] = {}
-        self._pending_steps: DecisionSteps | None = None
         self._pending_restage: Restaged | None = None
         self._selection_error: str | None = None
         self._arm_request_id = 0
@@ -324,7 +323,6 @@ class AutonomyCycleHost:
             self._selection_error = f"{type(exc).__name__}: {exc}"
             return
         self._pending_restage = changed
-        self._pending_steps = DecisionSteps(**changed.steps) if changed is not None else None
         self._selection_error = None
         if changed is None:
             self._adopt_metadata(desired)
@@ -334,14 +332,13 @@ class AutonomyCycleHost:
         pending = self._pending_restage
         if pending is None:
             return
-        self.cycle.steps = self._pending_steps
+        self.cycle.steps = DecisionSteps(**pending.steps)
         for step in STEPS:
             runner = self.step(step)
             if runner is not None:
                 self._attach_catalog(runner)
         self.shared_memory = pending.keep(self.shared_memory)
         self._applied_activations = dict(pending.activations)
-        self._pending_steps = None
         self._pending_restage = None
         self._record_applied_decision()
         self._refresh_step_reports()
@@ -380,7 +377,7 @@ class AutonomyCycleHost:
     def _selection_status(self) -> dict[str, object]:
         requested = self._base_activations()
         return {
-            "status": "failed" if self._selection_error else "requested" if self._pending_steps is not None else "applied",
+            "status": "failed" if self._selection_error else "requested" if self._pending_restage is not None else "applied",
             "request_id": self._arm_request_id, "error": self._selection_error,
             "generation_id": None if self._applied_decision is None else self._applied_decision["generation_id"],
             "requested": {step: _describe(requested.get(step)) for step in STEPS},

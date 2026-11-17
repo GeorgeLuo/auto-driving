@@ -5,8 +5,10 @@ import tempfile
 import threading
 import unittest
 from pathlib import Path
+from types import SimpleNamespace
 from unittest.mock import Mock, patch
 
+from autonomy.decision_cycle.runner import StepRunner
 from autonomy.decision_cycle.plugin_state import unchanged_instance
 from autonomy.shared_memory import shared_memory_document, shared_memory_from_document
 from implementations.decision_cycle.shared.deferred_call import DeferredCall, DeferredCallFailed
@@ -26,32 +28,44 @@ class ExamplePlugin:
         return self._call.poll(shared_memory, now_ms=now, scope=scope, about=about, request=lambda: about)
 
 
-class ObservedMemory(dict):
-    """Signal committed replacements without polling a thread or sleeping."""
+class OwnedCall(DeferredCall):
+    """Unit calls use the runner boundary; completions have an observable barrier."""
 
-    def __init__(self):
-        super().__init__()
-        self.committed = threading.Event()
+    def __init__(self, *args, **kwargs):
+        super().__init__(*args, **kwargs)
+        self.completed = threading.Condition()
+        self.done = set()
 
-    def __setitem__(self, key, value):
-        super().__setitem__(key, value)
-        self.committed.set()
+    def _complete(self, call_id, payload):
+        super()._complete(call_id, payload)
+        with self.completed:
+            self.done.add(call_id)
+            self.completed.notify_all()
 
-    def until(self, predicate):
-        while True:
-            self.committed.clear()
-            if predicate():
-                return
-            if not self.committed.wait(3):
-                raise AssertionError("call did not commit")
+    def wait_completed(self, count):
+        with self.completed:
+            if not self.completed.wait_for(lambda: len(self.done) >= count, timeout=3):
+                raise AssertionError("worker did not finish")
+
+    def ask(self, memory, **kwargs):
+        with StepRunner._plugin_call(SimpleNamespace(step="proposal"), SimpleNamespace(plugin_id="example"), memory):
+            return super().ask(memory, **kwargs)
+
+    def take(self, memory, **kwargs):
+        with StepRunner._plugin_call(SimpleNamespace(step="proposal"), SimpleNamespace(plugin_id="example"), memory):
+            return super().take(memory, **kwargs)
+
+    def drop_stale(self, memory, **kwargs):
+        with StepRunner._plugin_call(SimpleNamespace(step="proposal"), SimpleNamespace(plugin_id="example"), memory):
+            return super().drop_stale(memory, **kwargs)
 
 
 class DeferredCallTests(unittest.TestCase):
     def setUp(self):
-        self.memory = ObservedMemory()
+        self.memory = {}
 
     def call(self, run, **kwargs):
-        call = DeferredCall(run, key=KEY, **kwargs)
+        call = OwnedCall(run, key=KEY, **kwargs)
         self.addCleanup(call.shutdown)
         return call
 
@@ -60,7 +74,10 @@ class DeferredCallTests(unittest.TestCase):
                          request=(lambda: about) if request is None else request)
 
     def settled(self, call):
-        self.memory.until(lambda: (call.record(self.memory)["current"] or {}).get("status") in ("answered", "failed"))
+        current = call.record(self.memory)["current"]
+        with call.completed:
+            self.assertTrue(call.completed.wait_for(lambda: current["call_id"] in call.done, timeout=3))
+        call.drop_stale(self.memory, scope=current["scope"])
 
     def test_background_takes_once_then_asks_about_next_input(self):
         entered, release = threading.Event(), threading.Event()
@@ -149,34 +166,90 @@ class DeferredCallTests(unittest.TestCase):
         new_release.set()
         self.settled(call)
         old_release.set()
-        self.memory.until(lambda: call.record(self.memory)["counts"]["dropped"] == 1)
+        call.wait_completed(2)
+        call.drop_stale(self.memory, scope=1)
         self.assertEqual(call.take(self.memory, scope=1).result, "new")
         self.assertIsNone(call.take(self.memory, scope=1))
         self.assertEqual(call.record(self.memory)["counts"]["answered"], 1)
 
     def test_hung_call_expires_at_max_age_and_same_pair_is_asked_again(self):
-        hung, release = threading.Event(), threading.Event()
+        hung, release, fresh = threading.Event(), threading.Event(), threading.Event()
 
         def run(request):
             if request == "hung":
                 hung.set()
-                if not release.wait(3):
-                    raise AssertionError("test did not release call")
+            # Held so poll's second take cannot see the fresh answer before the test does.
+            gate = {"hung": release, "fresh": fresh}.get(request)
+            if gate is not None and not gate.wait(3):
+                raise AssertionError("test did not release call")
             return request
 
         call = self.call(run, workers=2, max_age_ms=500)
         self.addCleanup(release.set)
+        self.addCleanup(fresh.set)
         self.assertIsNone(self.poll(call, now=100, request=lambda: "hung"))
         self.assertTrue(hung.wait(3))
         self.assertIsNone(self.poll(call, now=599, request=lambda: "unused"))  # younger than max_age_ms
         self.assertEqual(call.record(self.memory)["counts"]["asked"], 1)
         self.assertIsNone(self.poll(call, now=600, request=lambda: "fresh"))  # same pair, asked anew
+        fresh.set()
         self.settled(call)
         self.assertEqual(call.take(self.memory, scope=0).result, "fresh")
         release.set()
-        self.memory.until(lambda: call.record(self.memory)["counts"]["dropped"] == 1)
+        call.wait_completed(2)
+        call.drop_stale(self.memory, scope=0)
         self.assertEqual(call.record(self.memory)["counts"],
                          {"asked": 2, "answered": 1, "failed": 0, "dropped": 1, "abandoned": 0, "expired": 1})
+
+
+    def test_expiry_bounds_submitted_work_and_retries_after_capacity_returns(self):
+        entered, release = threading.Event(), threading.Event()
+
+        def run(request):
+            entered.set()
+            self.assertTrue(release.wait(3))
+            return request
+
+        call = self.call(run, workers=1, max_age_ms=1)
+        self.addCleanup(release.set)
+        request = Mock(return_value="first")
+        self.assertIsNone(self.poll(call, now=0, request=request))
+        self.assertTrue(entered.wait(3))
+        for now in range(1, 20):
+            self.assertIsNone(self.poll(call, now=now, request=request))
+        self.assertEqual(request.call_count, 1)
+        self.assertEqual(call.record(self.memory)["counts"]["asked"], 1)
+        release.set()
+        call.wait_completed(1)
+        self.poll(call, now=20, request=request)
+        call.wait_completed(2)
+        self.assertEqual(call.take(self.memory, scope=0).result, "first")
+        self.assertEqual(call.record(self.memory)["counts"]["dropped"], 1)
+        self.assertEqual(call.record(self.memory)["counts"]["expired"], 1)
+
+    def test_commit_requires_owning_map_and_thread_even_with_copied_context(self):
+        from contextvars import copy_context
+        from autonomy.shared_memory import require_plugin_call
+        call = DeferredCall(lambda request: request, key=KEY, blocking=True)
+        self.addCleanup(call.shutdown)
+        with self.assertRaisesRegex(RuntimeError, "owning plugin call"):
+            call.ask(self.memory, now_ms=0, scope=0, about=1, request=lambda: 1)
+        failures = []
+        with StepRunner._plugin_call(SimpleNamespace(step="proposal"), SimpleNamespace(plugin_id="example"), self.memory):
+            with self.assertRaisesRegex(RuntimeError, "owning plugin call"):
+                call.ask({}, now_ms=0, scope=0, about=1, request=lambda: 1)
+            copied = copy_context()
+            def worker():
+                try:
+                    copied.run(require_plugin_call, self.memory, KEY)
+                except RuntimeError as exc:
+                    failures.append(str(exc))
+            thread = threading.Thread(target=worker)
+            thread.start()
+            thread.join(3)
+            self.assertFalse(thread.is_alive())
+        self.assertEqual(len(failures), 1)
+        self.assertEqual(self.memory, {})
 
     def test_max_age_must_be_a_positive_int(self):
         for value in (0, -1, True, 1.5):
@@ -244,13 +317,13 @@ class DeferredCallTests(unittest.TestCase):
         original.shutdown()
         self.assertEqual(replacement.take(self.memory, scope=0).result, "new")
         self.assertEqual(replacement.record(self.memory)["counts"],
-                         {"asked": 2, "answered": 1, "failed": 0, "dropped": 1, "abandoned": 1, "expired": 0})
+                         {"asked": 2, "answered": 1, "failed": 0, "dropped": 0, "abandoned": 1, "expired": 0})
 
     def test_plugin_passes_runtime_guard_and_static_state_check(self):
         plugin = ExamplePlugin(lambda request: request, blocking=True)
         self.addCleanup(plugin._call.shutdown)
         for now, about in enumerate(("first", "first", "second")):
-            with unchanged_instance(plugin):
+            with StepRunner._plugin_call(SimpleNamespace(step="proposal"), plugin, self.memory), unchanged_instance(plugin):
                 answer = plugin.propose(self.memory, now, 0, about)
             self.assertEqual(None if answer is None else answer.result, None if now == 1 else about)
         with tempfile.TemporaryDirectory() as directory:
@@ -285,4 +358,5 @@ class DeferredCallTests(unittest.TestCase):
         del self.memory[KEY]
         release.set()
         call.shutdown()
+        self.assertIsNone(call.take(self.memory, scope=0))
         self.assertNotIn(KEY, self.memory)

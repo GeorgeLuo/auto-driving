@@ -2,13 +2,17 @@
 
 from __future__ import annotations
 
+# pyright: basic
+
 from collections.abc import Callable, Mapping
 from dataclasses import dataclass, field
 from itertools import zip_longest
+from typing import Generic, TypeVar, TypedDict, cast
 
 from autonomy.decision_cycle.activation import STEPS, StepActivation, executable_document
 from autonomy.shared_memory import SharedMemory
 
+Runner = TypeVar("Runner")
 Owner = tuple[str, str | None]
 _HOST_KEYS = frozenset({
     "action.mode", "action.user_steering", "action.user_throttle", "action.control_applications",
@@ -32,12 +36,33 @@ def owner_of(key: str, belief_owners: Mapping[str, frozenset[Owner]]) -> frozens
     return frozenset()
 
 
+class SourceIdentity(TypedDict, total=False):
+    host_name: str
+    tree_sha256: str
+    plugin_revisions: dict[str, str]
+
+
+class ExecutableDocument(TypedDict):
+    plugins: list[str]
+    plugin_specs: dict[str, str]
+    plugin_configs: dict[str, dict[str, object]]
+    source: SourceIdentity
+
+
+@dataclass(frozen=True)
+class ExecutablePlugin:
+    owner: Owner
+    spec: str | None
+    config: Mapping[str, object]
+    source: tuple[str | None, str | None, str | None]
+
+
 Activations = Mapping[str, StepActivation | None]
 
 
 @dataclass(frozen=True)
-class Restaged:
-    steps: dict[str, object]
+class Restaged(Generic[Runner]):
+    steps: dict[str, Runner | None]
     activations: Activations
     cleared: frozenset[Owner]
     belief_owners: Mapping[str, frozenset[Owner]] = field(repr=False)
@@ -51,24 +76,24 @@ class Restaged:
 
 
 def restage(
-    applied_steps: Mapping[str, object], applied: Activations, desired: Activations,
-    *, build: Callable[[str, StepActivation], object],
-) -> Restaged | None:
+    applied_steps: Mapping[str, Runner | None], applied: Activations, desired: Activations,
+    *, build: Callable[[str, StepActivation], Runner],
+) -> Restaged[Runner] | None:
     """Build changed steps without touching applied runners or their map.
 
     Reuse everything before the first changed executable plugin. Removed owners
     are always invalidated; step publications follow their producing plugins.
     Call ``keep`` at adoption so construction can happen off the frame boundary.
     """
-    old_docs = {step: executable_document(applied.get(step)) for step in STEPS}
-    new_docs = {step: executable_document(desired.get(step)) for step in STEPS}
+    old_docs = {step: cast(ExecutableDocument | None, executable_document(applied.get(step))) for step in STEPS}
+    new_docs = {step: cast(ExecutableDocument | None, executable_document(desired.get(step))) for step in STEPS}
     if old_docs == new_docs:
         return None
     old, new = _execution_order(old_docs), _execution_order(new_docs)
     first = next((i for i, pair in enumerate(zip_longest(old, new)) if pair[0] != pair[1]), len(old))
-    cleared = {item[0] for item in old[first:]}
-    new_owners = {item[0] for item in new}
-    cleared.update(item[0] for item in old if item[0] not in new_owners)
+    cleared = {item.owner for item in old[first:]}
+    new_owners = {item.owner for item in new}
+    cleared.update(item.owner for item in old if item.owner not in new_owners)
     cleared.update((step, None) for step, _plugin_id in tuple(cleared))
     beliefs: dict[str, frozenset[Owner]] = {}
     for definition, plugin in getattr(applied_steps.get("memory"), "applied", ()):
@@ -86,10 +111,12 @@ def restage(
     return Restaged(steps, dict(desired), frozenset(cleared), beliefs)
 
 
-def _execution_order(documents: Mapping[str, dict | None]) -> list[tuple]:
+def _execution_order(documents: Mapping[str, ExecutableDocument | None]) -> list[ExecutablePlugin]:
     return [
-        ((step, plugin_id), document["plugin_specs"].get(plugin_id),
-         document["plugin_configs"].get(plugin_id, {}), document["source"])
+        ExecutablePlugin((step, plugin_id), document["plugin_specs"].get(plugin_id),
+                         document["plugin_configs"].get(plugin_id, {}),
+                         (document["source"].get("host_name"), document["source"].get("tree_sha256"),
+                          document["source"].get("plugin_revisions", {}).get(plugin_id)))
         for step in STEPS if (document := documents[step]) is not None
         for plugin_id in document["plugins"]
     ]

@@ -12,23 +12,15 @@ from __future__ import annotations
 from collections.abc import Mapping
 from dataclasses import dataclass, field, fields
 from pathlib import Path
-from typing import Literal, NotRequired, TypedDict, cast
+from typing import Literal, NotRequired, TypedDict
+
+from autonomy.fields import FieldError, require_ascii_id, require_choice, require_keys, require_safe_int, require_text
 
 from ...shared.timestamps import timestamp_ms
 
 WORKER_MODULE = "cli.automa_cli.hosts.runs.worker"
 
 MAX_STATUS_REASON_CHARS = 240
-
-
-def _written(record: object, later: frozenset[str]) -> dict[str, object]:
-    """A record's fields; one in ``later`` is left out until the run sets it."""
-
-    return {
-        item.name: value
-        for item in fields(record)
-        if (value := getattr(record, item.name)) not in (None, {}) or item.name not in later
-    }
 
 
 @dataclass
@@ -65,32 +57,43 @@ class RunState:
     last_frame: dict[str, object] = field(default_factory=dict)
 
     @classmethod
-    def from_dict(cls, payload: object) -> RunState | None:
-        if not isinstance(payload, dict):
-            return None
+    def from_dict(cls, payload: object) -> RunState:
+        document = require_keys(payload, {item.name for item in fields(cls)})
         return cls(
-            schema=_string(payload.get("schema")), host_name=_string(payload.get("host_name")),
-            run_id=_string(payload.get("run_id")), status=_string(payload.get("status")),
-            pipeline=_string(payload.get("pipeline")), control_source=_string(payload.get("control_source")),
-            action_policy=_string(payload.get("action_policy")), control_application=_string(payload.get("control_application")),
-            run_dir=_string(payload.get("run_dir")), stop_reason=_string(payload.get("stop_reason")),
-            error=_string(payload.get("error")), pid=_integer(payload.get("pid")),
-            started_at_ms=_integer(payload.get("started_at_ms")), updated_at_ms=_integer(payload.get("updated_at_ms")),
-            completed_at_ms=_integer(payload.get("completed_at_ms")), frames_dropped=_integer(payload.get("frames_dropped")),
-            num_decisions=_integer(payload.get("num_decisions")), exit_code=_integer(payload.get("exit_code")),
-            frames_received=_integer(payload.get("frames_received")) or 0, processed_count=_integer(payload.get("processed_count")) or 0,
-            recorded_count=_integer(payload.get("recorded_count")) or 0, session=_document(payload.get("session")),
-            execution=_document(payload.get("execution")), steps=_document(payload.get("steps")),
-            arming=_document(payload.get("arming")),
-            recording=payload.get("recording") if type(payload.get("recording")) is bool else None,
-            activation_problems=payload.get("activation_problems") if isinstance(payload.get("activation_problems"), list) else None,
-            selections=cast(dict[str, dict[str, object]], _document(payload.get("selections")) or {}),
-            decision=_document(payload.get("decision")) or {},
-            last_frame=_document(payload.get("last_frame")) or {},
+            schema=_schema(document["schema"], "automa_automation_run_state"),
+            host_name=_identifier(document["host_name"], "host_name"),
+            run_id=_identifier(document["run_id"], "run_id"),
+            status=_text(document["status"], "status"),
+            pid=_integer(document["pid"], "pid"),
+            started_at_ms=_integer(document["started_at_ms"], "started_at_ms"),
+            updated_at_ms=_integer(document["updated_at_ms"], "updated_at_ms"),
+            completed_at_ms=_integer(document["completed_at_ms"], "completed_at_ms"),
+            frames_dropped=_integer(document["frames_dropped"], "frames_dropped"),
+            num_decisions=_integer(document["num_decisions"], "num_decisions"),
+            exit_code=_integer(document["exit_code"], "exit_code"),
+            frames_received=require_safe_int(document["frames_received"], field_name="frames_received"),
+            processed_count=require_safe_int(document["processed_count"], field_name="processed_count"),
+            recorded_count=require_safe_int(document["recorded_count"], field_name="recorded_count"),
+            pipeline=_text(document["pipeline"], "pipeline"),
+            control_source=_text(document["control_source"], "control_source"),
+            action_policy=_text(document["action_policy"], "action_policy"),
+            control_application=_text(document["control_application"], "control_application"),
+            run_dir=_text(document["run_dir"], "run_dir"),
+            stop_reason=_text(document["stop_reason"], "stop_reason"),
+            error=_text(document["error"], "error"),
+            recording=_boolean(document["recording"], "recording", nullable=True),
+            activation_problems=_activation_problems(document["activation_problems"]),
+            session=_document(document["session"], "session", nullable=True),
+            execution=_document(document["execution"], "execution", nullable=True),
+            steps=_document(document["steps"], "steps", nullable=True),
+            arming=_document(document["arming"], "arming", nullable=True),
+            selections=_document(document["selections"], "selections"),
+            decision=_document(document["decision"], "decision"),
+            last_frame=_document(document["last_frame"], "last_frame"),
         )
 
     def to_dict(self) -> dict[str, object]:
-        return _written(self, _RUN_STATE_LATER)
+        return {item.name: getattr(self, item.name) for item in fields(self)}
 
     def complete(self, status: str) -> None:
         self.status = status
@@ -118,43 +121,76 @@ class WorkerProcess:
     stopped_at_ms: int | None = None
 
     @classmethod
-    def from_dict(cls, payload: object) -> WorkerProcess | None:
-        if not isinstance(payload, dict):
-            return None
-        command = payload.get("command")
+    def from_dict(cls, payload: object) -> WorkerProcess:
+        document = require_keys(payload, {item.name for item in fields(cls)})
+        command = document["command"]
+        if command is not None:
+            if not isinstance(command, list):
+                raise FieldError("command", "must be an array or null")
+            command = [require_text(token, field_name=f"command.{index}") for index, token in enumerate(command)]
         return cls(
-            schema=_string(payload.get("schema")), host_name=_string(payload.get("host_name")),
-            pid=_integer(payload.get("pid")), started_at_ms=_integer(payload.get("started_at_ms")),
-            command=command if isinstance(command, list) and all(isinstance(token, str) for token in command) else None,
-            log_to_disk=payload.get("log_to_disk") if type(payload.get("log_to_disk")) is bool else False,
-            log_path=_string(payload.get("log_path")), state_path=_string(payload.get("state_path")),
-            stream_command=_string(payload.get("stream_command")), startup=_document(payload.get("startup")),
-            status=_string(payload.get("status")), stopped_by=_string(payload.get("stopped_by")),
-            stopped_at_ms=_integer(payload.get("stopped_at_ms")),
+            schema=_schema(document["schema"], "automa_automation_process"),
+            host_name=_identifier(document["host_name"], "host_name"),
+            pid=_integer(document["pid"], "pid"),
+            started_at_ms=_integer(document["started_at_ms"], "started_at_ms"),
+            command=command,
+            log_to_disk=_boolean(document["log_to_disk"], "log_to_disk"),
+            log_path=_text(document["log_path"], "log_path"),
+            state_path=_text(document["state_path"], "state_path"),
+            stream_command=_text(document["stream_command"], "stream_command"),
+            startup=_document(document["startup"], "startup", nullable=True),
+            status=_text(document["status"], "status"),
+            stopped_by=_text(document["stopped_by"], "stopped_by"),
+            stopped_at_ms=_integer(document["stopped_at_ms"], "stopped_at_ms"),
         )
 
     def to_dict(self) -> dict[str, object]:
-        return _written(self, _WORKER_PROCESS_LATER)
+        return {item.name: getattr(self, item.name) for item in fields(self)}
 
 
-# Fields a run sets after its first write; until then the file leaves them out.
-_RUN_STATE_LATER = frozenset({
-    "completed_at_ms", "stop_reason", "error", "exit_code", "activation_problems", "session",
-    "execution", "selections", "decision", "steps", "arming", "last_frame",
-})
-_WORKER_PROCESS_LATER = frozenset({"startup", "status", "stopped_by", "stopped_at_ms"})
+def _schema(value: object, schema: str) -> str | None:
+    return None if value is None else require_choice(value, (schema,), field_name="schema")
 
 
-def _string(value: object) -> str | None:
-    return value if isinstance(value, str) else None
+def _identifier(value: object, field_name: str) -> str | None:
+    return None if value is None else require_ascii_id(value, field_name=field_name)
 
 
-def _integer(value: object) -> int | None:
-    return value if type(value) is int else None
+def _text(value: object, field_name: str) -> str | None:
+    return None if value is None else require_text(value, field_name=field_name)
 
 
-def _document(value: object) -> dict[str, object] | None:
-    return value if isinstance(value, dict) else None
+def _integer(value: object, field_name: str) -> int | None:
+    return None if value is None else require_safe_int(value, field_name=field_name)
+
+
+def _boolean(value: object, field_name: str, *, nullable: bool = False) -> bool | None:
+    if nullable and value is None:
+        return None
+    if type(value) is not bool:
+        raise FieldError(field_name, "must be a bool" + (" or null" if nullable else ""))
+    return value
+
+
+def _document(value: object, field_name: str, *, nullable: bool = False) -> dict | None:
+    if nullable and value is None:
+        return None
+    if not isinstance(value, dict):
+        raise FieldError(field_name, "must be an object" + (" or null" if nullable else ""))
+    return value
+
+
+def _activation_problems(value: object) -> list[dict[str, str]] | None:
+    if value is None:
+        return None
+    if not isinstance(value, list):
+        raise FieldError("activation_problems", "must be an array or null")
+    for index, problem in enumerate(value):
+        if not isinstance(problem, dict):
+            raise FieldError(f"activation_problems.{index}", "must be an object")
+        for key, text in problem.items():
+            require_text(text, field_name=f"activation_problems.{index}.{key}")
+    return value
 
 
 class AppliedStep(TypedDict):

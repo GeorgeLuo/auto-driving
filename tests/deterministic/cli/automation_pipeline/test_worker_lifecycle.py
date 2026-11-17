@@ -1,4 +1,5 @@
 from __future__ import annotations
+from cli.automa_cli.hosts.runs.models import WorkerProcess
 from cli.automa_cli.hosts.runs.render import render_lifecycle_result
 import json
 import tempfile
@@ -83,7 +84,7 @@ class AutomationLivePipelineTests(unittest.TestCase):
             "status": "running",
             "session": {"status": "running", "processed_decisions": 0},
         }
-        with patch("cli.automa_cli.hosts.runs.process.read_run_state", return_value=RunState.from_dict(state)):
+        with patch("cli.automa_cli.hosts.runs.process.read_run_state", return_value=RunState(**state)):
             result = wait_for_automation_startup(
                 process=_RunningProcess(), automation_dir=Path("unused"), timeout_s=0.2,
             )
@@ -183,18 +184,18 @@ class AutomationLivePipelineTests(unittest.TestCase):
             )
             automation_dir.mkdir(parents=True)
             (automation_dir / "process.json").write_text(
-                json.dumps({"pid": 45454}),
+                json.dumps(WorkerProcess(pid=45454).to_dict()),
                 encoding="utf-8",
             )
             (automation_dir / "state.json").write_text(
                 json.dumps(
-                    {
-                        "status": "running",
-                        "pid": 45454,
-                        "run_id": "run-control-taking",
-                        "action_policy": "cycle_idle",
-                        "control_application": "stop_only_safety_gate",
-                    }
+                    RunState(
+                        status="running",
+                        pid=45454,
+                        run_id="run-control-taking",
+                        action_policy="cycle_idle",
+                        control_application="stop_only_safety_gate",
+                    ).to_dict()
                 ),
                 encoding="utf-8",
             )
@@ -222,7 +223,7 @@ class AutomationLivePipelineTests(unittest.TestCase):
             )
             automation_dir.mkdir(parents=True)
             (automation_dir / "state.json").write_text(
-                json.dumps({"status": "error"}),
+                json.dumps(RunState(status="error").to_dict()),
                 encoding="utf-8",
             )
 
@@ -249,7 +250,7 @@ class AutomationLivePipelineTests(unittest.TestCase):
             )
             automation_dir.mkdir(parents=True)
             (automation_dir / "state.json").write_text(
-                json.dumps({"status": "starting", "pid": None}),
+                json.dumps(RunState(status="starting", pid=None).to_dict()),
                 encoding="utf-8",
             )
             with (

@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+from cli.automa_cli.hosts.runs.models import WorkerProcess
+from cli.automa_cli.hosts.runs.models import RunState
 import json
 import os
 import subprocess
@@ -172,9 +174,9 @@ class HostStatusTests(unittest.TestCase):
         with answering(health) as view_url:
             runtime = self.runtime_root / "chase-sim-chaser/bundle/runtime"
             write_json(runtime / "view" / perception_view.VIEW_RECORD_NAME, {"url": view_url})
-            write_json(runtime / "automation" / "process.json", {"pid": os.getpid()})
-            write_json(runtime / "automation" / "state.json", {"pid": os.getpid(), "run_id": "run-1",
-                                                               "status": "running"})
+            write_json(runtime / "automation" / "process.json", WorkerProcess(pid=os.getpid()).to_dict())
+            write_json(runtime / "automation" / "state.json", RunState(pid=os.getpid(), run_id="run-1",
+                                                               status="running").to_dict())
             result = self.status("--json")
 
         self.assertEqual(result.returncode, 0, result.stderr)

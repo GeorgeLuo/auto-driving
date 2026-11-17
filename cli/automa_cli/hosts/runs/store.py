@@ -8,10 +8,12 @@ come from ``render``.
 """
 from __future__ import annotations
 
+import json
 import os
 from collections.abc import Mapping
 from pathlib import Path
 
+from autonomy.fields import FieldError
 from autonomy.runtime.session import RunConfiguration
 
 from ...shared.io.json_files import read_json, write_json_atomically
@@ -252,7 +254,8 @@ def run_directory(host_name: str, *, create: bool = False) -> Path:
 
 
 def read_process_record(automation_dir: Path) -> WorkerProcess | None:
-    return WorkerProcess.from_dict(read_json(automation_dir / "process.json"))
+    payload = _read_record(automation_dir / "process.json")
+    return None if payload is None else WorkerProcess.from_dict(payload)
 
 
 def read_stop_count(automation_dir: Path) -> int:
@@ -268,7 +271,22 @@ def write_stop_count(automation_dir: Path, stops: int) -> None:
 
 
 def read_run_state(automation_dir: Path) -> RunState | None:
-    return RunState.from_dict(read_json(automation_dir / "state.json"))
+    payload = _read_record(automation_dir / "state.json")
+    return None if payload is None else RunState.from_dict(payload)
+
+
+def _read_record(path: Path) -> dict | None:
+    try:
+        text = path.read_text(encoding="utf-8")
+    except FileNotFoundError:
+        return None
+    try:
+        payload = json.loads(text)
+    except json.JSONDecodeError as exc:
+        raise FieldError("$", f"{path.name} must contain valid JSON") from exc
+    if not isinstance(payload, dict):
+        raise FieldError("$", f"{path.name} must contain an object")
+    return payload
 
 
 def record_background_worker(

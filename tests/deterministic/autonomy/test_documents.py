@@ -26,6 +26,7 @@ from autonomy.decision_cycle.cycle import CYCLE_RECORD_KEYS
 from autonomy.fields import ROOT, FieldError
 from autonomy.runtime.frame_loop import FramePublication
 from autonomy.runtime.report import HostReport, ReportApplication
+from cli.automa_cli.hosts.runs.models import RunState, WorkerProcess
 
 REPOSITORY = Path(__file__).resolve().parents[3]
 MISSING = object()
@@ -51,7 +52,32 @@ def _report(**fields: object) -> HostReport:
     })
 
 
+def _run_state() -> RunState:
+    return RunState(
+        schema="automa_automation_run_state", host_name="car", run_id="run-1", status="completed",
+        pid=123, started_at_ms=1000, updated_at_ms=1100, completed_at_ms=1100,
+        frames_received=3, frames_dropped=1, processed_count=2, num_decisions=2,
+        pipeline="latest_frame_async_decision", control_source="runtime_host", action_policy="autonomy",
+        control_application="shared_execution", recording=True, recorded_count=2, run_dir="runtime/run-1",
+        stop_reason="decision_limit", error="export failed", exit_code=2,
+        activation_problems=[{"step": "proposal", "error": "unavailable"}],
+        session={"status": "completed"}, execution={"mode": "autonomy"},
+        selections={"proposal": {"plugins": ["fixture"]}}, decision={"generation_id": "decision-1"},
+        steps={"cycle_count": 2}, arming={"status": "armed"}, last_frame={"frame_id": "frame-1"},
+    )
+
+
 DOCUMENTS = {
+    "cli.automa_cli.hosts.runs.models.RunState": Document(
+        lambda: [RunState(), _run_state()],
+        opaque=("session", "execution", "selections", "decision", "steps", "arming", "last_frame"),
+    ),
+    "cli.automa_cli.hosts.runs.models.WorkerProcess": Document(lambda: [WorkerProcess(), WorkerProcess(
+        schema="automa_automation_process", host_name="car", pid=123, started_at_ms=1000,
+        command=["python", "-m", "cli.automa_cli.hosts.runs.worker"], log_to_disk=True,
+        log_path="runtime/automation.log", state_path="runtime/state.json", stream_command="automa hosts stream",
+        startup={"status": "ready"}, status="stopped", stopped_by="stop_command", stopped_at_ms=1100,
+    )], opaque=("startup",)),
     "autonomy.runtime.report.ReportApplication": Document(lambda: [_application()]),
     "autonomy.runtime.report.HostReport": Document(
         lambda: [_report(), _report(status="error", error="cycle raised")], opaque=("values",),
@@ -81,8 +107,6 @@ PENDING = frozenset({
     "autonomy.decision_cycle.proposal.values.SourceRef",
     "autonomy.runtime.execution.ControlApplication",
     "autonomy.runtime.session.RunConfiguration",
-    "cli.automa_cli.hosts.runs.models.RunState",
-    "cli.automa_cli.hosts.runs.models.WorkerProcess",
     "implementations.decision_cycle.memory.shared.evidence_ledger.ledger.EvidenceLedger",
     "implementations.decision_cycle.memory.shared.evidence_ledger.ledger.LedgerBounds",
     "implementations.decision_cycle.perception.shared.image.stored.StoredImage",

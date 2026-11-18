@@ -7,7 +7,7 @@ from collections.abc import Callable
 from typing import Mapping
 from urllib.parse import urljoin
 
-from ...frontend.server import VIEWER_PORT, Read, RuntimeViewServer, Write
+from ...frontend.server import VIEWER_PORT, Read, RuntimeViewServer, Write, running_viewer_url
 from ...frontend.v2_page import V2_PAGE_PATH
 from ...shared.browser_result import BrowserOpenResult
 from ...shared.open_view import launch_browser
@@ -28,24 +28,29 @@ def serve_viewer(
     reads: Mapping[str, Read] | None = None,
     writes: Mapping[str, Write] | None = None,
     emit: Callable[[BrowserOpenResult], None] | None = None,
+    page: str = V2_PAGE_PATH,
 ) -> int:
-    """Serve the runtime pages with no runtime host until interrupted.
+    """Open ``page`` of the runtime viewer, serving it with no runtime host until interrupted.
 
     ``reads`` and ``writes`` are the viewer's command routes, as
     ``RuntimeViewServer`` takes them. The caller passes them because the
-    commands they run import ``hosts``.
+    commands they run import ``hosts``. When a viewer already serves on
+    ``VIEWER_PORT``, the browser opens that one and this returns 0.
     """
 
+    running = running_viewer_url()
+    if running is not None:
+        browser = launch_browser(urljoin(running, page))
+        if emit is not None:
+            emit(browser)
+        return 0
     server = runtime_view_server(
         host_name="viewer",
-        automation_dir=None,
         port=VIEWER_PORT,
-        connected=False,
         reads=reads,
         writes=writes,
     ).start()
-    # The browser opens the v2 page; the v1 pages stay served beside it.
-    browser = launch_browser(urljoin(server.url or "", V2_PAGE_PATH))
+    browser = launch_browser(urljoin(server.url or "", page))
     if emit is not None:
         emit(browser)
     try:

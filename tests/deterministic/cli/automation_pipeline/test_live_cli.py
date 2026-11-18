@@ -12,15 +12,11 @@ import json
 import tempfile
 import unittest
 from pathlib import Path
-from unittest.mock import Mock, patch
+from unittest.mock import patch
 from urllib.error import HTTPError
 from urllib.request import urlopen
 
-from cli.automa_cli.hosts.publications.host_publications import fetch_frame_sample
-from cli.automa_cli.hosts.views.view_feed import ViewFeed
 from cli.automa_cli.plugins.stream.perception import read_publication as _read_publication
-from cli.automa_cli.plugins.stream.models import StreamEvent, ViewState
-from cli.automa_cli.plugins.stream.render import render_stream
 from tests.shared.cli.automation_pipeline.pipeline_fixtures import HOST_NAME
 from tests.shared.cli.invoke import invoke_automa
 from tests.shared.integration.live_host import LiveHostTestCase, stage_runtime as _stage, wait_until
@@ -29,39 +25,6 @@ from tests.support.runtime_fixtures import write_host_fixture
 
 
 class LiveCommandsTests(LiveHostTestCase):
-
-    def test_the_perception_view_stays_live_while_the_decision_is_unavailable(self) -> None:
-        self.observe()
-        with patch("cli.automa_cli.hosts.views.view_feed.runtime_view_dir", return_value=self.runtime_root / "view"):
-            feed = ViewFeed(HOST_NAME, base_url=self.host.base_url, timeout_s=3.0)
-        self.addCleanup(feed.stop)
-        feed.decision.publish_publication = Mock(side_effect=ConnectionError("decision route down"))
-        publication = _read_publication(self.host.base_url, timeout_s=3.0)[0]
-        samples = []
-
-        def sample(*args, **kwargs):
-            pair = fetch_frame_sample(*args, **kwargs)
-            samples.append(pair)
-            return pair
-
-        with patch("cli.automa_cli.hosts.views.view_feed.fetch_frame_sample", side_effect=sample):
-            feed.publish(publication)
-        url, error, page, decision_error = feed.state()
-        self.assertIn("ConnectionError: decision route down", decision_error)
-        screen = render_stream(StreamEvent("plan", {"status": "unavailable"}, view=ViewState(
-            url=url, error=error, decision_page=page, decision_error=decision_error,
-        )), json_output=False)
-        self.assertIn("latest unavailable: ConnectionError: decision route down", screen)
-        with urlopen(f"{feed.url.rstrip('/')}/api/latest", timeout=5) as response:
-            latest = json.load(response)
-        # The host may advance after the terminal's publication. The view must
-        # use its transaction's findings and image even when decision is down.
-        matched, jpeg = samples[0]
-        self.assertEqual(latest["report"]["frame_id"], matched.report.frame_id)
-        self.assertEqual(latest["image"]["frame_id"], matched.report.frame_id)
-        self.assertIsInstance(latest["result_age_ms"], int)
-        with urlopen(f"{feed.url.rstrip('/')}{latest['image']['url']}", timeout=5) as response:
-            self.assertEqual(response.read(), jpeg)
 
     def automa(self, *args: str):
         return invoke_automa("hosts", *args, "--name", HOST_NAME, runtime_root=self.runtime_root, check=False)
@@ -96,23 +59,27 @@ class LiveCommandsTests(LiveHostTestCase):
         return invoke_automa("hosts", "viewer", *target, runtime_root=self.runtime_root, check=False)
 
     def view_once(self, *target: str):
-        """The viewer's result, its view's URL, and the view's /api/latest status and body
-        after one refresh from the host, when Ctrl-C stops it."""
+        """The viewer's result, the page it opened, and that page's host frame read (status and body),
+        when Ctrl-C stops the viewer it served."""
         opened, served = [], []
 
         def interrupt(*args):
+            base = opened[0].split("v2/", 1)[0]
             try:
-                with urlopen(f"{opened[0].rstrip('/')}/api/latest", timeout=5) as response:
+                with urlopen(f"{base}api/hosts/latest?host_name={HOST_NAME}", timeout=5) as response:
                     served.append((response.status, json.load(response)))
             except HTTPError as exc:
                 served.append((exc.code, json.load(exc)))
             raise KeyboardInterrupt
 
-        with patch("cli.automa_cli.hosts.views.viewer.launch_browser",
+        with patch("cli.automa_cli.hosts.views.runtime_view.running_viewer_url", return_value=None), \
+             patch("cli.automa_cli.hosts.views.runtime_view.VIEWER_PORT", 0), \
+             patch("cli.automa_cli.hosts.views.runtime_view.launch_browser",
                    side_effect=lambda url: opened.append(url) or BrowserOpenResult(url, True)), \
-             patch("cli.automa_cli.hosts.views.viewer.pause_s", side_effect=interrupt):
+             patch("cli.automa_cli.hosts.views.runtime_view.time.sleep", side_effect=interrupt):
             result = self.viewer(*target)
         self.assertEqual(result.returncode, 130, result.stdout + result.stderr)
+        self.assertTrue(opened[0].endswith(f"/v2/?host={HOST_NAME}"), opened[0])
         return result, opened[0], served[0]
 
     def test_the_viewer_serves_the_host_at_its_status_url(self) -> None:
@@ -124,6 +91,7 @@ class LiveCommandsTests(LiveHostTestCase):
         self.assertEqual(status, 200)
         self.assertTrue(latest["report"]["frame_id"])
         self.assertTrue(latest["image"]["url"])
+        # Ctrl-C ends the viewer it served.
         with self.assertRaises(OSError):
             urlopen(view_url, timeout=1)
 
@@ -167,7 +135,7 @@ class LiveCommandsTests(LiveHostTestCase):
         url = closed_url()
         write_host_fixture(self.runtime_root, "piracer", provider="picar", url=url)
         for target in (("--host-url", url), ("--name", "piracer")):
-            with self.subTest(target=target), patch("cli.automa_cli.hosts.views.viewer.launch_browser") as open_view:
+            with self.subTest(target=target), patch("cli.automa_cli.hosts.views.runtime_view.launch_browser") as open_view:
                 silent = self.viewer(*target)
                 self.assertEqual(silent.returncode, 2, silent.stdout + silent.stderr)
                 self.assertTrue(silent.stdout.startswith(f"Cannot view host piracer at {url}: "), silent.stdout)

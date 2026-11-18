@@ -239,7 +239,7 @@ def _plugins_stream(query: dict[str, str]) -> dict[str, object]:
         raise ValueError(f"step must be one of {', '.join(STREAM_STEPS)}")
     events = []
     result = stream_host(step, host_name=_text(query, "host_name"), refresh_s=0.0, once=True, timeout_s=3.0,
-                         serve_view=False, include_publication=True, emit=events.append)
+                         show_view=False, include_publication=True, emit=events.append)
     if result.preflight or not events:
         return {**(result.live or {}), "text": result.message}
     return {**json.loads(render_stream(events[-1], json_output=True)),

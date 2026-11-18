@@ -1,11 +1,14 @@
 from __future__ import annotations
 
 import argparse
+from collections.abc import Callable
 from typing import Any
 
+from .frontend.v2_page import V2_PAGE_PATH
 from .hosts.commands import register_hosts
 from .hosts.views.runtime_view import runtime_view_server, serve_viewer
 from .plugins.commands import register_plugins
+from .shared.browser_result import BrowserOpenResult
 from .shared.text import format_browser_result
 from .simulators.commands import register_simulators
 from .vehicles.commands import register_vehicles
@@ -35,7 +38,7 @@ def build_parser() -> argparse.ArgumentParser:
     status.set_defaults(handler=_handle_status)
 
     register_vehicles(subcommands)
-    register_hosts(subcommands)
+    register_hosts(subcommands, desk=_serve_desk)
     register_workbench(subcommands, view_server=runtime_view_server)
     register_plugins(subcommands)
     register_simulators(subcommands)
@@ -77,11 +80,13 @@ def _handle_top_level_help(args: argparse.Namespace) -> int:
 
 
 def _handle_open_viewer(args: argparse.Namespace) -> int:
-    return serve_viewer(
-        reads=VIEWER_READS,
-        writes=VIEWER_WRITES,
-        emit=lambda result: print(format_browser_result(result), flush=True),
-    )
+    return _serve_desk(V2_PAGE_PATH, lambda result: print(format_browser_result(result), flush=True))
+
+
+def _serve_desk(page: str, emit: Callable[[BrowserOpenResult], None]) -> int:
+    """Open ``page`` of the viewer with its command routes; ``hosts viewer`` opens it too."""
+
+    return serve_viewer(reads=VIEWER_READS, writes=VIEWER_WRITES, emit=emit, page=page)
 
 
 def _handle_status(args: argparse.Namespace) -> int:

@@ -1,16 +1,12 @@
 from __future__ import annotations
 
-import io
 import json
 import os
 import tempfile
 import unittest
 from pathlib import Path
+from unittest import mock
 
-from PIL import Image
-
-from autonomy.runtime.frame_loop import FramePublication
-from autonomy.runtime.report import HostReport, ReportCycle, ReportApplication, ReportValues
 from cli.automa_cli.frontend.server import RuntimeViewServer
 from cli.automa_cli.workbench.runner import ImageReplayRunner
 from tests.shared.cli.invoke import invoke_automa
@@ -19,54 +15,24 @@ from tests.support.runtime_fixtures import write_runtime_fixture
 
 
 class PerceptionCommandTests(unittest.TestCase):
-    def test_status_reports_the_running_view_url(self) -> None:
+    def test_status_reports_the_hosts_page_on_the_running_viewer(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:
             runtime_root = Path(tmp) / "vehicles"
             host_name = "chase-sim-chaser"
-            write_runtime_fixture(
-                runtime_root,
-                host_name,
-                pid=os.getpid(),
-                manifest_bundle_root=ROOT,
-            )
-            server = RuntimeViewServer(
-                host_name=host_name,
-                automation_dir=runtime_root / host_name / "bundle" / "runtime" / "view",
-                port=0,
-                replay_runner_factory=ImageReplayRunner,
-            ).start()
-            frame_bytes = io.BytesIO()
-            Image.new("RGB", (16, 12), (20, 40, 60)).save(frame_bytes, format="JPEG")
-            publication = FramePublication(
-                health="healthy", read_at_ms=1000, result_age_ms=0, stale_after_ms=1000,
-                report=HostReport(
-                    host_name=host_name, run_id="run", generation_id="generation",
-                    frame_id="frame_000002", frame_index=2, timestamp_ms=1000, published_at_ms=1000,
-                    cycle=ReportCycle(),
-                    application=ReportApplication(False, "observe_only", "idle", 0.0, 0.0),
-                    values=ReportValues.from_dict({
-                        "source_id": "fixture", "activation": {"steps": {}}, "stale_after_ms": 1000,
-                "delivered_at_ms": None, "delivery_error": None, "receipt": None, "timing": None,
-                    }),
-                ),
-            )
-            server.perception.publish(frame_bytes=frame_bytes.getvalue(), publication=publication)
-            expected_url = server.url
+            write_runtime_fixture(runtime_root, host_name, pid=os.getpid(), manifest_bundle_root=ROOT)
+            server = RuntimeViewServer(host_name="viewer", port=0, replay_runner_factory=ImageReplayRunner).start()
+            base, port = server.url, int(server.url.rstrip("/").rsplit(":", 1)[1])
             try:
-                text_result = invoke_automa(
-                    "hosts", "status", "--long", runtime_root=runtime_root,
-                )
-                json_result = invoke_automa(
-                    "hosts", "status", "--json", runtime_root=runtime_root,
-                )
+                with mock.patch("cli.automa_cli.frontend.server.VIEWER_PORT", port):
+                    text_result = invoke_automa("hosts", "status", "--long", runtime_root=runtime_root)
+                    json_result = invoke_automa("hosts", "status", "--json", runtime_root=runtime_root)
             finally:
                 server.stop()
 
+        expected_url = f"{base}v2/?host={host_name}"
         published_view = json.loads(json_result.stdout)["hosts"][0]["run"]["published_view"]
-        self.assertTrue(published_view["available"])
-        self.assertEqual(published_view["url"], expected_url)
+        self.assertEqual(published_view, {"available": True, "url": expected_url})
         self.assertIn(f"\n  view: {expected_url}\n", text_result.stdout)
-
 
 if __name__ == "__main__":
     unittest.main()

@@ -64,4 +64,7 @@ document.addEventListener("DOMContentLoaded", () => {
   render();
   refresh();
   poll();
+  // hosts viewer opens the page on a host's stream: /v2/?host=<name>.
+  const host = new URLSearchParams(location.search).get("host");
+  if (host) Stream.openPerception(host);
 });

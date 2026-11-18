@@ -4,11 +4,13 @@ import json
 import os
 import selectors
 import signal
+import socket
 import subprocess
 import sys
 import tempfile
 import unittest
 from pathlib import Path
+from unittest import mock
 from urllib.error import HTTPError
 from urllib.request import urlopen
 
@@ -36,13 +38,20 @@ def _session_fingerprint(ws_url: str) -> dict:
 
 
 def _latest(view_url: str) -> dict | None:
-    """The view's latest publication, or ``None`` before it has one."""
+    """The host frame the viewer's v2 page reads, or ``None`` before the host has one."""
 
+    base, query = view_url.split("v2/", 1)
     try:
-        with urlopen(f"{view_url.rstrip('/')}/api/latest", timeout=5) as response:
+        with urlopen(f"{base}api/hosts/latest{query.replace('?host=', '?host_name=')}", timeout=5) as response:
             return json.load(response)
     except HTTPError:
         return None
+
+
+def _free_port() -> int:
+    with socket.socket() as probe:
+        probe.bind(("127.0.0.1", 0))
+        return probe.getsockname()[1]
 
 
 def _read_line(process: subprocess.Popen, *, timeout_s: float = 10.0) -> str:
@@ -155,16 +164,20 @@ class SimulatorPerceptionCliJourneyTests(unittest.TestCase):
                     self.assertNotIn("Browser", run.stdout)
                     self.assertNotIn("ready for:", run.stdout.lower())
 
-                    # Viewing is explicit: the viewer serves the pages until Ctrl-C ends it, not the run.
-                    with start_automa("hosts", "viewer", "--name", "chase-sim-chaser",
-                                      runtime_root=runtime_root, extra_env=env) as viewer:
+                    # Viewing is explicit: the viewer serves the page until Ctrl-C ends it, not the run.
+                    # Status finds it on the port the viewer serves; this test picks one.
+                    port = _free_port()
+                    with mock.patch("cli.automa_cli.frontend.server.VIEWER_PORT", port), \
+                            start_automa("hosts", "viewer", "--name", "chase-sim-chaser", runtime_root=runtime_root,
+                                         extra_env={**env, "AUTOMA_VIEWER_PORT": str(port)}) as viewer:
                         try:
                             self.assertTrue(_read_line(viewer).startswith("Viewing host chase-sim-chaser at "))
                             # The viewer prints its notice as one block; the rest is buffered already.
                             browser = viewer.stdout.readline()
                             self.assertTrue(browser.startswith("Browser opened: "), browser)
                             view_url = browser.removeprefix("Browser opened: ").strip()
-                            with urlopen(f"{view_url.rstrip('/')}/perception", timeout=5) as page:
+                            self.assertEqual(view_url, f"http://127.0.0.1:{port}/v2/?host=chase-sim-chaser")
+                            with urlopen(view_url, timeout=5) as page:
                                 self.assertEqual(page.status, 200)
                             latest = wait_until(lambda: _latest(view_url), message="the viewer published no frame")
                             self.assertTrue(latest["report"]["frame_id"])
@@ -182,10 +195,11 @@ class SimulatorPerceptionCliJourneyTests(unittest.TestCase):
                             if viewer.poll() is None:
                                 viewer.terminate()
                                 viewer.wait(timeout=5)
-                    after_view = json.loads(invoke_automa(
-                        "hosts", "status", "--name", "chase-sim-chaser", "--json",
-                        runtime_root=runtime_root, extra_env=env,
-                    ).stdout)["hosts"][0]["run"]
+                    with mock.patch("cli.automa_cli.frontend.server.VIEWER_PORT", port):
+                        after_view = json.loads(invoke_automa(
+                            "hosts", "status", "--name", "chase-sim-chaser", "--json",
+                            runtime_root=runtime_root, extra_env=env,
+                        ).stdout)["hosts"][0]["run"]
                     self.assertTrue(after_view["process"]["running"])
                     self.assertEqual(after_view["state"]["session"]["status"], "running")
                     self.assertFalse(after_view["published_view"]["available"])

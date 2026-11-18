@@ -60,8 +60,8 @@ To look through a host, pass its name to `hosts viewer`:
 ```
 
 `--host-url` with the URL on the host's last status line selects the same host.
-It serves the runtime viewer fed from that host (Perception, Memory, Action and
-Plugins) and opens it in the browser until Ctrl-C. It exits 2 when no such host
+It opens the v2 page on that host's stream, serving the viewer until Ctrl-C
+unless one is already running, in which case it opens that one and returns. It exits 2 when no such host
 exists, it is not running, or it does not answer. While the host is not live,
 for example after its run stopped, it prints `Not live:` with the reason, and
 the Perception page keeps the host's last frame, marked Stale.
@@ -134,8 +134,8 @@ restart, keep `--observe-only` explicit:
 ./cli/automa hosts restart --name chase-sim-chaser --observe-only
 ```
 
-Stopping the worker keeps its local deployment staged. A running `hosts viewer`
-keeps serving the host's pages, which report that the host is not live.
+Stopping the worker keeps its local deployment staged. A running viewer keeps
+serving the v2 page, which reports that the host is not live.
 
 ## Upload to an Existing Catalog
 
@@ -251,7 +251,6 @@ The commands keep these layers separate:
 | `passive_capture` | `available`, `unavailable`, `unsupported` | Read-only atomic capture with session preservation proof |
 | `automation_deployment` | `deployed`, `not_deployed`, `invalid` | Local bundle and activations |
 | `automation_worker` | `running`, `stopped`, `error` | PID and recorded worker state agree |
-| `perception_view` | `running`, `warming`, `unavailable` | Loopback view `hosts viewer` or `plugins stream` serves for the host |
 | `evaluator_reference` | `available`, `unavailable`, `invalid` | Optional frame-scoped scoring reference |
 
 `vehicles status --json` emits `automa_vehicles_status`, which lists vehicle
@@ -303,7 +302,7 @@ external change.
 | Deployment absent | Run the printed `hosts update` command, which stages every step's default |
 | Staged step invalid (including a retired schema) | `hosts status --long` and startup identify its step, activation path, and the `hosts update` command that replaces it with the step's default. Run it, then rerun `hosts status --long`. Checking never rewrites configs, and known invalid documents prevent worker startup and restart |
 | Worker stopped | Run the printed observation-only `hosts run` command |
-| View unavailable | Run `hosts viewer --name <host>`; a recorded URL is not treated as healthy |
+| View unavailable | Run `hosts viewer --name <host>`; status reports the page only while a viewer answers |
 
 `vehicles status` exits 1 when a vehicle is listed and none is reachable, and 0
 when nothing is listed. `hosts status

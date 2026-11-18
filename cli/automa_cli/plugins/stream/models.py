@@ -10,19 +10,6 @@ from autonomy.runtime.report import HostReport
 
 
 @dataclass(frozen=True)
-class ViewState:
-    """URLs and errors for one local view.
-
-    A renderer prints these. It does not receive the server or the feed.
-    """
-
-    url: str | None = None
-    error: str | None = None
-    decision_page: str | None = None
-    decision_error: str | None = None
-
-
-@dataclass(frozen=True)
 class PerceptionPublication:
     """What the perception screen shows from the host's latest observation publication.
 
@@ -51,15 +38,14 @@ class StreamEvent:
     """One probe and the facts a screen needs.
 
     ``live`` is the public probe. ``source`` is what the screen shows beside
-    it: perception's publication or memory's report. ``view`` is set only while
-    a local view is being served, and it carries that view's addresses rather
-    than the view itself.
+    it: perception's publication or memory's report. ``view`` is set only on a
+    continuous text stream: the command that opens the runtime viewer on the host.
     """
 
     step: str
     live: dict[str, Any]
     source: PerceptionPublication | MemoryPublication | HostReport | None = None
-    view: ViewState | None = None
+    view: str | None = None
     host_name: str = ""
     base_url: str = ""
 

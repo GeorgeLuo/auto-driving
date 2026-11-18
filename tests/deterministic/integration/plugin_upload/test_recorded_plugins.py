@@ -15,8 +15,6 @@ from autonomy.plugins import uploaded_source
 from autonomy.runtime.plugin_loader import load_runner
 from autonomy.runtime.recording import GENERATIONS_DIR, RunRecording
 from autonomy.runtime.session import RunConfiguration
-from cli.automa_cli.frontend.server import RuntimeViewServer
-from cli.automa_cli.workbench.runner import ImageReplayRunner
 from implementations.decision_cycle.catalog import PRESET_STEPS
 from implementations.runtime.chase_sim import create_host as create_chase_host
 from implementations.runtime.picar import create_host as create_picar_host
@@ -28,6 +26,7 @@ from tests.shared.integration.plugin_flow_fixtures import (
     candidate,
     frame,
     replay,
+    served_routes,
     write_plugin,
     upload,
 )
@@ -97,10 +96,7 @@ class RecordedPluginFlows(unittest.TestCase):
                         else create_picar_host(steps=decision_steps()))
                 self.addCleanup(host.close)
                 host.follow_activations({}, root / "runtime")
-                view = RuntimeViewServer(host_name=vehicle, automation_dir=root / "automation",
-                                         port=0, plugin_catalog=host.plugin_catalog,
-                                         replay_runner_factory=ImageReplayRunner).start()
-                self.addCleanup(view.stop)
+                url = self.enterContext(served_routes(host, vehicle))
                 recording = RunRecording(root / "runs", host_name=vehicle)
                 host.start(RunConfiguration(mode="observe_only", num_decisions=3), recording=recording)
                 host.run(frame(root, 0))
@@ -108,17 +104,16 @@ class RecordedPluginFlows(unittest.TestCase):
                 for step in PRESET_STEPS:
                     file = root / f"{step}.py"
                     write_plugin(file, step, f"prototype-{step}", 1)
-                    _, receipt = upload(view.url, file, step, f"prototype-{step}", arm=True)
+                    _, receipt = upload(url, file, step, f"prototype-{step}", arm=True)
                     originals.add(uploaded_source(receipt["plugin"]["metadata"]["source_file"]))
                 host.run(frame(root, 1))
                 write_plugin(root / "proposal.py", "proposal", "prototype-proposal", 2)
-                _, receipt = upload(view.url, root / "proposal.py", "proposal", "prototype-proposal", arm=True)
+                _, receipt = upload(url, root / "proposal.py", "proposal", "prototype-proposal", arm=True)
                 originals.add(uploaded_source(receipt["plugin"]["metadata"]["source_file"]))
                 host.run(frame(root, 2))
                 self.assertEqual(host.session_status()["status"], "completed")
                 before_header = (recording.root / "manifest.json").read_text()
                 before_entries = read_recording_entries(recording.root)
-                view.stop()
                 host.close()
                 for directory in {path.parent for path in originals}:
                     shutil.rmtree(directory)

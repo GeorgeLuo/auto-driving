@@ -10,29 +10,25 @@ from urllib.parse import urlsplit
 from urllib.request import Request, urlopen
 
 from autonomy.decision_cycle.steps import decision_steps
-from cli.automa_cli.frontend.server import RuntimeViewServer
 from implementations.runtime.picar import create_host
 from tests.shared.cli.workbench_fixtures import ImageReplayRunner, get_json, image_source, serve_workbench
-from tests.shared.integration.plugin_flow_fixtures import write_plugin
+from tests.shared.integration.plugin_flow_fixtures import served_routes, write_plugin
 from tests.shared.cli.automation_pipeline.pipeline_fixtures import chase_runtime, _write_activations
 from cli.automa_cli.releases.paths import controller_bundle_paths
 
 
 class CatalogWriteBoundaryFlows(unittest.TestCase):
-    def test_browser_and_form_requests_cannot_upload_arm_or_disarm_through_host_viewer_or_workbench(self):
+    def test_browser_and_form_requests_cannot_upload_arm_or_disarm_through_a_host_or_the_workbench(self):
         with image_source(1) as root:
             host = create_host(steps=decision_steps())
             self.addCleanup(host.close)
             host.follow_activations({}, root / "runtime")
-            view = RuntimeViewServer(host_name="picar", automation_dir=root / "automation",
-                                     port=0, plugin_catalog=host.plugin_catalog,
-                                     replay_runner_factory=ImageReplayRunner).start()
-            self.addCleanup(view.stop)
+            picar = self.enterContext(served_routes(host, "picar"))
             workbench = serve_workbench(self, ImageReplayRunner(root))
             runtime = root / "vehicles"
             _write_activations(controller_bundle_paths(runtime / "chase-sim-chaser"))
             shared_host = self.enterContext(chase_runtime(runtime))
-            for base in (view.url, workbench, shared_host.base_url + "/"):
+            for base in (picar, workbench, shared_host.base_url + "/"):
                 with self.subTest(endpoint=base):
                     address = urlsplit(base)
                     origin = f"{address.scheme}://{address.netloc}"
@@ -59,7 +55,8 @@ class CatalogWriteBoundaryFlows(unittest.TestCase):
                             ({"Content-Type": "text/plain"}, 415),
                             ({"Origin": origin, "Content-Type": "application/x-www-form-urlencoded"}, 415),
                         ]
-                        if base != shared_host.base_url + "/":
+                        # The viewer's loopback server also checks the Host header; a host's runtime routes do not.
+                        if base == workbench:
                             requests.append(({"Host": "attacker.example", "Content-Type": "application/json"}, 403))
                         for headers, status in requests:
                             with self.subTest(payload=payload.get("operation", "upload"), headers=headers):

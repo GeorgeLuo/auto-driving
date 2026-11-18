@@ -82,9 +82,7 @@ def run_workbench_replay(
             # Without ``host`` the viewer binds its own loopback default.
             server = view_server(
                 host_name="viewer",
-                automation_dir=None,
                 port=port,
-                connected=False,
                 replay_runner=runner,
                 **({} if host is None else {"host": host}),
             ).start()

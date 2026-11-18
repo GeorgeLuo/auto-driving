@@ -45,9 +45,7 @@ def write_manifest(root: Path, payload: dict, name: str = "manifest.json") -> No
 def serve_workbench(testcase, runner: ProductionImageReplayRunner) -> str:
     server = RuntimeViewServer(
         host_name="viewer",
-        automation_dir=None,
         port=0,
-        connected=False,
         replay_runner=runner,
     ).start()
     testcase.addCleanup(server.stop)

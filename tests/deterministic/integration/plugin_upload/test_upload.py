@@ -11,10 +11,8 @@ from urllib.error import HTTPError
 
 from autonomy.decision_cycle.activation import step_activation_from_payload
 from autonomy.plugins import uploaded_source
-from cli.automa_cli.releases.paths import controller_bundle_paths
 from cli.automa_cli.hosts.publications.plugin_catalog import PluginCatalogClient
 from implementations.decision_cycle.catalog import selection_activation
-from cli.automa_cli.frontend.server import RuntimeViewServer
 from tests.shared.cli.automation_pipeline.pipeline_fixtures import chase_runtime
 from tests.shared.cli.invoke import invoke_automa
 from tests.support.fake_hosts import answering
@@ -272,7 +270,7 @@ class PluginUploadFlows(unittest.TestCase):
             self.assertEqual(listed["config"], {"floor_cutoff_y": 0.9})
             self.assertEqual(listed["metadata"]["revision"], receipt["plugin"]["metadata"]["revision"])
 
-    def test_cli_vehicle_address_and_viewer_proxy_share_the_host_catalog(self):
+    def test_cli_vehicle_address_reaches_the_host_catalog(self):
         with tempfile.TemporaryDirectory() as directory:
             root = Path(directory)
             runtime_root = root / "vehicles"
@@ -285,12 +283,7 @@ class PluginUploadFlows(unittest.TestCase):
             # The error already says why a named host is unreachable; there is no retry hint.
             self.assertNotIn("Next:", invoke_automa("plugins", "list", "--host-name", "chase-sim-chaser",
                                                     runtime_root=runtime_root, check=False).stdout)
-            bundle = controller_bundle_paths(runtime_root / "chase-sim-chaser")
             chase = self.enterContext(chase_runtime(runtime_root))
-            viewer = RuntimeViewServer(host_name="chase-sim-chaser", automation_dir=Path(bundle["runtime_dir"]) / "automation",
-                                       port=0, plugin_catalog=PluginCatalogClient(chase.base_url),
-                                       replay_runner_factory=ImageReplayRunner).start()
-            self.addCleanup(viewer.stop)
             file = root / "prototype.py"
             file.write_text("from dependency_can_arrive_later import Prototype\n")
             result = invoke_automa("plugins", "upload", "--host-name", "chase-sim-chaser",
@@ -313,7 +306,6 @@ class PluginUploadFlows(unittest.TestCase):
             self.assertEqual(len(listed["plugins"]), 1)
             self.assertEqual(listed["plugins"][0]["id"], "prototype")
             self.assertIn(listed["plugins"][0]["metadata"]["revision"], result.stdout)
-            self.assertEqual(get_json(viewer.url, "/api/plugins"), get_json(chase.base_url, "/api/plugins"))
             self.assertEqual(chase.loop.host.catalog.resolve("memory", "prototype").metadata["revision"],
                              listed["plugins"][0]["metadata"]["revision"])
 

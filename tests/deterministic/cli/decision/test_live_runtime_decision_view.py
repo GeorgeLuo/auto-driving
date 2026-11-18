@@ -1,8 +1,6 @@
 from __future__ import annotations
-import json
 import unittest
 from copy import deepcopy
-from urllib.request import urlopen
 from autonomy.decision_cycle.memory.interface import evidence_records
 from autonomy.runtime.report import HostReport
 from autonomy.fields import FieldError
@@ -13,9 +11,7 @@ from tests.deterministic.cli.decision.live_runtime_decision_view_fixtures import
 class LiveRuntimeDecisionViewTests(LiveRuntimeDecisionViewFixture, unittest.TestCase):
     def test_serves_exact_decision_image_and_separate_authority_facts(self) -> None:
         stream_frame, expected_image = self._publish_exact_transaction()
-        with urlopen(f"{self.server.url}api/latest", timeout=1.0) as response:
-            self.assertEqual(response.headers["Cache-Control"], "no-store")
-            payload = json.loads(response.read())
+        payload = self._latest_payload()
         self.assertEqual(payload["report"]["status"], "ok")
         self.assertEqual(payload["report"]["frame_id"], stream_frame["frame_id"])
         self.assertEqual(payload["image"]["frame_id"], stream_frame["frame_id"])
@@ -25,20 +21,7 @@ class LiveRuntimeDecisionViewTests(LiveRuntimeDecisionViewFixture, unittest.Test
         self.assertIn("authorized_output", authority)
         self.assertNotIn("host_application", authority)
 
-        with urlopen(
-            f"{self.server.url.rstrip('/')}{payload['image']['url']}",
-            timeout=1.0,
-        ) as response:
-            self.assertEqual(response.headers.get_content_type(), "image/jpeg")
-            self.assertEqual(response.read(), expected_image)
-
-        with urlopen(
-            f"{self.server.url}decision", timeout=1.0
-        ) as response:
-            self.assertEqual(response.status, 200)
-            self.assertEqual(response.headers.get_content_type(), "text/html")
-
-        self.assertEqual(self.server.perception.health_payload()["latest_frame_id"], stream_frame["frame_id"])
+        self.assertEqual(self._image(payload["image"]["url"]), (expected_image, "image/jpeg"))
         self.assertEqual(
             payload["report"]["timestamp_ms"],
             stream_frame["timestamp_ms"],

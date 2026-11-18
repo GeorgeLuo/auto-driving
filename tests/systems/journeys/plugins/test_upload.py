@@ -1,4 +1,4 @@
-"""Public CLI -> live HTTP catalog -> viewer/replay/vehicle lifecycle flows."""
+"""Public CLI -> live HTTP catalog -> vehicle lifecycle flows."""
 
 from __future__ import annotations
 
@@ -9,19 +9,16 @@ import tempfile
 import time
 import unittest
 from pathlib import Path
-from playwright.sync_api import sync_playwright, expect
 
 from autonomy.decision_cycle.context import DecisionFrameContext
 from autonomy.decision_cycle.steps import decision_steps
-from autonomy.runtime.plugin_catalog import PluginCatalogAPI
 from autonomy.runtime.session import RunConfiguration
-from cli.automa_cli.frontend.server import RuntimeViewServer
-from cli.automa_cli.workbench.runner import ImageReplayRunner
 from implementations.runtime.chase_sim import create_host as create_chase_host
 from implementations.runtime.picar import create_host as create_picar_host
 from implementations.vehicle.chase_sim import ChaseSimCar
 from tests.shared.cli.invoke import invoke_automa
 from tests.shared.cli.workbench_fixtures import get_json
+from tests.shared.integration.plugin_flow_fixtures import served_routes
 from tests.support.cli_runner import AUTOMA_PATH
 
 
@@ -47,10 +44,6 @@ class PluginUploadFlows(unittest.TestCase):
         self.assertNotIn("Traceback", result.stderr)
 
     def test_vehicle_catalog_uploads_before_during_and_after_run_completion(self):
-        browser_runtime = sync_playwright().start()
-        self.addCleanup(browser_runtime.stop)
-        browser = browser_runtime.chromium.launch()
-        self.addCleanup(browser.close)
         for vehicle in ("chase", "picar"):
             with self.subTest(vehicle=vehicle), tempfile.TemporaryDirectory() as directory:
                 root = Path(directory)
@@ -60,15 +53,9 @@ class PluginUploadFlows(unittest.TestCase):
                 self.addCleanup(host.close)
                 host.follow_activations({}, root / "runtime")
                 identity = host.applied_decision()
-                view = RuntimeViewServer(host_name="chase-sim-chaser", automation_dir=root / "automation",
-                                         port=0, plugin_catalog=PluginCatalogAPI(host.catalog),
-                                         replay_runner_factory=ImageReplayRunner).start()
-                self.addCleanup(view.stop)
+                url = self.enterContext(served_routes(host, vehicle))
                 file = root / "prototype.py"
                 file.write_text("raise RuntimeError('must not import on upload')")
-                page = browser.new_page()
-                page.goto(view.url + "plugins")
-                page.get_by_role("checkbox", name="Show revisions").check()
                 for index, phase in enumerate(("pre_start", "running", "completed")):
                     if phase == "running":
                         host.start(RunConfiguration(mode="observe_only", num_decisions=1))
@@ -76,12 +63,11 @@ class PluginUploadFlows(unittest.TestCase):
                         host.run(DecisionFrameContext("frame-1", 1, int(time.time() * 1000)))
                     self.assertEqual(host.session_status()["status"], phase)
                     before_steps = host.status()["steps"]
-                    _, receipt = upload(view.url, file, f"prototype-{index}", step="proposal")
+                    _, receipt = upload(url, file, f"prototype-{index}", step="proposal")
                     self.assertTrue(receipt["ok"])
                     self.assertEqual(host.applied_decision(), identity)
                     self.assertEqual(host.status()["steps"], before_steps)
                     self.assertEqual(host.session_status()["status"], phase)
-                    self.assertIn(f"prototype-{index}", [p["id"] for p in get_json(view.url, "/api/plugins")["plugins"]])
-                    row = page.locator("tbody tr").filter(has=page.get_by_role("cell", name=f"prototype-{index}", exact=True))
-                    expect(row).to_have_count(1)
-                    expect(row.get_by_role("cell", name=receipt["plugin"]["metadata"]["revision"], exact=True)).to_be_visible()
+                    listed = {plugin["id"]: plugin for plugin in get_json(url, "/api/plugins")["plugins"]}
+                    self.assertEqual(listed[f"prototype-{index}"]["metadata"]["revision"],
+                                     receipt["plugin"]["metadata"]["revision"])

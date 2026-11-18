@@ -1,4 +1,4 @@
-"""The runtime viewer's HTTP server: its pages, their APIs and the workbench."""
+"""The runtime viewer's HTTP server: the v2 page, its command routes and the workbench."""
 
 from __future__ import annotations
 
@@ -6,20 +6,11 @@ import json
 import os
 import threading
 import time
-import zlib
-from pathlib import Path
 from typing import Callable, Mapping
-from urllib.parse import parse_qs, urlparse
-
-from .perception_view import (
-    PerceptionView,
-    VIEW_SCHEMA,
-    VIEW_RECORD_NAME,
-    get_perception_view_status,
-)
+from urllib.parse import parse_qs, urljoin, urlparse
+from urllib.request import urlopen
 
 from .loopback_http import (
-    PAGES_DIR,
     LoopbackHTTPRequestHandler,
     LoopbackHTTPServer,
     local_write_error,
@@ -28,39 +19,16 @@ from .loopback_http import (
     stop_server_thread,
     validate_loopback_host,
 )
-from .plugin_catalog import serve_plugin_catalog
-from .v2_page import serve_v2_file
+from .v2_page import V2_PAGE_PATH, serve_v2_file
 from .workbench_view import WORKBENCH_CONTENT_SECURITY_POLICY, ReplayRunner, serve_workbench_route
-from autonomy.decision_cycle.activation import STEPS
 from autonomy.runtime.http_errors import error_payload
-from autonomy.runtime.plugin_catalog import PLUGIN_CATALOG_PATH
 
 
 VIEW_HOST = "127.0.0.1"
-# Host views take 8500–8999. This port is the viewer opened with no host.
-VIEWER_PORT = 8473
-NOT_CONNECTED_ERROR = "not connected to a host"
-# Routes answered from a runtime host; a viewer that is not connected refuses them.
-RUNTIME_HOST_ROUTES = frozenset({
-    PLUGIN_CATALOG_PATH,
-    "/api/latest",
-    "/frame",
-})
+# The port ./cli/automa serves the viewer on; AUTOMA_VIEWER_PORT moves it (0: any free port).
+VIEWER_PORT = int(os.environ.get("AUTOMA_VIEWER_PORT", "8473"))
 # The workbench page and API, answered from a replay runner whether or not a host is connected.
 WORKBENCH_PREFIX = "/workbench"
-HOME_PAGE_PATH = PAGES_DIR / "home" / "index.html"
-PERCEPTION_PAGE_PATH = PAGES_DIR / "perception" / "index.html"
-MEMORY_PAGE_PATH = PAGES_DIR / "memory" / "index.html"
-DECISION_PAGE_PATH = PAGES_DIR / "decision" / "index.html"
-PLUGINS_PAGE_PATH = PAGES_DIR / "plugins" / "index.html"
-# The decision-step pages, each with the decision navigation.
-STEP_PAGES = {
-    route: path
-    for path, name in [(DECISION_PAGE_PATH, "decision"), (PERCEPTION_PAGE_PATH, "perception"), (MEMORY_PAGE_PATH, "memory")]
-    for route in (f"/{name}", f"/{name}.html")
-}
-
-
 # A read route: the request's query parameters to a document, or to an image's bytes and content type.
 Read = Callable[[Mapping[str, str]], "dict[str, object] | tuple[bytes, str]"]
 # A write route: the request's JSON object to the command's result.
@@ -68,9 +36,9 @@ Write = Callable[[dict[str, object]], dict[str, object]]
 
 
 class RuntimeViewServer:
-    """Serve peer runtime pages; retain the existing discovery and health contract.
+    """Serve the v2 page, the viewer's command routes and the workbench.
 
-    ``hosts`` lists the hosts the home page shows. ``reads`` maps a GET route
+    ``hosts`` lists the hosts ``/api/hosts`` answers. ``reads`` maps a GET route
     to what it serves for the request's query parameters: a document, or an
     image as its bytes and content type. ``writes`` maps a POST route to the
     command it runs with the request's JSON object. A document or result with
@@ -84,11 +52,8 @@ class RuntimeViewServer:
         self,
         *,
         host_name: str,
-        automation_dir: Path | None,
         host: str = VIEW_HOST,
-        port: int | None = None,
-        plugin_catalog: Callable | None = None,
-        connected: bool = True,
+        port: int = 0,
         hosts: Callable[[], list[dict[str, object]]] | None = None,
         reads: Mapping[str, Read] | None = None,
         writes: Mapping[str, Write] | None = None,
@@ -99,20 +64,14 @@ class RuntimeViewServer:
         if replay_runner is None and replay_runner_factory is None:
             raise TypeError("RuntimeViewServer needs replay_runner or replay_runner_factory")
         self.host_name = host_name
-        self.connected = connected
         self.hosts = hosts
         self.reads = reads or {}
         self.writes = writes or {}
         self._replay_runner = replay_runner
         self._replay_runner_factory = replay_runner_factory
         self._replay_runner_lock = threading.Lock()
-        self.plugin_catalog = plugin_catalog
-        self.automation_dir = automation_dir
         self.host = host
-        self.preferred_port = _host_view_port(host_name) if port is None else int(port)
-        # Without an automation dir the server publishes no discovery record.
-        self.record_path = None if automation_dir is None else automation_dir / VIEW_RECORD_NAME
-        self.perception = PerceptionView(host_name=host_name)
+        self.preferred_port = int(port)
         self._httpd: _RuntimeHttpServer | None = None
         self._thread: threading.Thread | None = None
         self._started_at_ms: int | None = None
@@ -150,63 +109,13 @@ class RuntimeViewServer:
             httpd,
             name=f"automa-runtime-view-{self.host_name}",
         )
-        # The record names the first view still serving this host, so ``hosts status`` keeps
-        # finding it while another view of the host starts and stops; that view prints its own URL.
-        if self.record_path is not None and not self._another_view_is_recorded():
-            _write_json(self.record_path, self.describe())
         return self
 
-    def _another_view_is_recorded(self) -> bool:
-        view = get_perception_view_status(self.automation_dir)
-        return view.get("url") != self.url and view["status"] in {"running", "warming"}
-
-    def describe(self) -> dict[str, object]:
-        # Keep the established discovery record/schema for existing CLI readers.
-        return {
-            "schema": VIEW_SCHEMA,
-            "host_name": self.host_name,
-            "status": "running",
-            "available": self._httpd is not None,
-            "url": self.url,
-            "host": self.host,
-            "port": self._httpd.server_address[1] if self._httpd is not None else None,
-            "pid": os.getpid(),
-            "started_at_ms": self._started_at_ms,
-            "record_path": None if self.record_path is None else str(self.record_path),
-        }
-
     def health_payload(self) -> dict[str, object]:
-        return {
-            **self.describe(),
-            **self.perception.health_payload(),
-        }
+        """What ``/api/health`` answers: which viewer this is, and where."""
 
-    def connection_dot_html(self) -> str:
-        """The splash-page dot: live while connected to a runtime host."""
-
-        if self.connected:
-            return '<span class="status-dot live"></span>'
-        return f'<span class="status-dot error" title="{NOT_CONNECTED_ERROR}"></span>'
-
-    def splash_navigation_html(self) -> str:
-        """One entry per runtime page; none is available until connected."""
-
-        if not self.connected:
-            return "\n".join(
-                _unavailable_nav(label, NOT_CONNECTED_ERROR)
-                for label in ("Perception", "Memory", "Action", "Plugins")
-            )
-        return "\n".join((
-            _nav_link("Perception", "/perception"),
-            _nav_link("Memory", "/memory"),
-            self.decision_navigation_html(),
-            _nav_link("Plugins", "/plugins"),
-        ))
-
-    def decision_navigation_html(self) -> str:
-        """Return a usable decision link or an explicit unavailable status."""
-
-        return _nav_link("Action", "/decision")
+        return {"ok": True, "host_name": self.host_name, "url": self.url, "pid": os.getpid(),
+                "started_at_ms": self._started_at_ms}
 
     def stop(self) -> None:
         httpd = self._httpd
@@ -237,12 +146,7 @@ class _RuntimeViewHandler(LoopbackHTTPRequestHandler):
 
     def do_POST(self) -> None:
         route = urlparse(self.path).path
-        if self._refuse_when_not_connected(route, include_body=True):
-            return
         if self._serve_workbench(route, include_body=True):
-            return
-        if route == PLUGIN_CATALOG_PATH:
-            serve_plugin_catalog(self, self.server.publisher.plugin_catalog)
             return
         if route in self.server.publisher.writes:
             self._serve_write(self.server.publisher.writes[route])
@@ -250,7 +154,7 @@ class _RuntimeViewHandler(LoopbackHTTPRequestHandler):
         self._reject_write_method()
 
     def _serve_write(self, command: Write) -> None:
-        """Run a write route's command with the request's JSON object, as the plugin catalog route does."""
+        """Run a write route's command with the request's JSON object."""
 
         error = local_write_error(self)
         if error is not None:
@@ -299,14 +203,6 @@ class _RuntimeViewHandler(LoopbackHTTPRequestHandler):
     def _reject_write_method(self) -> None:
         self._send_json(405, error_payload("method not allowed"))
 
-    def _refuse_when_not_connected(self, route: str, *, include_body: bool) -> bool:
-        """Answer a runtime-host route while no host is connected; True if answered."""
-
-        if self.server.publisher.connected or route not in RUNTIME_HOST_ROUTES:
-            return False
-        self._send_json(503, error_payload(NOT_CONNECTED_ERROR), include_body=include_body)
-        return True
-
     def _serve_workbench(self, route: str, *, include_body: bool) -> bool:
         """Answer a route under /workbench/ from the viewer's replay runner; True if answered."""
 
@@ -322,8 +218,7 @@ class _RuntimeViewHandler(LoopbackHTTPRequestHandler):
         request = urlparse(self.path)
         route = request.path
         answered = (
-            self._refuse_when_not_connected(route, include_body=include_body)
-            or self._serve_workbench(route, include_body=include_body)
+            self._serve_workbench(route, include_body=include_body)
             or self._serve_shared_file(route, include_body=include_body)
             or serve_v2_file(self, route, include_body=include_body)
             or self._serve_page(route, include_body=include_body)
@@ -333,85 +228,45 @@ class _RuntimeViewHandler(LoopbackHTTPRequestHandler):
             self._send_json(404, error_payload("not found"), include_body=include_body)
 
     def _serve_page(self, route: str, *, include_body: bool) -> bool:
-        """Answer a page route with its HTML, its placeholders filled; True if answered."""
+        """Send ``/`` to the v2 page; True if answered."""
 
-        publisher = self.server.publisher
         if route == "/favicon.ico":
-            self._send(204, b"", "image/x-icon", include_body=False)
+            self._send(204, b"", "image/x-icon", include_body=include_body)
             return True
-        if route == "/plugins":
-            page, placeholders = PLUGINS_PAGE_PATH, {"__PLUGIN_STEPS__": lambda: json.dumps(list(STEPS))}
-        elif route in {"/", "/index.html"}:
-            page, placeholders = HOME_PAGE_PATH, {"__CONNECTION_DOT__": publisher.connection_dot_html,
-                                                  "__RUNTIME_NAV__": publisher.splash_navigation_html}
-        elif route in STEP_PAGES:
-            page, placeholders = STEP_PAGES[route], {"__DECISION_NAV__": publisher.decision_navigation_html}
-        else:
+        if route not in {"/", "/index.html"}:
             return False
-        try:
-            html = page.read_text(encoding="utf-8")
-        except OSError as exc:
-            self._send_json(500, error_payload(str(exc)), include_body=include_body)
-            return True
-        for placeholder, fill in placeholders.items():
-            html = html.replace(placeholder, fill())
-        self._send(200, html.encode("utf-8"), "text/html; charset=utf-8", include_body=include_body)
+        self.send_response(302)
+        self.send_header("Location", V2_PAGE_PATH)
+        self.send_header("Content-Length", "0")
+        self.end_headers()
         return True
 
     def _serve_api(self, route: str, query: str, *, include_body: bool) -> bool:
-        """Answer an API route: the plugin catalog, health, the host list, a read route, or perception; True if answered."""
+        """Answer an API route: health, the host list, or a read route; True if answered."""
 
         publisher = self.server.publisher
-        if route == PLUGIN_CATALOG_PATH:
-            serve_plugin_catalog(self, publisher.plugin_catalog, include_body=include_body)
-        elif route == "/api/health":
+        if route == "/api/health":
             self._send_json(200, publisher.health_payload(), include_body=include_body)
         elif route == "/api/hosts":
             self._send_json(200, {"hosts": [] if publisher.hosts is None else publisher.hosts()}, include_body=include_body)
         elif route in publisher.reads:
             self._serve_read(publisher.reads[route], query, include_body=include_body)
-        elif route == "/api/latest":
-            body = publisher.perception.latest_json()
-            if body is None:
-                self._send_json(503, error_payload(publisher.perception.unavailable_reason), include_body=include_body)
-            else:
-                self._send(200, body, "application/json; charset=utf-8", include_body=include_body)
-        elif route == "/frame":
-            self._serve_perception_frame(parse_qs(query).get("v", [None])[0], include_body=include_body)
         else:
             return False
         return True
 
-    def _serve_perception_frame(self, frame_id: str | None, *, include_body: bool) -> None:
-        """The perception page's frame: the one it names, or the latest."""
 
-        perception = self.server.publisher.perception
-        frame = perception.frame(frame_id)
-        if frame is not None:
-            self._send(200, *frame, include_body=include_body)
-        elif frame_id is not None:
-            self._send_json(404, error_payload("requested perception frame is no longer available"), include_body=include_body)
-        else:
-            self._send_json(503, error_payload(perception.unavailable_reason), include_body=include_body)
+def running_viewer_url(timeout_s: float = 0.5) -> str | None:
+    """The URL of the viewer ``./cli/automa`` serves on ``VIEWER_PORT``, or None when none answers."""
 
-def _nav_link(label: str, href: str) -> str:
-    return f'<a class="nav" href="{href}">{label}</a>'
-
-
-def _unavailable_nav(label: str, reason: str) -> str:
-    return f'<span class="nav unavailable" title="{reason}">{label}</span>'
-
-
-def _host_view_port(host_name: str) -> int:
-    return 8500 + (zlib.crc32(host_name.encode("utf-8")) % 500)
+    url = f"http://{VIEW_HOST}:{VIEWER_PORT}/"
+    try:
+        with urlopen(urljoin(url, "api/health"), timeout=timeout_s) as response:
+            health = json.load(response)
+    except (OSError, ValueError):
+        return None
+    return url if isinstance(health, dict) and health.get("host_name") == "viewer" else None
 
 
 def _timestamp_ms() -> int:
     return int(time.time() * 1000)
-
-
-def _write_json(path: Path, payload: dict[str, object]) -> None:
-    path.parent.mkdir(parents=True, exist_ok=True)
-    temporary = path.with_name(f".{path.name}.{os.getpid()}.tmp")
-    temporary.write_text(json.dumps(payload, indent=2, sort_keys=True), encoding="utf-8")
-    temporary.replace(path)

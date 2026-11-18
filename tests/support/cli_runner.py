@@ -26,6 +26,8 @@ def _automa_env(runtime_root: Path | None, extra_env: dict[str, str] | None) -> 
         env["PYTHONPATH"] = os.pathsep.join(
             filter(None, (offline_path, env.get("PYTHONPATH")))
         )
+        # A viewer the command serves takes any free port, and none it finds is one already running.
+        env.setdefault("AUTOMA_VIEWER_PORT", "0")
     return env
 
 

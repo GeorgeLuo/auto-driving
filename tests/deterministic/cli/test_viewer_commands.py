@@ -86,8 +86,7 @@ class ViewerCommandTests(unittest.TestCase):
         self.root = root
         self.enterContext(runtime_root_env(root))
         self.server = RuntimeViewServer(
-            host_name="viewer", automation_dir=None, port=0, connected=False,
-            reads=VIEWER_READS, writes=VIEWER_WRITES, replay_runner_factory=ImageReplayRunner,
+            host_name="viewer", port=0, reads=VIEWER_READS, writes=VIEWER_WRITES, replay_runner_factory=ImageReplayRunner,
         ).start()
         self.addCleanup(self.server.stop)
 

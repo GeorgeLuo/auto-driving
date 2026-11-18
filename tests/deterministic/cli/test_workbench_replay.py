@@ -80,8 +80,9 @@ class WorkbenchTests(unittest.TestCase):
                 with urlopen(url + "api/state", timeout=2) as response:
                     state = json.load(response)
                 self.assertEqual(state["source"]["source_path"], str(root.resolve()))
+                # The viewer's root is the v2 page, whose Workbench link opens this one.
                 with urlopen(url.removesuffix("workbench/"), timeout=2) as response:
-                    self.assertIn('<a class="nav" href="/workbench/">Workbench</a>', response.read().decode())
+                    self.assertIn('href="/workbench/" id="workbenchLink"', response.read().decode())
                 raise KeyboardInterrupt
 
             with mock.patch("cli.automa_cli.workbench.replay.launch_browser", side_effect=open_view) as launch:

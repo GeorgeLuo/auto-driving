@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import json
 import os
+import threading
 import time
 from contextlib import contextmanager
 from pathlib import Path
@@ -10,11 +11,12 @@ from autonomy.decision_cycle.context import DecisionFrameContext
 from autonomy.decision_cycle.steps import decision_steps
 from autonomy.plugins import PluginDefinition
 from autonomy.vehicle import FRONT_CAMERA_SENSOR_ID, SensorFrame, SensorReading
-from cli.automa_cli.frontend.server import RuntimeViewServer
 from cli.automa_cli.hosts.publications.plugin_catalog import PluginCatalogClient
 from implementations.decision_cycle.catalog import packaged_activation
 from implementations.runtime.chase_sim import create_host as create_chase_host
-from implementations.runtime.chase_sim.service import HOST_RECORD_SCHEMA
+from autonomy.runtime.frame_loop import FrameLoop
+from autonomy.runtime.routes import RuntimeRoutes
+from implementations.runtime.chase_sim.service import HOST_RECORD_SCHEMA, RuntimeHTTPServer
 from implementations.runtime.picar import create_host as create_picar_host
 from implementations.vehicle.chase_sim import ChaseSimCar
 from tests.shared.cli.invoke import invoke_automa
@@ -48,7 +50,7 @@ def frame(root, index):
 
 @contextmanager
 def plugin_host(root, vehicle="chase", activations=None):
-    """A vehicle host in this process, with its catalog served at the yielded URL.
+    """A vehicle host in this process, its runtime routes served at the yielded URL.
 
     Plan has no built-in. The packaged plan is staged unless the caller already
     named one, so a one-plugin disarm still meets a running plan plugin.
@@ -59,14 +61,27 @@ def plugin_host(root, vehicle="chase", activations=None):
     host = (create_chase_host(ChaseSimCar(), steps=steps) if vehicle == "chase"
             else create_picar_host(steps=steps))
     host.follow_activations(selected, root / "runtime")
-    view = RuntimeViewServer(host_name=vehicle, automation_dir=root / "automation",
-                             port=0, plugin_catalog=host.plugin_catalog,
-                             replay_runner_factory=ImageReplayRunner).start()
     try:
-        yield host, view.url
+        with served_routes(host, vehicle) as url:
+            yield host, url
     finally:
-        view.stop()
         host.close()
+
+
+@contextmanager
+def served_routes(host, host_name):
+    """``host``'s runtime routes, its plugin catalog among them, at the yielded URL, as a vehicle serves them."""
+
+    server = RuntimeHTTPServer(("127.0.0.1", 0), RuntimeRoutes(
+        FrameLoop(host=host, host_name=host_name, runtime="test", run_id="test-run")))
+    thread = threading.Thread(target=server.serve_forever, name=f"routes-{host_name}", daemon=True)
+    thread.start()
+    try:
+        yield f"http://127.0.0.1:{server.server_address[1]}/"
+    finally:
+        server.shutdown()
+        server.server_close()
+        thread.join(timeout=2)
 
 
 def name_host(runtime_root: Path, base: str, provider: str) -> None:

@@ -27,7 +27,6 @@ from tests.support.runtime_fixtures import stage_step, write_json
 
 VEHICLE = "chase-sim-chaser"
 UNSTAGED = {step: "builtin" if builtin_activation(step) else "none" for step in STEPS}
-UNAVAILABLE_VIEW = {"schema": "automa_perception_view", "available": False, "status": "unavailable", "url": None}
 
 
 def _invoke(*args: str) -> tuple[int, str]:
@@ -45,7 +44,7 @@ class StepFairnessTests(unittest.TestCase):
             root = Path(tmp)
             write_host_fixture(root, VEHICLE)
             with runtime_root_env(root), mock.patch(
-                "cli.automa_cli.hosts.runs.status.get_perception_view_status", return_value=dict(UNAVAILABLE_VIEW)
+                "cli.automa_cli.hosts.runs.status.running_viewer_url", return_value=None
             ), mock.patch.object(socket, "getaddrinfo", offline_getaddrinfo(socket.getaddrinfo)):
                 for step in staged:
                     stage_step(root, VEHICLE, step)

@@ -34,7 +34,7 @@ from qca.evaluation import (
     text_context,
 )
 from qca.evaluators import structure
-from scripts.validation import evaluators, inspection, plugin_state
+from scripts.validation import acceptance, evaluators, inspection, plugin_state, review, source_rules
 
 ROOT = Path(__file__).resolve().parents[2]
 PATHS = ("autonomy", "cli", "implementations", "deploy", "qca", "scripts/validation", "tests")
@@ -42,6 +42,7 @@ PATHS = ("autonomy", "cli", "implementations", "deploy", "qca", "scripts/validat
 SHARED = ("pyproject.toml", ".basedpyright")
 DEFAULT_BASE = "origin/main"
 LIMIT = 50
+TOTALS = {"Complexity": review.complexity_totals, "Runtime type checks": review.runtime_type_checks}
 
 
 def build_evaluators(*, ruff_only: bool = False) -> list[Evaluator]:
@@ -59,12 +60,15 @@ def build_evaluators(*, ruff_only: bool = False) -> list[Evaluator]:
         Evaluator("import-linter", evaluators.import_contracts, roots=tuple(tools["importlinter"]["root_packages"]),
                   forms=projects, reach="project"),
         Evaluator("vocabulary", evaluators.vocabulary),
+        Evaluator("object-casts", source_rules.object_casts, roots=PATHS, excluded=excluded),
         Evaluator("plugin-state", plugin_state.retained_state, roots=("implementations",), excluded=excluded),
         Evaluator("qca", structure, roots=PATHS, excluded=excluded, required=False),
         Evaluator("vulture", inspection.unused, roots=PATHS, excluded=excluded, forms=projects, reach="project",
                   required=False),
         Evaluator("related-functions", inspection.related, roots=PATHS, excluded=excluded, forms=projects,
                   reach="project", required=False),
+        Evaluator("recovered-types", source_rules.recovered_types, roots=PATHS, excluded=excluded, required=False),
+        Evaluator("field-rules", source_rules.field_rules, roots=PATHS, excluded=excluded, required=False),
     ]
 
 
@@ -82,14 +86,24 @@ def exit_status(document: Document) -> int:
     return int(any(item["status"] == "blocking" for item in document["findings"]))
 
 
-def render_summary(document: Document) -> str:
+def render_summary(document: Document, totals: dict[str, list[tuple[int, int]]] | None = None,
+                   shifts: dict[str, list[int]] | None = None) -> str:
     lines = ["## Python quality", "", _describe(document["context"]), "", "| Check | Result |", "| --- | --- |"]
     lines += [f"| {record['evaluator']} | {_outcome(record)} |" for record in document["evaluations"]]
     for status, title in (("blocking", "Blocking"), ("review", "Review questions")):
-        rows = [_row(item) for item in document["findings"] if item["status"] == status]
+        rows = [_row(item) for item in sorted(document["findings"], key=_pre_existing) if item["status"] == status]
         lines += ["", f"### {title} ({len(rows)})", "", *(rows[:LIMIT] or ["None."])]
         if len(rows) > LIMIT:
             lines += ["", f"Showing {LIMIT}; findings.json has all {len(rows)}."]
+    if totals:
+        lines += ["", "### Per-file totals, base → head (report only)", "",
+                  f"| File | {' | '.join(TOTALS)} |", f"| --- |{' --- |' * len(TOTALS)}"]
+        lines += [f"| `{path}` | {' | '.join(f'{base} → {head}' for base, head in counts)} |"
+                  for path, counts in sorted(totals.items())]
+    if shifts:
+        lines += ["", "### Acceptance changes, base → head (report only)", "",
+                  f"| Document | {' | '.join(acceptance.COLUMNS)} |", f"| --- |{' --- |' * len(acceptance.COLUMNS)}"]
+        lines += [f"| `{name}` | {' | '.join(map(str, counts))} |" for name, counts in sorted(shifts.items())]
     return "\n".join(lines)
 
 
@@ -110,13 +124,68 @@ def _outcome(record: EvaluationRecord) -> str:
     return f"{record['status']}{'' if record['required'] else ' (informational)'}: {detail}"
 
 
+def _pre_existing(item: Finding) -> bool:
+    """Sorts a change's own findings first, so the row limit never hides them."""
+
+    return item["evidence"].get("introduced") is False
+
+
 def _row(item: Finding) -> str:
     place = item["location"]
-    return f"- `{place['path']}:{place['line']}` {item['tool']} `{item['rule']}`: {_plain(item['question'])}"
+    provenance = item["evidence"].get("introduced")
+    label = "introduced" if provenance else "pre-existing"
+    prefix = f"[{label}] " if provenance is not None else ""
+    return f"- {prefix}`{place['path']}:{place['line']}` {item['tool']} `{item['rule']}`: {_plain(item['question'])}"
 
 
 def _plain(text: str) -> str:
     return " ".join(text.split())
+
+
+def _change_checks(context: Context, document: Document) -> None:
+    for name, run, required in (
+        ("identical-copies", lambda: source_rules.identical_copies(context, PATHS), True),
+        ("change-review", lambda: review.change_questions(context), False),
+    ):
+        record = EvaluationRecord(evaluator=name, required=required, status="completed")
+        try:
+            found = run()
+        except Exception as exc:
+            record.update(status="failed", error=f"{type(exc).__name__}: {exc}")
+        else:
+            record["findings"] = len(found)
+            document["findings"].extend(found)
+        document["evaluations"].append(record)
+
+
+def _totals(context: Context, document: Document) -> dict[str, list[tuple[int, int]]]:
+    record = EvaluationRecord(evaluator="file-totals", required=False, status="completed")
+    document["evaluations"].append(record)
+    try:
+        sides = [(total(context.base, context.paths) if context.base else {}, total(context.head, context.paths))
+                 for total in TOTALS.values()]
+    except Exception as exc:
+        record.update(status="failed", error=f"{type(exc).__name__}: {exc}")
+        return {}
+    paths = {path for before, after in sides for path in before.keys() | after.keys()}
+    return {path: [(before.get(path, 0), after.get(path, 0)) for before, after in sides] for path in paths}
+
+
+def _acceptance(context: Context, document: Document) -> dict[str, list[int]]:
+    record = EvaluationRecord(evaluator="acceptance-changes", required=False, status="completed")
+    document["evaluations"].append(record)
+    reason = acceptance.skip_reason(context)
+    if reason:
+        record.update(status="skipped", reason=reason)
+        return {}
+    try:
+        found, shifts = acceptance.acceptance_changes(context)
+    except Exception as exc:
+        record.update(status="failed", error=f"{type(exc).__name__}: {exc}")
+        return {}
+    record["findings"] = len(found)
+    document["findings"].extend(found)
+    return {name: shift.counts() for name, shift in shifts.items()}
 
 
 def main(argv: list[str] | None = None) -> int:
@@ -133,10 +202,15 @@ def main(argv: list[str] | None = None) -> int:
     try:
         with open_context(args) as context:
             document = evaluate(context, build_evaluators(ruff_only=args.ruff_only))
+            totals, shifts = {}, {}
+            if not args.ruff_only:
+                _change_checks(context, document)
+                totals = _totals(context, document)
+                shifts = _acceptance(context, document)
     except (AnalysisError, OSError, ValueError) as exc:
         print(f"Quality check could not start: {exc}", file=sys.stderr)
         return 2
-    summary = render_summary(document)
+    summary = render_summary(document, totals, shifts)
     print(summary)
     if args.output:
         args.output.mkdir(parents=True, exist_ok=True)

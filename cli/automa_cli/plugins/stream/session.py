@@ -9,7 +9,8 @@ completion, interruption, and failure. The renderer receives only
 from __future__ import annotations
 
 from dataclasses import replace
-from typing import Any
+
+from autonomy.runtime.frame_loop import FramePublication
 
 from ...hosts.views.view_feed import ViewFeed
 from .models import StreamEvent, ViewState
@@ -21,10 +22,10 @@ class StreamView:
     def __init__(self, host_name: str, *, base_url: str, timeout_s: float) -> None:
         self._feed = ViewFeed(host_name, base_url=base_url, timeout_s=timeout_s)
 
-    def read_observation(self) -> tuple[dict[str, Any] | None, str | None]:
+    def read_observation(self) -> tuple[FramePublication | None, str | None]:
         return self._feed.read_observation()
 
-    def publish(self, publication: dict[str, Any] | None) -> None:
+    def publish(self, publication: FramePublication | None) -> None:
         self._feed.publish(publication)
 
     def view_state(self) -> ViewState:
@@ -35,7 +36,7 @@ class StreamView:
         self._feed.stop()
 
 
-def with_view(view: StreamView | None, event: StreamEvent, **fields: Any) -> StreamEvent:
+def with_view(view: StreamView | None, event: StreamEvent, **fields: object) -> StreamEvent:
     """``event`` plus the view's addresses when a session is open."""
 
     return replace(event, view=None if view is None else view.view_state(), **fields)

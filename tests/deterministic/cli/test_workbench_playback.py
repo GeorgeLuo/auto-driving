@@ -7,6 +7,7 @@ from functools import partial
 from unittest import mock
 from urllib.parse import urlencode
 from urllib.request import urlopen
+from autonomy.decision_cycle.memory.interface import MemoryReport, MemoryPluginReport
 from autonomy.decision_cycle.activation import STEPS, step_activation
 from autonomy.decision_cycle.perception.evidence.values import (
     PerceptionEvidenceBatch,
@@ -32,7 +33,7 @@ from tests.shared.cli.workbench_fixtures import (
 
 
 # Where the recording memory plugin keeps its state in the host map.
-RECORDING_STATE = "recording_test.state"
+RECORDING_STATE = "memory.recording_test.state"
 
 
 PROBE_READS: list[tuple] = []  # what SharedMemoryProbe read, for the tests; the plugin keeps nothing
@@ -48,7 +49,7 @@ class SharedMemoryProbe:
             shared_memory.get(RECORDING_STATE),
             shared_memory.get("test.step"),
         ))
-        shared_memory["test.perception"] = inputs.frame_id
+        shared_memory["perception.probe.history"] = inputs.frame_id
         return PerceptionEvidenceBatch(signals=(PerceptionSignal("probe_seen", True),))
 
 
@@ -161,7 +162,7 @@ class WorkbenchTests(unittest.TestCase):
 
             class RecordingStep:
                 def __call__(self, context):
-                    step_reads.append(context.shared_memory["test.perception"])
+                    step_reads.append(context.shared_memory["perception.probe.history"])
                     context.shared_memory["test.step"] = context.frame_id
                     report = step(context)
                     reports.append(report)
@@ -184,7 +185,7 @@ class WorkbenchTests(unittest.TestCase):
             self.assertEqual(reads[0], (None, None))
             self.assertIs(reads[1][0], published[0])
             self.assertEqual(reads[1][1], step_reads[0])
-            self.assertEqual(completed["cycle"]["memory"], reports[-1])
+            self.assertEqual(completed["cycle"]["memory"], reports[-1].to_dict())
             runner.start()
             self.assertEqual(runner.wait(5)["phase"], "completed")
             self.assertEqual(reads[2], (None, None))
@@ -267,6 +268,7 @@ class WorkbenchTests(unittest.TestCase):
             self.assertEqual(cached["current_frame"]["frame_id"], first_id)
             self.assertEqual(cached["current_frame"]["position"], 0)
             self.assertEqual(cached["cycle"]["action"]["frame_id"], first_id)
+            self.assertEqual(cached["perception"]["text"], paused["perception"]["text"])
             self.assertEqual(cached["timing"], paused["timing"])
             self.assertEqual(cached["summary"], paused["summary"])
             self.assertEqual(len(perception_step.calls), calls_after_first + 2)
@@ -295,7 +297,7 @@ class WorkbenchTests(unittest.TestCase):
                 state = self.report["plugins"][0]["state"]
                 state["records"].append({"record_id": context.frame_id})
                 state["record_count"] = len(state["records"])
-                return self.report
+                return MemoryReport("memory_report", (MemoryPluginReport("mutable", state),))
 
             def reset(self, shared_memory=None):
                 pass
@@ -323,6 +325,46 @@ class WorkbenchTests(unittest.TestCase):
                 self.assertEqual(cached["summary"], expected["summary"])
                 self.assertEqual(cached["timing"], expected["timing"])
                 self.assertEqual(memory.report["plugins"][0]["state"]["record_count"], 2)
+            finally:
+                runner.close()
+
+    def test_history_owns_the_completed_frame_and_the_live_pipeline_stays_separate(self) -> None:
+        with image_source(3) as root:
+            runner = ImageReplayRunner(root, cadence_ms=5000, step_factories={"perception": FixtureMapper})
+            try:
+                run_id = runner.start()["run_id"]
+                _wait_until(lambda: runner.state()["progress"]["completed"] == 1)
+                paused = runner.dispatch("pause", run_id=run_id)
+                frame_id = paused["current_frame"]["frame_id"]
+                owned = runner._history[frame_id]
+                self.assertIs(runner._state["cycle"], owned["cycle"])
+                self.assertEqual(owned["perception_text"], paused["perception"]["text"])
+                self.assertIs(runner._state["summary"], owned["summary"])
+                self.assertIs(runner._state["timing"], owned["timing"])
+                self.assertIsNot(runner._state["machine_detail"]["pipeline"], owned["pipeline"])
+
+                returned = runner.state()
+                returned["cycle"]["memory"] = {"replaced": True}
+                returned["summary"].clear()
+                returned["timing"]["steps"].clear()
+                returned["machine_detail"]["pipeline"].clear()
+                self.assertNotIn("replaced", owned["cycle"])
+                self.assertEqual(owned["summary"]["frames_completed"], 1)
+                self.assertTrue(owned["timing"]["steps"])
+                self.assertTrue(owned["pipeline"])
+
+                runner.dispatch("step", run_id=run_id)
+                self.assertIs(runner._history[frame_id]["cycle"], owned["cycle"])
+                self.assertEqual(owned["summary"]["frames_completed"], 1)
+                self.assertIsNot(runner._state["machine_detail"]["pipeline"], owned["pipeline"])
+                runner._state["machine_detail"]["pipeline"]["later"] = True
+                self.assertNotIn("later", owned["pipeline"])
+
+                sought = runner.dispatch("seek", run_id=run_id, position=0)
+                self.assertIs(runner._state["cycle"], owned["cycle"])
+                self.assertEqual(sought["current_frame"]["frame_id"], frame_id)
+                self.assertEqual(sought["summary"]["frames_completed"], 1)
+                self.assertNotIn("later", sought["machine_detail"]["pipeline"])
             finally:
                 runner.close()
 

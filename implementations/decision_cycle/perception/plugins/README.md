@@ -23,7 +23,7 @@ plugin lives in `plugins/frame/`.
   `autonomy/decision_cycle/perception/interface.py`, and `PerceptionRunner`
   reads it. A plugin error
   is isolated, a missing feed skips that plugin, and an explicit reset error
-  propagates. A selection change constructs new runners with an empty map. Missing feeds also reset stateful
+  propagates. A selection change rebuilds changed steps and clears state from the first changed plugin onward. Missing feeds also reset stateful
   plugins inside frame execution; an error in that reset is isolated as the
   plugin's frame error. A `partial` frame can include an empty or warming-up
   plugin alongside an error or unavailable plugin; it need not contain evidence.

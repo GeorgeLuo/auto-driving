@@ -2,6 +2,8 @@ from __future__ import annotations
 
 import json
 import unittest
+from autonomy.fields import FieldError
+from autonomy.shared_memory import shared_memory_document, shared_memory_from_document
 
 from autonomy.decision_cycle.observation.values import OBSERVATION_SCHEMA, Observation
 from autonomy.decision_cycle.observation.perception_summary import observation_from_perception
@@ -69,14 +71,22 @@ class ObservationAdaptationTests(unittest.TestCase):
             created_at_ms=0,
         )
 
+        self.assertIs(observation.things[0], perception.things[0])
+        self.assertIs(observation.signals[0], perception.signals[0])
+        with self.assertRaises(TypeError):
+            observation.things[0].properties["appearance"]["color"] = "blue"
+        seeded = shared_memory_from_document(json.loads(json.dumps(shared_memory_document({"observation.current": observation}))))
+        self.assertEqual(seeded["observation.current"], observation)
+        self.assertIsInstance(seeded["observation.current"].things[0], PerceivedThing)
+        self.assertIsInstance(seeded["observation.current"].signals[0], PerceptionSignal)
         self.assertEqual(observation.schema, OBSERVATION_SCHEMA)
         self.assertEqual(observation.created_at_ms, 0)
         self.assertEqual(observation.perception_schema, PERCEPTION_TEXT_SCHEMA)
         self.assertEqual(observation.perception_plugin_id, "test-perception")
         self.assertEqual(observation.summary, ())
-        self.assertEqual(observation.signals[0]["signal_id"], "path_clear")
-        self.assertEqual(observation.things[0]["thing_id"], "region_1")
-        self.assertEqual(observation.metadata["limits"], list(perception.limits))
+        self.assertEqual(observation.signals[0].signal_id, "path_clear")
+        self.assertEqual(observation.things[0].thing_id, "region_1")
+        self.assertEqual(observation.metadata["limits"], perception.limits)
         self.assertEqual(observation.metadata["source"], "test-observe-step")
 
         camera = observation.sensor_frame["readings"][FRONT_CAMERA_SENSOR_ID]
@@ -92,7 +102,7 @@ class ObservationAdaptationTests(unittest.TestCase):
         ]["source"] = "changed-camera"
 
         self.assertEqual(
-            observation.things[0]["properties"]["appearance"]["color"],
+            observation.things[0].properties["appearance"]["color"],
             "red",
         )
         self.assertEqual(
@@ -101,6 +111,16 @@ class ObservationAdaptationTests(unittest.TestCase):
             ]["source"],
             "test-camera",
         )
+
+    def test_observation_rejects_dict_evidence_and_names_invalid_seed_fields(self) -> None:
+        with self.assertRaises(FieldError) as invalid:
+            Observation("frame", 1, {}, things=({"thing_id": "legacy"},))
+        self.assertEqual(invalid.exception.field_name, "things.0")
+        payload = Observation("frame", 1, {}).to_dict()
+        del payload["perception_plugin_id"]
+        with self.assertRaises(FieldError) as missing:
+            Observation.from_dict(payload)
+        self.assertEqual(missing.exception.field_name, "perception_plugin_id")
 
     def test_missing_perception_produces_explicit_empty_observation(self) -> None:
         observation = observation_from_perception(

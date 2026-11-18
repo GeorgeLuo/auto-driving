@@ -10,12 +10,20 @@ from __future__ import annotations
 
 import base64
 import binascii
-import math
+from collections.abc import Iterator
+from dataclasses import dataclass, field
 from io import BytesIO
-from typing import Any
+from typing import TYPE_CHECKING, Literal, NoReturn
 from urllib.parse import unquote_to_bytes
 
 from PIL import Image
+
+from autonomy.vehicle import SensorFrame
+from .control import ChaseControl, validate_chase_control
+
+if TYPE_CHECKING:
+    import numpy as np
+    from numpy.typing import NDArray
 
 
 class ChaseCaptureValidationError(ValueError):
@@ -27,7 +35,7 @@ class ChaseCaptureValidationError(ValueError):
         self.detail = message
         super().__init__(f"{code}: {path}: {message}")
 
-    def to_dict(self) -> dict[str, Any]:
+    def to_dict(self) -> dict[str, object]:
         return {
             "schema": "automa_cli_error",
             "error_code": self.code,
@@ -39,7 +47,138 @@ class ChaseCaptureValidationError(ValueError):
         }
 
 
-def coerce_simulator_frame_index(value: Any) -> int | None:
+@dataclass(frozen=True)
+class ChaseFrameIdentity:
+    capture_id: str
+    actor_id: str
+    game_id: str
+    simulation_epoch: str
+    simulator_frame_index: int
+
+    @property
+    def frame_id(self) -> str:
+        return format_chase_frame_id(self.simulator_frame_index)
+
+
+@dataclass(frozen=True)
+class ChaseCaptureImage:
+    width: int
+    height: int
+    content_type: str
+    raster_format: str
+    validated_bytes: bytes = field(repr=False)
+
+    def image_array(self) -> NDArray[np.uint8]:
+        """Decode the retained raster without parsing its envelope again."""
+        import numpy as np
+
+        try:
+            with Image.open(BytesIO(self.validated_bytes)) as raster:
+                raster.load()
+                return np.array(raster.convert("RGB"))
+        except Exception as exc:  # Pillow raises many format-specific errors
+            _capture_error(
+                "capture_image_invalid",
+                "sensor.image.dataUrl",
+                f"decoded payload is not a valid image: {exc}",
+            )
+
+    def to_dict(self) -> dict[str, object]:
+        return {
+            "encoding": "data_url",
+            "width": self.width,
+            "height": self.height,
+            "content_type": self.content_type,
+            "raster_format": self.raster_format,
+        }
+
+
+@dataclass(frozen=True)
+class ChaseSensorCapture:
+    identity: ChaseFrameIdentity
+    image: ChaseCaptureImage
+
+    def to_dict(self) -> dict[str, object]:
+        return {
+            "schema": "chase_sensor_capture",
+            "capture_id": self.identity.capture_id,
+            "actor_id": self.identity.actor_id,
+            "game_id": self.identity.game_id,
+            "simulation_epoch": self.identity.simulation_epoch,
+            "simulator_frame_index": self.identity.simulator_frame_index,
+            "frame_id": self.identity.frame_id,
+            "playback_advanced": False,
+            "image": self.image.to_dict(),
+        }
+
+
+@dataclass(frozen=True)
+class ChaserControlAction:
+    control: ChaseControl
+    selected_action_proposal_id: str | None
+
+    def to_dict(self) -> dict[str, object]:
+        return {
+            **self.control.to_dict(),
+            "selectedActionProposalId": self.selected_action_proposal_id,
+        }
+
+
+@dataclass(frozen=True)
+class ChaserReference:
+    identity: ChaseFrameIdentity
+    scenario: str
+    chaser_control_source: str
+    phase: str
+    action_frame_index: int
+    chaser_input: ChaseControl
+    chaser_action: ChaserControlAction
+
+    def to_dict(self) -> dict[str, object]:
+        return {
+            "schema": "chaser_reference",
+            "evaluator_only": True,
+            "capture_id": self.identity.capture_id,
+            "actor_id": self.identity.actor_id,
+            "simulator_frame_index": self.identity.simulator_frame_index,
+            "simulation_epoch": self.identity.simulation_epoch,
+            "frame_id": self.identity.frame_id,
+            "game_id": self.identity.game_id,
+            "scenario": self.scenario,
+            "chaser_control_source": self.chaser_control_source,
+            "phase": self.phase,
+            "action_frame_index": self.action_frame_index,
+            "chaser_input": self.chaser_input.to_dict(),
+            "chaser_action": self.chaser_action.to_dict(),
+        }
+
+
+@dataclass(frozen=True)
+class ChaseEvaluatorReference:
+    status: Literal["available", "unavailable", "invalid"]
+    reason: str | None = None
+    path: str | None = None
+    message: str | None = None
+    reference: ChaserReference | None = None
+
+    def status_dict(self) -> dict[str, object]:
+        result: dict[str, object] = {"status": self.status}
+        for key, value in (("reason", self.reason), ("path", self.path), ("message", self.message)):
+            if value is not None:
+                result[key] = value
+        return result
+
+    def to_dict(self) -> dict[str, object]:
+        result: dict[str, object] = {
+            "status": self.status, "reason": self.reason, "path": self.path,
+        }
+        if self.message is not None:
+            result["message"] = self.message
+        result["reference"] = self.reference.to_dict() if self.reference is not None else None
+        return result
+
+
+def coerce_simulator_frame_index(value: object) -> int | None:
     """Return a non-negative int frame index, or None when absent/invalid.
 
     Tolerant helper for local/serialized metadata (sensor frames, files, memory).
@@ -61,7 +200,7 @@ def coerce_simulator_frame_index(value: Any) -> int | None:
     return None
 
 
-def require_protocol_frame_index(value: Any) -> int | None:
+def require_protocol_frame_index(value: object) -> int | None:
     """Return a type-strict non-negative JSON integer, or None when invalid.
 
     Used at the untrusted capture/evaluator wire boundary. Rejects booleans,
@@ -79,8 +218,8 @@ def format_chase_frame_id(frame_index: int) -> str:
     return f"chase_frame_{int(frame_index):06d}"
 
 
-def simulator_frame_index_from_sensor_frame(sensor_frame: Any) -> int | None:
-    """Extract simulator frame index from a SensorFrame or its dict form."""
+def simulator_frame_index_from_sensor_frame(sensor_frame: SensorFrame | None) -> int | None:
+    """Extract simulator frame index from a typed sensor frame's metadata."""
 
     for metadata in _sensor_frame_metadata_records(sensor_frame):
         for key in ("simulator_frame_index", "frame_index", "frameIndex"):
@@ -90,8 +229,8 @@ def simulator_frame_index_from_sensor_frame(sensor_frame: Any) -> int | None:
     return None
 
 
-def simulator_epoch_from_sensor_frame(sensor_frame: Any) -> str | None:
-    """Extract the simulation-run epoch from a SensorFrame or dict form."""
+def simulator_epoch_from_sensor_frame(sensor_frame: SensorFrame | None) -> str | None:
+    """Extract the simulation-run epoch from a typed sensor frame's metadata."""
 
     for metadata in _sensor_frame_metadata_records(sensor_frame):
         for key in ("simulation_epoch", "simulationEpoch"):
@@ -102,27 +241,23 @@ def simulator_epoch_from_sensor_frame(sensor_frame: Any) -> str | None:
 
 
 def build_chaser_reference(
-    capture: dict[str, Any] | None,
-) -> dict[str, Any] | None:
+    capture: object,
+) -> ChaserReference | None:
     """Return the optional bounded evaluator reference when it is valid."""
 
     try:
         sensor = validate_chase_sensor_capture(capture)
     except ChaseCaptureValidationError:
         return None
-    evaluation = evaluate_chase_evaluator_reference(capture, sensor=sensor)
-    reference = evaluation.get("reference")
-    return reference if evaluation.get("status") == "available" and isinstance(reference, dict) else None
+    return evaluate_chase_evaluator_reference(capture, sensor=sensor).reference
 
 
 def validate_chase_sensor_capture(
-    capture: dict[str, Any] | None,
+    capture: object,
     *,
     expected_actor_id: str = "chaser",
-    include_validated_bytes: bool = False,
-    include_image_array: bool = False,
     validate_pixels: bool = True,
-) -> dict[str, Any]:
+) -> ChaseSensorCapture:
     """Validate required sensor/image identity independently from evaluator data."""
 
     if not isinstance(capture, dict):
@@ -205,11 +340,8 @@ def validate_chase_sensor_capture(
             data_url,
             width=width,
             height=height,
-            include_validated_bytes=include_validated_bytes,
-            include_image_array=include_image_array,
             validate_pixels=validate_pixels,
         )
-        encoding = "data_url"
     elif isinstance(svg, str) and svg.strip():
         # Metrics UI may advertise SVG as a fallback image type, but Automa's
         # observation worker always requests a raster path (typically .png).
@@ -228,41 +360,24 @@ def validate_chase_sensor_capture(
             "expected a decodable raster data URL",
         )
 
-    return {
-        "schema": "chase_sensor_capture",
-        "capture_id": capture_id,
-        "actor_id": actor_id,
-        "game_id": game_id,
-        "simulation_epoch": simulation_epoch,
-        "simulator_frame_index": frame_index,
-        "frame_id": format_chase_frame_id(frame_index),
-        "playback_advanced": False,
-        "image": {"encoding": encoding, **validated_image},
-    }
+    return ChaseSensorCapture(
+        ChaseFrameIdentity(capture_id, actor_id, game_id, simulation_epoch, frame_index),
+        validated_image,
+    )
 
 
 def evaluate_chase_evaluator_reference(
-    capture: dict[str, Any] | None,
+    capture: object,
     *,
-    sensor: dict[str, Any] | None = None,
-) -> dict[str, Any]:
+    sensor: ChaseSensorCapture,
+) -> ChaseEvaluatorReference:
     """Describe optional evaluator-reference availability without weakening capture."""
 
     if not isinstance(capture, dict):
         return _evaluator_invalid("$", "capture is not an object")
-    if sensor is None:
-        try:
-            sensor = validate_chase_sensor_capture(capture)
-        except ChaseCaptureValidationError as exc:
-            return _evaluator_invalid(exc.path, "required sensor capture is invalid")
     evaluator = capture.get("evaluator")
     if evaluator is None:
-        return {
-            "status": "unavailable",
-            "reason": "reference_missing",
-            "path": "evaluator.reference",
-            "reference": None,
-        }
+        return ChaseEvaluatorReference("unavailable", "reference_missing", "evaluator.reference")
     if not isinstance(evaluator, dict):
         return _evaluator_invalid("evaluator", "expected an object")
     if evaluator.get("classification") != "non-sensor":
@@ -272,12 +387,7 @@ def evaluate_chase_evaluator_reference(
         )
     reference = evaluator.get("reference")
     if reference is None:
-        return {
-            "status": "unavailable",
-            "reason": "reference_missing",
-            "path": "evaluator.reference",
-            "reference": None,
-        }
+        return ChaseEvaluatorReference("unavailable", "reference_missing", "evaluator.reference")
     if not isinstance(reference, dict):
         return _evaluator_invalid("evaluator.reference", "expected an object")
     if reference.get("kind") != "actor-control-reference":
@@ -310,47 +420,30 @@ def evaluate_chase_evaluator_reference(
             "evaluator.reference.actionFrameIndex",
             "expected a non-negative integer",
         )
-    frame_index = int(sensor["simulator_frame_index"])
+    frame_index = sensor.identity.simulator_frame_index
     if action_frame_index > frame_index:
         return _evaluator_invalid(
             "evaluator.reference.actionFrameIndex",
             "must not be later than frameIdentity.frameIndex",
         )
-    control_input = _bounded_control(reference.get("input"), include_proposal=False)
+    control_input = validate_chase_control(reference.get("input"))
     if control_input is None:
         return _evaluator_invalid(
             "evaluator.reference.input",
             "expected a bounded actor input",
         )
-    control_action = _bounded_control(reference.get("action"), include_proposal=True)
+    control_action = _bounded_action(reference.get("action"))
     if control_action is None:
         return _evaluator_invalid(
             "evaluator.reference.action",
             "expected a bounded actor action",
         )
 
-    bounded = {
-        "schema": "chaser_reference",
-        "evaluator_only": True,
-        "capture_id": sensor["capture_id"],
-        "actor_id": sensor["actor_id"],
-        "simulator_frame_index": frame_index,
-        "simulation_epoch": sensor["simulation_epoch"],
-        "frame_id": format_chase_frame_id(frame_index),
-        "game_id": sensor["game_id"],
-        "scenario": scenario,
-        "chaser_control_source": control_source,
-        "phase": phase,
-        "action_frame_index": action_frame_index,
-        "chaser_input": control_input,
-        "chaser_action": control_action,
-    }
-    return {
-        "status": "available",
-        "reason": None,
-        "path": None,
-        "reference": bounded,
-    }
+    bounded = ChaserReference(
+        sensor.identity, scenario, control_source, phase, action_frame_index,
+        control_input, control_action,
+    )
+    return ChaseEvaluatorReference("available", reference=bounded)
 
 
 def frame_indices_strictly_increasing(indices: list[int]) -> bool:
@@ -361,184 +454,192 @@ def frame_indices_strictly_increasing(indices: list[int]) -> bool:
     return all(indices[index] < indices[index + 1] for index in range(len(indices) - 1))
 
 
+@dataclass(frozen=True)
+class ChaseReferenceAlignment:
+    candidate_frame_index: int | None
+    reference_frame_index: int | None
+    candidate_simulation_epoch: str | None
+    reference_simulation_epoch: str | None
+
+    @property
+    def aligned(self) -> bool:
+        return (
+            self.candidate_frame_index is not None
+            and self.reference_frame_index is not None
+            and self.candidate_frame_index == self.reference_frame_index
+            and self.candidate_simulation_epoch is not None
+            and self.candidate_simulation_epoch == self.reference_simulation_epoch
+        )
+
+    def to_dict(self) -> dict[str, object]:
+        return {
+            "aligned": self.aligned,
+            "candidate_frame_index": self.candidate_frame_index,
+            "reference_frame_index": self.reference_frame_index,
+            "candidate_simulation_epoch": self.candidate_simulation_epoch,
+            "reference_simulation_epoch": self.reference_simulation_epoch,
+            "reason": (
+                "candidate and reference share simulation epoch and frame index"
+                if self.aligned
+                else "candidate/reference simulation-run identity mismatch or missing"
+            ),
+        }
+
+
 def align_candidate_with_reference(
     *,
-    candidate_frame_index: int | None,
-    candidate_simulation_epoch: str | None,
-    chaser_reference: dict[str, Any] | None,
-) -> dict[str, Any]:
-    """Score candidate/reference alignment using full simulation-run identity."""
-
-    reference_index = None
-    reference_epoch = None
-    if isinstance(chaser_reference, dict):
-        reference_index = coerce_simulator_frame_index(
-            chaser_reference.get("simulator_frame_index")
-            if chaser_reference.get("simulator_frame_index") is not None
-            else chaser_reference.get("frame_index")
-        )
-        reference_epoch = _nonempty_string(chaser_reference.get("simulation_epoch"))
-    candidate_epoch = _nonempty_string(candidate_simulation_epoch)
-    matched = (
-        candidate_frame_index is not None
-        and reference_index is not None
-        and int(candidate_frame_index) == int(reference_index)
-        and candidate_epoch is not None
-        and candidate_epoch == reference_epoch
+    candidate: ChaseSensorCapture | None,
+    chaser_reference: ChaserReference | None,
+) -> ChaseReferenceAlignment:
+    """Score validated candidate/reference simulation-run identities."""
+    identity = candidate.identity if candidate is not None else None
+    reference = chaser_reference.identity if chaser_reference is not None else None
+    return ChaseReferenceAlignment(
+        identity.simulator_frame_index if identity is not None else None,
+        reference.simulator_frame_index if reference is not None else None,
+        identity.simulation_epoch if identity is not None else None,
+        reference.simulation_epoch if reference is not None else None,
     )
-    return {
-        "aligned": matched,
-        "candidate_frame_index": candidate_frame_index,
-        "reference_frame_index": reference_index,
-        "candidate_simulation_epoch": candidate_epoch,
-        "reference_simulation_epoch": reference_epoch,
-        "reason": (
-            "candidate and reference share simulation epoch and frame index"
-            if matched
-            else "candidate/reference simulation-run identity mismatch or missing"
-        ),
-    }
+
+
+@dataclass(frozen=True)
+class ChaseReferenceFrame:
+    sensor: ChaseSensorCapture | None
+    chaser_reference: ChaserReference | None
+
+
+@dataclass(frozen=True, kw_only=True)
+class ChaseReferenceBatch:
+    alignments: tuple[tuple[str | None, ChaseReferenceAlignment], ...]
+    simulator_frame_indices: tuple[int, ...]
+    game_ids: frozenset[str]
+    scenarios: frozenset[str]
+    simulation_epochs: frozenset[str]
+    missing_identity: int
+    missing_reference: int
+    missing_run_identity: int
+    mismatched: int
+    min_frames: int
+
+    @property
+    def advancing_simulator_frames(self) -> bool:
+        return frame_indices_strictly_increasing(list(self.simulator_frame_indices))
+
+    @property
+    def consistent_run_identity(self) -> bool:
+        return (
+            self.missing_run_identity == 0
+            and self.game_ids == frozenset({"chase"})
+            and len(self.scenarios) == 1
+            and len(self.simulation_epochs) == 1
+        )
+
+    @property
+    def aligned_count(self) -> int:
+        return sum(alignment.aligned for _, alignment in self.alignments)
+
+    @property
+    def passed(self) -> bool:
+        return (
+            len(self.alignments) >= self.min_frames
+            and self.missing_identity == 0
+            and self.missing_reference == 0
+            and self.mismatched == 0
+            and self.advancing_simulator_frames
+            and self.consistent_run_identity
+            and self.aligned_count == len(self.alignments)
+        )
+
+    def to_dict(self) -> dict[str, object]:
+        return {
+            "passed": self.passed,
+            "error_code": "evaluator_reference_unavailable" if self.missing_reference else None,
+            "error": (
+                "Reference alignment requires a valid evaluator actor-control "
+                "reference for every candidate frame; sensor perception remains usable. "
+                "Recovery: use sensor-only perception, or rerun the reference-dependent "
+                "procedure when evaluator_reference.status=available."
+                if self.missing_reference
+                else None
+            ),
+            "frame_count": len(self.alignments),
+            "aligned_count": self.aligned_count,
+            "missing_identity": self.missing_identity,
+            "missing_reference": self.missing_reference,
+            "missing_run_identity": self.missing_run_identity,
+            "mismatched": self.mismatched,
+            "advancing_simulator_frames": self.advancing_simulator_frames,
+            "consistent_run_identity": self.consistent_run_identity,
+            "game_ids": sorted(self.game_ids),
+            "scenarios": sorted(self.scenarios),
+            "simulation_epochs": sorted(self.simulation_epochs),
+            "simulator_frame_indices": list(self.simulator_frame_indices),
+            "alignments": [
+                {"frame_id": frame_id, **alignment.to_dict()}
+                for frame_id, alignment in self.alignments
+            ],
+            "reason": (
+                "live frames advance within one simulation run and align with atomic references"
+                if self.passed
+                else (
+                    "expected ≥"
+                    f"{self.min_frames} advancing frames with matching epoch/index references "
+                    "and one non-empty game/scenario/simulation epoch"
+                )
+            ),
+        }
 
 
 def score_reference_alignment_batch(
-    frames: list[dict[str, Any]],
+    frames: list[ChaseReferenceFrame],
     *,
     min_frames: int = 2,
-) -> dict[str, Any]:
-    """Score candidate records for advancing, same-run atomic alignment."""
-
-    alignments: list[dict[str, Any]] = []
+) -> ChaseReferenceBatch:
+    """Score typed candidate records for advancing, same-run atomic alignment."""
+    alignments: list[tuple[str | None, ChaseReferenceAlignment]] = []
     indices: list[int] = []
     game_ids: set[str] = set()
     scenarios: set[str] = set()
     epochs: set[str] = set()
     missing_identity = 0
     missing_reference = 0
-    missing_run_identity = 0
     mismatched = 0
     for frame in frames:
-        if not isinstance(frame, dict):
-            missing_identity += 1
-            continue
-        index = coerce_simulator_frame_index(
-            frame.get("simulator_frame_index")
-            if frame.get("simulator_frame_index") is not None
-            else frame.get("frame_index")
-        )
-        candidate_epoch = _nonempty_string(frame.get("simulation_epoch"))
-        reference = frame.get("chaser_reference")
-        if not isinstance(reference, dict):
-            reference = None
-            missing_reference += 1
-        if index is None:
+        sensor, reference = frame.sensor, frame.chaser_reference
+        if sensor is None:
             missing_identity += 1
         else:
-            indices.append(int(index))
-        if candidate_epoch is None:
-            missing_run_identity += 1
-
-        if reference is not None:
-            game = _nonempty_string(reference.get("game_id"))
-            scenario = _nonempty_string(reference.get("scenario"))
-            epoch = _nonempty_string(reference.get("simulation_epoch"))
-            if game is None or scenario is None or epoch is None:
-                missing_run_identity += 1
-            else:
-                game_ids.add(game)
-                scenarios.add(scenario)
-                epochs.add(epoch)
-
-        alignment = align_candidate_with_reference(
-            candidate_frame_index=index,
-            candidate_simulation_epoch=candidate_epoch,
-            chaser_reference=reference,
-        )
-        alignments.append({"frame_id": frame.get("frame_id"), **alignment})
-        if index is not None and reference is not None and not alignment["aligned"]:
+            indices.append(sensor.identity.simulator_frame_index)
+        if reference is None:
+            missing_reference += 1
+        else:
+            game_ids.add(reference.identity.game_id)
+            scenarios.add(reference.scenario)
+            epochs.add(reference.identity.simulation_epoch)
+        alignment = align_candidate_with_reference(candidate=sensor, chaser_reference=reference)
+        alignments.append((sensor.identity.frame_id if sensor is not None else None, alignment))
+        if sensor is not None and reference is not None and not alignment.aligned:
             mismatched += 1
-
-    advancing = frame_indices_strictly_increasing(indices)
-    consistent_run_identity = (
-        missing_run_identity == 0
-        and game_ids == {"chase"}
-        and len(scenarios) == 1
-        and len(epochs) == 1
+    return ChaseReferenceBatch(
+        alignments=tuple(alignments), simulator_frame_indices=tuple(indices),
+        game_ids=frozenset(game_ids), scenarios=frozenset(scenarios), simulation_epochs=frozenset(epochs),
+        missing_identity=missing_identity, missing_reference=missing_reference,
+        missing_run_identity=missing_identity, mismatched=mismatched, min_frames=min_frames,
     )
-    aligned_count = sum(1 for item in alignments if item.get("aligned"))
-    passed = (
-        len(alignments) >= min_frames
-        and missing_identity == 0
-        and missing_reference == 0
-        and mismatched == 0
-        and advancing
-        and consistent_run_identity
-        and aligned_count == len(alignments)
-    )
-    return {
-        "passed": passed,
-        "error_code": "evaluator_reference_unavailable" if missing_reference else None,
-        "error": (
-            "Reference alignment requires a valid evaluator actor-control "
-            "reference for every candidate frame; sensor perception remains usable. "
-            "Recovery: use sensor-only perception, or rerun the reference-dependent "
-            "procedure when evaluator_reference.status=available."
-            if missing_reference
-            else None
-        ),
-        "frame_count": len(alignments),
-        "aligned_count": aligned_count,
-        "missing_identity": missing_identity,
-        "missing_reference": missing_reference,
-        "missing_run_identity": missing_run_identity,
-        "mismatched": mismatched,
-        "advancing_simulator_frames": advancing,
-        "consistent_run_identity": consistent_run_identity,
-        "game_ids": sorted(game_ids),
-        "scenarios": sorted(scenarios),
-        "simulation_epochs": sorted(epochs),
-        "simulator_frame_indices": indices,
-        "alignments": alignments,
-        "reason": (
-            "live frames advance within one simulation run and align with atomic references"
-            if passed
-            else (
-                "expected ≥"
-                f"{min_frames} advancing frames with matching epoch/index references "
-                "and one non-empty game/scenario/simulation epoch"
-            )
-        ),
-    }
 
 
-def _sensor_frame_metadata_records(sensor_frame: Any) -> list[dict[str, Any]]:
-    if sensor_frame is None:
-        return []
-    metadata: dict[str, Any] = {}
-    readings: dict[str, Any] = {}
-    if isinstance(sensor_frame, dict):
-        maybe_metadata = sensor_frame.get("metadata")
-        maybe_readings = sensor_frame.get("readings")
-    else:
-        maybe_metadata = getattr(sensor_frame, "metadata", None)
-        maybe_readings = getattr(sensor_frame, "readings", None)
-    if isinstance(maybe_metadata, dict):
-        metadata = maybe_metadata
-    if isinstance(maybe_readings, dict):
-        readings = maybe_readings
-
-    records = [metadata]
-    for reading in readings.values():
-        maybe = reading.get("metadata") if isinstance(reading, dict) else getattr(reading, "metadata", None)
-        if isinstance(maybe, dict):
-            records.append(maybe)
-    return records
+def _sensor_frame_metadata_records(sensor_frame: SensorFrame | None) -> Iterator[dict[str, object]]:
+    if sensor_frame is not None:
+        yield sensor_frame.metadata
+        for reading in sensor_frame.readings.values():
+            yield reading.metadata
 
 
-def _nonempty_string(value: Any) -> str | None:
+def _nonempty_string(value: object) -> str | None:
     return value.strip() if isinstance(value, str) and value.strip() else None
 
 
-def _capture_error(code: str, path: str, message: str) -> None:
+def _capture_error(code: str, path: str, message: str) -> NoReturn:
     raise ChaseCaptureValidationError(code=code, path=path, message=message)
 
 
@@ -551,26 +652,20 @@ _RASTER_MIME_BY_FORMAT = {
 
 
 def _validate_image_envelope(
-    image: dict[str, Any],
+    image: dict[str, object],
     data_url: str,
     *,
     width: int,
     height: int,
-    include_validated_bytes: bool,
-    include_image_array: bool = False,
     validate_pixels: bool = True,
-) -> dict[str, Any]:
+) -> ChaseCaptureImage:
     decoded = _decode_data_url_payload(data_url)
     try:
         with Image.open(BytesIO(decoded)) as raster:
-            if validate_pixels or include_image_array:
+            if validate_pixels:
                 raster.load()
             decoded_size = raster.size
             decoded_format = str(raster.format or "").upper()
-            if include_image_array:
-                import numpy as np
-
-                image_array = np.array(raster.convert("RGB"))
     except Exception as exc:  # Pillow raises many format-specific errors
         _capture_error(
             "capture_image_invalid",
@@ -617,17 +712,7 @@ def _validate_image_envelope(
                     f"declared content type {declared!r} does not match {decoded_mime!r}",
                 )
 
-    validated = {
-        "width": decoded_size[0],
-        "height": decoded_size[1],
-        "content_type": decoded_mime,
-        "raster_format": decoded_format,
-    }
-    if include_validated_bytes:
-        validated["validated_bytes"] = decoded
-    if include_image_array:
-        validated["image_array"] = image_array
-    return validated
+    return ChaseCaptureImage(decoded_size[0], decoded_size[1], decoded_mime, decoded_format, decoded)
 
 
 def _data_url_mime(data_url: str) -> str:
@@ -685,45 +770,19 @@ def _decode_data_url_payload(data_url: str) -> bytes:
     return decoded
 
 
-def _evaluator_invalid(path: str, message: str) -> dict[str, Any]:
-    return {
-        "status": "invalid",
-        "reason": "reference_invalid",
-        "path": path,
-        "message": message,
-        "reference": None,
-    }
+def _evaluator_invalid(path: str, message: str) -> ChaseEvaluatorReference:
+    return ChaseEvaluatorReference("invalid", "reference_invalid", path, message)
 
 
-def _bounded_control(value: Any, *, include_proposal: bool) -> dict[str, Any] | None:
+def _bounded_action(value: object) -> ChaserControlAction | None:
     if not isinstance(value, dict):
         return None
-    source = _nonempty_string(value.get("source"))
-    forward = value.get("forward")
-    reverse = value.get("reverse")
-    steering = value.get("steering")
-    if (
-        source is None
-        or not isinstance(forward, bool)
-        or not isinstance(reverse, bool)
-        or isinstance(steering, bool)
-        or not isinstance(steering, (int, float))
-        or not math.isfinite(float(steering))
-        or float(steering) < -1.0
-        or float(steering) > 1.0
-    ):
+    control = validate_chase_control(value)
+    if control is None:
         return None
-    result: dict[str, Any] = {
-        "source": source,
-        "forward": forward,
-        "reverse": reverse,
-        "steering": float(steering),
-    }
-    if include_proposal:
-        proposal = value.get("selectedActionProposalId")
-        if proposal is not None:
-            proposal = _nonempty_string(proposal)
-            if proposal is None:
-                return None
-        result["selectedActionProposalId"] = proposal
-    return result
+    proposal = value.get("selectedActionProposalId")
+    if proposal is not None:
+        proposal = _nonempty_string(proposal)
+        if proposal is None:
+            return None
+    return ChaserControlAction(control, proposal)

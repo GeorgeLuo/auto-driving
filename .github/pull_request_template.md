@@ -13,7 +13,7 @@
      "Validating a change" says which systems tests a change needs. -->
 
 - Python quality (`python3 -m scripts.validation.check`): <!-- Result for Python changes; otherwise explain why not applicable. -->
-- Review questions: <!-- For Python changes, identify the quality summary or base/head inspected and give the location and disposition of each material QCA candidate: fixed, retained with a code-based reason, or unresolved. If QCA could not run, say why. Review questions do not fail the check; a passing check does not establish that they were reviewed. -->
+- Review questions: <!-- For Python changes, the location and disposition of each material review question in the final quality summary, as docs/guidance/roles/engineer.md step 6 describes. -->
 
 ## Risks and follow-up
 

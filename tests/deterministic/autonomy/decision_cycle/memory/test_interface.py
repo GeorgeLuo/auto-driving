@@ -47,7 +47,7 @@ class _OwnedSummaryMemory:
     plugin_id = "owned_summary"
     contract = MemoryPluginContract(description="Test memory plugin.")
 
-    key = "owned_summary.state"
+    key = "memory.owned_summary.state"
 
     def update(self, context) -> None:
         state = context.shared_memory.setdefault(self.key, {
@@ -90,13 +90,13 @@ class MemoryInterfaceTests(unittest.TestCase):
         runner = MemoryRunner.from_plugins({plugin.plugin_id: plugin})
         shared = {}
         report = runner.update(DecisionFrameContext("original", 1, 100, shared_memory=shared))
-        serialized = report["plugins"][0]["state"]
+        serialized = report.to_dict()["plugins"][0]["state"]
         serialized[BOUNDS]["max_records"] = 99
         serialized["records"][0]["properties"]["frame_id"] = "reader-change"
 
         self.assertEqual(shared[plugin.key][BOUNDS]["max_records"], 4)
         self.assertEqual(shared[plugin.key]["records"][0]["properties"]["frame_id"], "original")
-        self.assertEqual(runner.report()["plugins"][0]["state"], shared[plugin.key])
+        self.assertEqual(runner.report().to_dict()["plugins"][0]["state"], shared[plugin.key])
 
     def test_later_updates_do_not_change_a_previous_memory_report(self) -> None:
         plugin = _OwnedSummaryMemory()
@@ -105,11 +105,11 @@ class MemoryInterfaceTests(unittest.TestCase):
         first = runner.update(DecisionFrameContext("first", 1, 100, shared_memory=shared))
         second = runner.update(DecisionFrameContext("second", 2, 200, shared_memory=shared))
 
-        self.assertEqual(first["plugins"][0]["state"][RECORD_COUNT], 1)
-        self.assertEqual(len(first["plugins"][0]["state"]["records"]), 1)
-        self.assertEqual(first["plugins"][0]["state"]["records"][0]["properties"]["frame_id"], "first")
-        self.assertEqual(second["plugins"][0]["state"][RECORD_COUNT], 2)
-        self.assertEqual(second["plugins"][0]["state"], shared[plugin.key])
+        self.assertEqual(first.plugins[0].state[RECORD_COUNT], 1)
+        self.assertEqual(len(first.plugins[0].state["records"]), 1)
+        self.assertEqual(first.plugins[0].state["records"][0]["properties"]["frame_id"], "first")
+        self.assertEqual(second.plugins[0].state[RECORD_COUNT], 2)
+        self.assertEqual(second.to_dict()["plugins"][0]["state"], shared[plugin.key])
 
     def test_ledger_summary_names_are_the_four_tooling_reads(self) -> None:
         self.assertEqual(
@@ -127,30 +127,7 @@ class MemoryInterfaceTests(unittest.TestCase):
 
         self.assertIsNone(ledger_summary({EPOCH_ID: "epoch-1"})[RECORD_COUNT])
 
-    def test_report_round_trips_and_drops_a_non_dict_state(self) -> None:
-        report = MemoryReport(
-            schema=MEMORY_REPORT_SCHEMA,
-            plugins=(
-                MemoryPluginReport(
-                    plugin_id="bounded_evidence",
-                    state={EPOCH_ID: "epoch-2", RECORD_COUNT: 1},
-                ),
-                MemoryPluginReport(plugin_id="other", state=None),
-            ),
-            evidence_publisher="bounded_evidence",
-        )
-
-        self.assertEqual(MemoryReport.from_dict(report.to_dict()), report)
-        self.assertEqual(report.to_dict()["evidence_publisher"], "bounded_evidence")
-        parsed = MemoryPluginReport.from_dict({"plugin_id": "other", "state": ["nope"]})
-        self.assertIsNone(parsed.state)
-        self.assertEqual(
-            MemoryReport.from_dict({}).to_dict(),
-            {"schema": MEMORY_REPORT_SCHEMA, "plugins": [], "evidence_publisher": None, "beliefs": None},
-        )
-        self.assertIsNone(MemoryReport.from_dict({"evidence_publisher": 3}).evidence_publisher)
-
-    def test_runner_report_is_the_interface_dict(self) -> None:
+    def test_runner_report_is_the_typed_interface(self) -> None:
         runner = MemoryRunner.from_plugins({"summary_memory": _SummaryMemory()})
         state = _SummaryMemory().status(None)
 
@@ -160,7 +137,7 @@ class MemoryInterfaceTests(unittest.TestCase):
                 schema=MEMORY_REPORT_SCHEMA,
                 plugins=(MemoryPluginReport(plugin_id="summary_memory", state=state),),
                 beliefs={},
-            ).to_dict(),
+            ),
         )
 
 

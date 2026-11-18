@@ -104,16 +104,15 @@ class HostTelemetryStoreTests(unittest.TestCase):
                 record["source_id"],
                 record["run_id"],
                 record["generation_id"],
-                record["activation"],
             ),
             (
                 "piracer",
                 "donkeycar:piracer",
                 "donkey-run-test",
                 "decision-test",
-                {"generation_id": "decision-test"},
             ),
         )
+        self.assertNotIn("activation", record)
         self.assertEqual(record["source_frame"], _frame(1))
         self.assertEqual(record["host_tick"]["source_age_ms"], 0)
         self.assertIsNone(record["host_tick"]["gap_since_previous_ms"])
@@ -125,7 +124,6 @@ class HostTelemetryStoreTests(unittest.TestCase):
                 "piracer",
                 "donkeycar:piracer",
                 "donkey-run-test",
-                "decision-test",
                 "decision-test",
                 "donkey_frame_000001",
                 1,

@@ -8,6 +8,7 @@ from autonomy.decision_cycle.proposal.values import (
     SourceRef,
     synthetic_error_proposal,
 )
+from autonomy.fields import FieldError
 from autonomy.serialization import canonical_json_size_bytes
 from autonomy.decision_cycle.action.hold import HOLD_IDLE_REASON, HoldAction, idle_output
 from autonomy.decision_cycle.action.values import proposed_equals_authorized
@@ -19,13 +20,13 @@ from tests.support.action_fixtures import DecisionChain, FirstActivePlan, Inacti
 
 
 class ActionProposalMatrixTests(unittest.TestCase):
-    def test_missing_confidence_round_trips_as_none_and_zero_stays_zero(self) -> None:
+    def test_confidence_is_required_but_nullable_and_zero_stays_zero(self) -> None:
         payload = _active_proposal(confidence=0.0).to_dict()
         self.assertEqual(ActionProposal.from_dict(payload).confidence, 0.0)
         del payload["confidence"]
-        missing = ActionProposal.from_dict(payload)
-        self.assertIsNone(missing.confidence)
-        self.assertIsNone(ActionProposal.from_dict(missing.to_dict()).confidence)
+        with self.assertRaises(FieldError) as caught:
+            ActionProposal.from_dict(payload)
+        self.assertEqual(caught.exception.field_name, "confidence")
         payload["confidence"] = None
         self.assertIsNone(ActionProposal.from_dict(payload).confidence)
         self.assertEqual(synthetic_error_proposal(plugin_id="p", frame_id="frame_001", reason="plugin_exception").confidence, 0.0)
@@ -43,7 +44,9 @@ class ActionProposalMatrixTests(unittest.TestCase):
         self.assertEqual(payload["gear"], "reverse")
         self.assertEqual(ProposedVehicleCommand.from_dict(payload), command)
         del payload["gear"]
-        self.assertEqual(ProposedVehicleCommand.from_dict(payload), command)
+        with self.assertRaises(FieldError) as caught:
+            ProposedVehicleCommand.from_dict(payload)
+        self.assertEqual(caught.exception.field_name, "gear")
         payload["gear"] = "forward"
         with self.assertRaises(ValueError):
             ProposedVehicleCommand.from_dict(payload)
@@ -141,7 +144,7 @@ class RunnerBoundaryTests(unittest.TestCase):
     def test_source_refs_name_an_observation_or_memory_record(self) -> None:
         for kind in ("observation", "memory_record"):
             self.assertEqual(SourceRef(kind=kind, id="r1").kind, kind)
-        with self.assertRaisesRegex(ValueError, "invalid SourceRef.kind"):
+        with self.assertRaisesRegex(FieldError, "kind must be one of"):
             SourceRef(kind="capability", id="caps")
 
     def test_plan_takes_more_than_four_max_size_candidates(self) -> None:

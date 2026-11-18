@@ -28,6 +28,20 @@ stages the default.
 |---|---|
 | `recency_ledger` (default) | `bounded_evidence` |
 
+## Applied control history
+
+`control_runs` is available by name, with no preset; the default is unchanged.
+After uploading a collection, append it with
+`plugins arm --host-name <host> --name memory/control_runs`. A memory preset
+would replace the collection's memory selection. The thin plugin delegates to
+[`shared/control_runs.py`](../shared/control_runs.py), which documents its keys.
+It owns `memory.control_runs.state` (runs, consumption cursor, gap count and
+window availability) and rewrites `memory.control_runs` every cycle. Plugins
+use `read_control_runs` for a detached tuple of the last 40 applied runs, oldest
+first; None means the publication is absent. Host stops close open runs.
+PolicyCycle uses these runs for minimum acting time; executors and prompt
+builders can consume the same history regardless of which plan is armed.
+
 ## Finding the default business logic
 
 Start at [catalog.json](catalog.json): its `default`, `recency_ledger`, lists

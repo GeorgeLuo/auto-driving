@@ -13,6 +13,7 @@ from pathlib import Path
 
 import numpy as np
 
+from autonomy.decision_cycle.memory.interface import MemoryReport, MemoryPluginReport
 from autonomy.decision_cycle.activation import DECISION_STEPS, STEPS, activation_generation_id, step_activation
 from autonomy.decision_cycle.steps import decision_steps
 from autonomy.plugins import PluginDefinition
@@ -81,7 +82,9 @@ class ObservationPublicationTests(unittest.TestCase):
             self.assertEqual(len(files), 1)
             self.assertEqual(files[0].read_bytes(), wire)
             recorded = part.host.recording.read(run_id=part.host.recording.run_id, after=0)["frames"][0]["frame"]
-            self.assertNotIn("jpeg_bytes", recorded["context"]["sensor_frame"]["readings"]["front_camera"])
+            # The image is the frame file; the recorded line holds no sensor frame or image bytes.
+            self.assertNotIn("sensor_frame", recorded["context"])
+            self.assertNotIn("jpeg_bytes", json.dumps(recorded))
 
     def _part(self, **options) -> AutonomyPilotPart:
         """A part whose cycle proposes, plans and acts, with test plugins and the built-in action."""
@@ -147,20 +150,9 @@ class ObservationPublicationTests(unittest.TestCase):
                             bbox_xyxy_norm=(0.2, 0.3, 0.5, 0.8),
                         ),
             )
-            return {
-                "schema": "memory_report",
-                "plugins": [
-                    {
-                        "plugin_id": "test_memory",
-                        "state": {
-                            "health": "healthy",
-                            "record_count": 1,
-                            "records": [record.to_dict()],
-                        },
-                    }
-                ],
-                "evidence_publisher": "test_memory",
-            }
+            return MemoryReport("memory_report", (MemoryPluginReport("test_memory", {
+                "health": "healthy", "record_count": 1, "records": [record.to_dict()],
+            }),), evidence_publisher="test_memory")
 
         host = create_host(steps=DecisionSteps(memory=remember))
         part = AutonomyPilotPart(host=host)
@@ -181,6 +173,7 @@ class ObservationPublicationTests(unittest.TestCase):
         from autonomy.decision_cycle.cycle import DecisionSteps
         from autonomy.decision_cycle.memory.runner import MemoryRunner
         from autonomy.decision_cycle.observation.values import Observation
+        from autonomy.decision_cycle.perception.evidence.values import PerceivedThing, ViewLocation
         from tests.shared.autonomy.decision_cycle.memory.activation_fixtures import _EvidenceMemory, _RecordingMemory
 
         def observe(context, perception):
@@ -188,13 +181,7 @@ class ObservationPublicationTests(unittest.TestCase):
                 observation_id=context.frame_id,
                 created_at_ms=context.timestamp_ms,
                 sensor_frame={},
-                things=({
-                    "thing_id": "a",
-                    "kind": "floor_boundary",
-                    "label": "boundary",
-                    "confidence": 0.9,
-                    "location": {"frame": "image", "zone": "center"},
-                },),
+                things=(PerceivedThing("a", "floor_boundary", "boundary", ViewLocation("image", "center"), 0.9),),
             )
 
         memory = MemoryRunner.from_plugins({
@@ -300,7 +287,7 @@ class ObservationPublicationTests(unittest.TestCase):
             {step: values["activation"]["steps"][step] for step in STEPS}, prefix="decision"
         )
         self.assertEqual(published["generation_id"], expected_generation)
-        self.assertEqual(values["activation"]["generation_id"], expected_generation)
+        self.assertNotIn("generation_id", values["activation"])
         self.assertEqual(expected_generation, part.host.applied_decision()["generation_id"])
         self.assertEqual(telemetry_generation(), expected_generation)
         self.assertEqual(sorted(values["activation"]["steps"]), sorted(STEPS))
@@ -350,7 +337,7 @@ class ObservationPublicationTests(unittest.TestCase):
         restaged = part.latest_state.report["generation_id"]
         self.assertNotEqual(restaged, expected_generation)
         self.assertEqual(restaged, part.host.applied_decision()["generation_id"])
-        self.assertEqual(part.latest_state.report["values"]["activation"]["generation_id"], restaged)
+        self.assertNotIn("generation_id", part.latest_state.report["values"]["activation"])
         self.assertEqual(telemetry_generation(), restaged)
         self.assertNotEqual(part.latest_state.frame_id, published["frame_id"])
 
@@ -518,7 +505,7 @@ class ObservationPublicationTests(unittest.TestCase):
         namespace = {"RequestHandler": Handler, "asyncio": asyncio, "json": json}
         exec(code, namespace)
         for status, body in ((200, b"payload"), (304, b"")):
-            route = mock.Mock()
+            route = mock.Mock(spec_set=RuntimeRoutes)
             route.handle.return_value = status, {"ETag": "test"}, body
             handler = namespace["AutonomyRoutesAPI"]()
             handler.application = SimpleNamespace(autonomy_routes=route)

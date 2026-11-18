@@ -4,13 +4,14 @@ from __future__ import annotations
 
 import os
 from pathlib import Path
-from typing import Any
 
 from autonomy.decision_cycle.activation import DECISION_STEPS, STEPS
+from autonomy.plugins import LocalPluginCatalog
 from autonomy.shared_memory import SharedMemoryValueError
 from implementations.decision_cycle.catalog import selection_activation
 
-from ...replay.models import SourceValidationError
+from ...replay.manifest import apply_collection_manifest, check_manifest_selection
+from ...replay.models import ReplayFrame, SourceValidationError
 from ...replay.selections import add_seed_provenance, read_shared_memory_seed
 from ...replay.source import WORKBENCH_DEFAULT_MAX_FRAMES
 from ...shared.paths import ROOT
@@ -34,6 +35,7 @@ def inspect_step(
     source: str | Path,
     plugins: list[str] | None = None,
     preset: str | None = None,
+    manifest: Path | None = None,
     frame: int | None = None,
     record: bool = False,
     max_frames: int = WORKBENCH_DEFAULT_MAX_FRAMES,
@@ -47,6 +49,10 @@ def inspect_step(
     """
 
     try:
+        check_manifest_selection(manifest, preset, plugins)
+    except ValueError as exc:
+        return InspectResult(2, error=str(exc))
+    try:
         seed = read_shared_memory_seed(shared_memory_file)
     except (OSError, SharedMemoryValueError) as exc:
         return InspectResult(2, error=f"Could not read shared memory file: {exc}")
@@ -58,6 +64,12 @@ def inspect_step(
     if frame is not None and not 0 <= frame < count:
         return InspectResult(2, error=f"--frame {frame} is outside the source's {count} frames (0-{count - 1}).")
     try:
+        provenance: dict[str, object] = {}
+        if manifest is not None:
+            # Keep the catalog and its uploaded sources alive through inspect --record.
+            catalog = LocalPluginCatalog()
+            image_source, manifest_provenance = apply_collection_manifest(image_source, manifest, catalog)
+            provenance["collection_manifest"] = manifest_provenance
         overrides = None
         if preset is not None or plugins is not None:
             overrides = {step: selection_activation(step, preset=preset, plugins=plugins)}
@@ -65,34 +77,10 @@ def inspect_step(
     except Exception as exc:  # Plugin construction is a CLI preflight boundary.
         return InspectResult(2, error=f"Could not load plugins for {step} inspect: {type(exc).__name__}: {exc}")
 
-    frames: list[dict[str, Any]] = []
-    replay_inputs: list[dict[str, Any]] = []
-    for replay_frame in image_source.frames[: count if frame is None else frame + 1]:
-        try:
-            outcome = replay.run(replay_frame)
-        except Exception as exc:  # Plugins are third-party code; name the frame that broke.
-            return InspectResult(
-                2, error=f"{step.capitalize()} inspect failed at {replay_frame.frame_id}: {type(exc).__name__}: {exc}"
-            )
-        if record:
-            replay_inputs.append(replay.recording_entry(replay_frame, outcome))
-        if frame is not None and replay_frame.position != frame:
-            continue
-        cycle = outcome.result.to_dict()
-        step_record = None if replay_frame.absent else cycle[step]
-        frames.append({
-            "position": replay_frame.position,
-            "frame_id": replay_frame.frame_id,
-            "frame_index": replay_frame.frame_index,
-            "timestamp_ms": replay_frame.timestamp_ms,
-            "image_path": str(replay_frame.image_path) if replay_frame.image_path is not None else None,
-            "absence_reason": replay_frame.absence_reason,
-            "record": step_record,
-            "plugin_report": outcome.plugin_reports.get(step),
-            "timing": cycle["timing"],
-            "steps": replay.step_payloads(),
-            **{name: cycle[name] for name in _INPUTS.get(step, ())},
-        })
+    try:
+        frames, records, replay_inputs = _inspect_frames(step, replay, image_source.frames, frame=frame, record=record)
+    except RuntimeError as exc:
+        return InspectResult(2, error=str(exc))
 
     run_id = inspect_run_id(image_source.source_id)
     report = {
@@ -108,6 +96,7 @@ def inspect_step(
         "selections": replay.selection_records(),
         "frames": frames,
         "run_dir": None,
+        **provenance,
     }
     add_seed_provenance(report, seed)
     if record:
@@ -116,4 +105,43 @@ def inspect_step(
             record_inspect_run(run_dir, report, image_source, replay_inputs)
         except (OSError, ValueError) as exc:
             return InspectResult(2, error=f"Could not record {step} inspect run {run_dir}: {exc}")
-    return InspectResult(0, report=report)
+    return InspectResult(0, report=report, records=tuple(records))
+
+
+def _inspect_frames(
+    step: str, replay: StepReplay, source_frames: tuple[ReplayFrame, ...], *, frame: int | None, record: bool,
+):
+    """Execute the prefix needed for inspection and report the requested frames."""
+
+    frames: list[dict[str, object]] = []
+    records = []
+    replay_inputs: list[dict[str, object]] = []
+    for replay_frame in source_frames[: len(source_frames) if frame is None else frame + 1]:
+        try:
+            outcome = replay.run(replay_frame)
+        except Exception as exc:  # Plugins are third-party code; name the frame that broke.
+            raise RuntimeError(
+                f"{step.capitalize()} inspect failed at {replay_frame.frame_id}: {type(exc).__name__}: {exc}"
+            ) from exc
+        if record:
+            replay_inputs.append(replay.recording_entry(replay_frame, outcome))
+        if frame is not None and replay_frame.position != frame:
+            continue
+        result = outcome.result
+        records.append(None if replay_frame.absent else result)
+        step_record = None if replay_frame.absent else getattr(result, step)
+        frames.append({
+            "position": replay_frame.position,
+            "frame_id": replay_frame.frame_id,
+            "frame_index": replay_frame.frame_index,
+            "timestamp_ms": replay_frame.timestamp_ms,
+            "image_path": str(replay_frame.image_path) if replay_frame.image_path is not None else None,
+            "absence_reason": replay_frame.absence_reason,
+            "record": None if step_record is None else step_record.to_dict(),
+            "plugin_report": outcome.plugin_reports.get(step),
+            "timing": result.timing,
+            "steps": replay.step_payloads(),
+            **{name: None if getattr(result, name) is None else getattr(result, name).to_dict()
+               for name in _INPUTS.get(step, ())},
+        })
+    return frames, records, replay_inputs

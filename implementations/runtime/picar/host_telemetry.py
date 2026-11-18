@@ -13,7 +13,7 @@ import math
 import threading
 import time
 from copy import deepcopy
-from typing import Any, Callable, Mapping, cast
+from typing import Mapping, cast
 
 from autonomy.runtime.routes import TELEMETRY_SCHEMA
 
@@ -52,11 +52,11 @@ def epoch_ms() -> int:
     return int(time.time() * 1000)
 
 
-def _is_epoch_ms(value: Any) -> bool:
+def _is_epoch_ms(value: object) -> bool:
     return type(value) is int and value >= 0
 
 
-def _is_finite_unit(value: Any) -> bool:
+def _is_finite_unit(value: object) -> bool:
     return (
         isinstance(value, (int, float))
         and not isinstance(value, bool)
@@ -65,13 +65,13 @@ def _is_finite_unit(value: Any) -> bool:
     )
 
 
-def _require_identity(value: Any, *, field: str) -> str:
+def _require_identity(value: object, *, field: str) -> str:
     if not isinstance(value, str) or not value:
         raise ValueError(f"{field} must be a non-empty string")
     return value
 
 
-def _pair(value: Mapping[str, Any], *, field: str) -> dict[str, float]:
+def _pair(value: object, *, field: str) -> dict[str, float]:
     if not isinstance(value, Mapping):
         raise ValueError(f"{field} must be an object")
     if set(value) != {"steering", "throttle"}:
@@ -85,7 +85,7 @@ def _pair(value: Mapping[str, Any], *, field: str) -> dict[str, float]:
     return {"steering": float(steering_value), "throttle": float(throttle_value)}
 
 
-def _source_frame(value: Mapping[str, Any]) -> dict[str, Any]:
+def _source_frame(value: object) -> dict[str, object]:
     if not isinstance(value, Mapping):
         raise ValueError("source_frame must be an object")
     if set(value) != {
@@ -117,19 +117,17 @@ def _source_frame(value: Mapping[str, Any]) -> dict[str, Any]:
     }
 
 
-def identity_tuple(record: Mapping[str, Any]) -> tuple[Any, ...]:
+def identity_tuple(record: Mapping[str, object]) -> tuple[object, ...]:
     """Return the complete join identity without filling missing members."""
 
-    activation = record.get("activation")
     source_frame = record.get("source_frame")
-    if not isinstance(activation, Mapping) or not isinstance(source_frame, Mapping):
-        raise ValueError("record identity containers are missing")
+    if not isinstance(source_frame, Mapping):
+        raise ValueError("record source frame is missing")
     return (
         record.get("host_name"),
         record.get("source_id"),
         record.get("run_id"),
         record.get("generation_id"),
-        activation.get("generation_id"),
         source_frame.get("frame_id"),
         source_frame.get("frame_index"),
         source_frame.get("captured_at_ms"),
@@ -152,7 +150,7 @@ class HostTelemetryStore:
         host_name: str,
         source_id: str,
         run_id: str,
-        clock: Callable[[], int] | None = None,
+        clock: object | None = None,
         limits: Mapping[str, int] | None = None,
     ) -> None:
         for field, value in (
@@ -171,7 +169,7 @@ class HostTelemetryStore:
         self.run_id = run_id
         self.limits = dict(HOST_TELEMETRY_LIMITS)
         self._clock = clock or epoch_ms
-        self._latest: dict[str, Any] | None = None
+        self._latest: dict[str, object] | None = None
         self._lock = threading.RLock()
         self._stopped = False
         self._last_error_reason: str | None = None
@@ -187,7 +185,7 @@ class HostTelemetryStore:
             self._last_error_reason = None
             self._last_error_status = None
 
-    def status(self) -> dict[str, Any]:
+    def status(self) -> dict[str, object]:
         with self._lock:
             if self._stopped:
                 return {
@@ -242,15 +240,15 @@ class HostTelemetryStore:
         self,
         *,
         mode: str,
-        user_input: Mapping[str, Any],
-        pilot_output: Mapping[str, Any],
-        host_selected_output: Mapping[str, Any],
-        source_frame: Mapping[str, Any],
+        user_input: Mapping[str, object],
+        pilot_output: Mapping[str, object],
+        host_selected_output: Mapping[str, object],
+        source_frame: Mapping[str, object],
         generation_id: str,
         observed_at_ms: int | None = None,
         published_at_ms: int | None = None,
         sequence: int | None = None,
-    ) -> dict[str, Any]:
+    ) -> dict[str, object]:
         """Record one post-``DriveMode`` observation or fail closed.
 
         ``generation_id`` names the decision generation that produced
@@ -380,7 +378,7 @@ class HostTelemetryStore:
                 status = "unavailable"
                 reason = coverage_reason
 
-            record: dict[str, Any] = {
+            record: dict[str, object] = {
                 "schema": TELEMETRY_SCHEMA,
                 "status": status,
                 "reason": reason,
@@ -388,9 +386,6 @@ class HostTelemetryStore:
                 "source_id": self.source_id,
                 "run_id": self.run_id,
                 "generation_id": generation_id,
-                "activation": {
-                    "generation_id": generation_id,
-                },
                 "source_frame": frame,
                 "host_tick": {
                     "sequence": next_sequence,
@@ -448,7 +443,7 @@ class HostTelemetryStore:
                 published if published_at_ms is None else now_ms,
             )
 
-    def mark_skipped(self, count: int = 1) -> dict[str, Any]:
+    def mark_skipped(self, count: int = 1) -> dict[str, object]:
         """Reserve one or more uncovered host ticks after a baseline record."""
 
         with self._lock:
@@ -463,7 +458,7 @@ class HostTelemetryStore:
             self._last_sequence += count
             return self._error_envelope_locked("unavailable", "sequence_gap")
 
-    def mark_unavailable(self, reason: str = "publisher_missing") -> dict[str, Any]:
+    def mark_unavailable(self, reason: str = "publisher_missing") -> dict[str, object]:
         """Close the current point/interval without serving an old success."""
 
         with self._lock:
@@ -474,7 +469,7 @@ class HostTelemetryStore:
             self._reserve_uncovered_tick_locked()
             return self._error_envelope_locked("unavailable", reason)
 
-    def latest(self, *, now_ms: int | None = None) -> dict[str, Any]:
+    def latest(self, *, now_ms: int | None = None) -> dict[str, object]:
         with self._lock:
             if self._stopped:
                 read_at_ms = now_ms if _is_epoch_ms(now_ms) else None
@@ -534,7 +529,7 @@ class HostTelemetryStore:
         self,
         status: str,
         reason: str,
-    ) -> dict[str, Any]:
+    ) -> dict[str, object]:
         self._reserve_uncovered_tick_locked()
         return self._error_envelope_locked(status, reason)
 
@@ -545,7 +540,7 @@ class HostTelemetryStore:
         read_at_ms: int | None = None,
         *,
         remember_error: bool = True,
-    ) -> dict[str, Any]:
+    ) -> dict[str, object]:
         if status not in {"warming", "unavailable", "error", "stopped"}:
             status = "error"
         if reason not in HOST_TELEMETRY_REASONS:
@@ -568,7 +563,7 @@ class HostTelemetryStore:
         except Exception:
             return None
 
-    def _record_status_locked(self, record: Mapping[str, Any], read_at_ms: int) -> dict[str, Any]:
+    def _record_status_locked(self, record: Mapping[str, object], read_at_ms: int) -> dict[str, object]:
         """Calculate read-time health without exporting the retained record."""
         tick = record["host_tick"]
         publication_age = read_at_ms - tick["published_at_ms"]
@@ -591,8 +586,8 @@ class HostTelemetryStore:
         }
 
     def _envelope_for_record_locked(
-        self, record: Mapping[str, Any], read_at_ms: int,
-    ) -> dict[str, Any]:
+        self, record: Mapping[str, object], read_at_ms: int,
+    ) -> dict[str, object]:
         exported = deepcopy(dict(record))
         return {
             **exported,
@@ -608,13 +603,13 @@ class DriveModeTelemetryAdapter:
     def __init__(self, store: HostTelemetryStore) -> None:
         self.store = store
         self._clock = getattr(store, "_clock", epoch_ms)
-        self._pending: dict[str, Any] | None = None
-        self._source_frame: dict[str, Any] | None = None
+        self._pending: dict[str, object] | None = None
+        self._source_frame: dict[str, object] | None = None
         self._generation_id: str | None = None
         self._lock = threading.RLock()
 
     def set_source_frame(
-        self, source_frame: Mapping[str, Any] | None, generation_id: str | None,
+        self, source_frame: Mapping[str, object] | None, generation_id: str | None,
     ) -> None:
         """Hand off the latest completed source frame and the generation that decided it."""
 
@@ -622,7 +617,7 @@ class DriveModeTelemetryAdapter:
             self._source_frame = None if source_frame is None else deepcopy(dict(source_frame))
             self._generation_id = generation_id
 
-    def latest(self, *, now_ms: int | None = None) -> dict[str, Any]:
+    def latest(self, *, now_ms: int | None = None) -> dict[str, object]:
         return self.store.latest(now_ms=now_ms)
 
     def stop(self) -> None:
@@ -635,8 +630,8 @@ class DriveModeTelemetryAdapter:
         self,
         *,
         mode: str,
-        user_input: Mapping[str, Any],
-        pilot_output: Mapping[str, Any],
+        user_input: Mapping[str, object],
+        pilot_output: Mapping[str, object],
         observed_at_ms: int | None = None,
     ) -> None:
         """Capture inputs after ``DriveMode`` has computed its selection."""
@@ -659,11 +654,11 @@ class DriveModeTelemetryAdapter:
 
     def complete_tick(
         self,
-        host_selected_output: Mapping[str, Any],
+        host_selected_output: Mapping[str, object],
         *,
         published_at_ms: int | None = None,
         sequence: int | None = None,
-    ) -> dict[str, Any]:
+    ) -> dict[str, object]:
         """Publish one complete tick after the host output is selected."""
 
         with self._lock:

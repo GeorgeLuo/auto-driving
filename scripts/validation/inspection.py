@@ -10,6 +10,7 @@ from __future__ import annotations
 
 import ast
 import builtins
+import json
 import math
 from collections import Counter, defaultdict
 from dataclasses import dataclass
@@ -46,6 +47,8 @@ def unused(tree: Path, paths: list[str]) -> list[Finding]:
     scanner = Vulture()
     for path, source in sorted(production.items()):
         scanner.scan(source, filename=path)
+    for spec in _catalog_specs(tree, paths):
+        scanner.scan(spec.rsplit(":", 1)[-1], filename="<catalog references>")
     scanner.scavenge([])  # Applies Vulture's bundled allowances, such as AST visitor methods.
     owners = {path: definitions(_parse(source)) for path, source in production.items()}
     findings = []
@@ -89,7 +92,7 @@ def related(tree: Path, paths: list[str]) -> list[Finding]:
         if not matches:
             continue
         names = ", ".join(other.name for other, *_ in matches)
-        # Located across the whole function, so any edit to it raises the comparison again.
+        # Located at the whole function, so a change introduces it only with a new function or new matches.
         findings.append(finding(
             "inspection",
             "related-functions",
@@ -144,6 +147,8 @@ def _sources(tree: Path, paths: list[str]) -> dict[str, str]:
     for root in paths:
         for file in sorted((tree / root).rglob("*.py")) if (tree / root).is_dir() else [tree / root]:
             relative = file.relative_to(tree).as_posix()
+            if not file.is_file():
+                continue
             source = file.read_text(encoding="utf-8", errors="replace")
             if file.suffix == ".py" and classify_source(relative, source) in {"production", "tooling/scripts", "tests"}:
                 found[relative] = source
@@ -186,7 +191,7 @@ def _first_line(node: ast.ClassDef | ast.FunctionDef | ast.AsyncFunctionDef) -> 
 
 def _callables(path: str, source: str) -> list[Callable]:
     return [
-        Callable(path, name, node.lineno, node.end_lineno or node.lineno, _direct_calls(node))
+        Callable(path, name, _first_line(node), node.end_lineno or node.lineno, _direct_calls(node))
         for node, name in definitions(_parse(source))
         if not isinstance(node, ast.ClassDef)
     ]
@@ -254,3 +259,15 @@ def _parse(source: str) -> ast.AST:
         return ast.parse(source)
     except (SyntaxError, ValueError):
         return ast.Module(body=[], type_ignores=[])  # Unparseable sources are reported by Ruff.
+
+
+def _catalog_specs(tree: Path, paths: list[str]) -> list[str]:
+    """Catalog-loaded plugin symbols are production references, just like imports."""
+
+    return [
+        item["spec"]
+        for root in paths
+        for catalog in sorted((tree / root).rglob("catalog.json"))
+        for item in json.loads(catalog.read_text()).get("plugins", [])
+        if isinstance(item, dict) and isinstance(item.get("spec"), str) and ":" in item["spec"]
+    ]

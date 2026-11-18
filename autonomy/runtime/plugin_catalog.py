@@ -42,12 +42,7 @@ class PluginCatalogAPI:
         try:
             if payload is not None:
                 if payload.get("operation") == "upload_collection":
-                    name = _field(payload, "name")
-                    plugins = _field(payload, "plugins")
-                    if not isinstance(plugins, list):
-                        raise ValueError("collection plugins must be a list")
-                    definitions = self.catalog.upload_collection(
-                        name, [_definition(item) for item in plugins], _field(payload, "sources"))
+                    name, definitions = upload_collection(self.catalog, payload)
                     return {"ok": True, "status": "uploaded", "collection": name,
                             "plugins": [describe_plugin(item) for item in definitions],
                             "catalog_version": self.catalog.version}
@@ -99,6 +94,21 @@ class PluginCatalogAPI:
                 raise ValueError(f"plugin collection {name!r} only arms one-plugin steps, which keep "
                                  "their plugin; arm a replacement instead")
         return selections
+
+
+def upload_collection(
+    catalog: LocalPluginCatalog, payload: Mapping[str, object],
+) -> tuple[str, tuple[PluginDefinition, ...]]:
+    """Register the collection described by an upload payload."""
+
+    name = _field(payload, "name")
+    plugins = _field(payload, "plugins")
+    if not isinstance(plugins, list):
+        raise ValueError("collection plugins must be a list")
+    definitions = catalog.upload_collection(
+        name, [_definition(item) for item in plugins], _field(payload, "sources"),
+    )
+    return name, definitions
 
 
 def _definition(item: Any) -> PluginDefinition:

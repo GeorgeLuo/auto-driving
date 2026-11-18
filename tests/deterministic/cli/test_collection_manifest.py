@@ -5,9 +5,9 @@ import re
 import tempfile
 import unittest
 
-from cli.automa_cli.plugins.catalog.manifest import read_manifest
 from cli.automa_cli.plugins.catalog.render import render_upload
 from cli.automa_cli.plugins.catalog.service import upload_collection
+from cli.automa_cli.shared.collection_manifest import read_manifest
 
 
 def write_manifest(root: Path, **manifest) -> Path:

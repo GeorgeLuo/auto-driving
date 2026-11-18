@@ -6,7 +6,7 @@ import threading
 import unittest
 from dataclasses import replace
 from pathlib import Path
-from unittest.mock import Mock, patch
+from unittest.mock import patch
 
 from autonomy.decision_cycle.activation import STEPS, selected_definitions, step_activation, write_step_activation
 from autonomy.decision_cycle.context import DecisionFrameContext
@@ -21,6 +21,7 @@ from autonomy.runtime.plugin_loader import CodeSource, StagedStep
 from cli.automa_cli.hosts.bundles import sync_controller_bundle
 from cli.automa_cli.releases.paths import controller_bundle_paths
 from tests.shared.autonomy.decision_cycle.memory.activation_fixtures import RECORDING_SPEC
+from tests.shared.autonomy.runtime.control_fixtures import RecordingTarget
 from tests.support.action_fixtures import FIRST_ACTIVE_PLAN_SPEC, INACTIVE_PROPOSAL_SPEC
 from tests.support.perception_fixtures import local_perception
 
@@ -48,16 +49,17 @@ class PipelineReplacementTests(unittest.TestCase):
         }
         return AutonomyCycleHost(steps=decision_steps(activations))
 
-    def test_perception_change_reconstructs_every_step_before_binding_a_fresh_map(self):
+    def test_perception_change_rebuilds_only_perception_and_filters_the_map_at_adoption(self):
         host = self.host()
-        host.execution = ControlExecution(Mock(write=Mock(return_value={})))
+        host.execution = ControlExecution(RecordingTarget())
         host.set_mode("observe_only")
         self.addCleanup(host.close)
         cycle(host)
         applications = host.execution.ticket().control_applications
         steps, generation = host.steps, host.applied_decision()["generation_id"]
         old_map = host.shared_memory
-        old_map["old-history"] = True
+        old_map["perception.b.history"] = True
+        old_map["perception.a.history"] = marker = object()
         self.assertTrue(host.disarm({"perception": ["b"]})["ok"])
         self.assertEqual(host.applied_decision()["generation_id"], generation)
         run = host.cycle.run
@@ -65,14 +67,15 @@ class PipelineReplacementTests(unittest.TestCase):
         def inspect(context):
             self.assertIs(context.shared_memory, host.shared_memory)
             self.assertIsNot(context.shared_memory, old_map)
-            self.assertNotIn("old-history", context.shared_memory)
+            self.assertNotIn("perception.b.history", context.shared_memory)
+            self.assertIs(context.shared_memory["perception.a.history"], marker)
             self.assertEqual(read_mode(context.shared_memory), "observe_only")
             self.assertEqual(read_user_steering(context.shared_memory), 0.25)
             self.assertEqual(read_user_throttle(context.shared_memory), 0.5)
             self.assertEqual(read_control_applications(context.shared_memory), applications)
-            self.assertEqual(set(context.shared_memory), {MODE_KEY, USER_STEERING_KEY, USER_THROTTLE_KEY, CONTROL_APPLICATIONS_KEY})
+            self.assertEqual(set(context.shared_memory), {MODE_KEY, USER_STEERING_KEY, USER_THROTTLE_KEY, CONTROL_APPLICATIONS_KEY, "perception.a.history"})
             for step in STEPS:
-                self.assertIsNot(getattr(host.steps, step), getattr(steps, step))
+                self.assertEqual(getattr(host.steps, step) is getattr(steps, step), step != "perception")
             return run(context)
 
         with patch.object(host.cycle, "run", side_effect=inspect):
@@ -87,7 +90,10 @@ class PipelineReplacementTests(unittest.TestCase):
                     cycle(host)
                     steps, memory, identity = host.steps, host.shared_memory, host.applied_decision()
                     with patch.object(STEP_RUNNERS[step], hook, side_effect=RuntimeError("replacement refused")):
-                        request = host.disarm({"perception": ["b"]})
+                        activation = host._applied_activations[step]
+                        request = host.arm({step: replace(activation, metadata={
+                            **activation.metadata, "controller_bundle": {"release": {"tree_sha256": "other"}},
+                        }).to_payload()})
                     self.assertFalse(request["ok"])
                     self.assertIs(host.steps, steps)
                     self.assertIs(host.shared_memory, memory)
@@ -100,14 +106,14 @@ class PipelineReplacementTests(unittest.TestCase):
         host = self.host()
         original = host.steps
         host.disarm({"perception": ["b"]})
-        pending = host._pending_steps
-        with patch.object(STEP_RUNNERS["memory"], "validate_selection", side_effect=RuntimeError("second refused")):
+        pending = host._pending_restage
+        with patch.object(STEP_RUNNERS["proposal"], "validate_selection", side_effect=RuntimeError("second refused")):
             failed = host.disarm({"proposal": ["inactive"]})
         self.assertFalse(failed["ok"])
-        self.assertIs(host._pending_steps, pending)
+        self.assertIs(host._pending_restage, pending)
         self.assertIs(host.steps, original)
         cycle(host)
-        self.assertIs(host.steps, pending)
+        self.assertEqual({step: host.step(step) for step in STEPS}, pending.steps)
         self.assertEqual(host.step("perception").plugin_ids, ("a",))
         self.assertIn("second refused", host.selection_status()["error"])
 
@@ -118,10 +124,10 @@ class PipelineReplacementTests(unittest.TestCase):
         steps, memory, identity = host.steps, host.shared_memory, host.applied_decision()
         host.arm({"perception": ["a", "b"]})
         host.disarm({"perception": ["b"]})
-        pending = host._pending_steps
-        with patch("autonomy.runtime.cycle_host.decision_steps", side_effect=AssertionError("rebuilt pending")):
+        pending = host._pending_restage
+        with patch("autonomy.runtime.cycle_host.load_runner", side_effect=AssertionError("rebuilt pending")):
             host.disarm({"perception": ["b"]})
-        self.assertIs(host._pending_steps, pending)
+        self.assertIs(host._pending_restage, pending)
         host.arm({"perception": ["b"]})
         cycle(host, 1)
         self.assertIs(host.steps, steps)
@@ -138,7 +144,7 @@ class PipelineReplacementTests(unittest.TestCase):
             cycle(host)
             steps, memory, identity = host.steps, host.shared_memory, host.applied_decision()
             memory["history"] = marker = object()
-            with patch("autonomy.runtime.cycle_host.decision_steps", side_effect=AssertionError("rebuilt no-op")):
+            with patch("autonomy.runtime.cycle_host.load_runner", side_effect=AssertionError("rebuilt no-op")):
                 request = host.arm({"perception": preset.to_payload()})
             self.assertEqual(request["status"], "applied")
             cycle(host, 1)
@@ -152,13 +158,13 @@ class PipelineReplacementTests(unittest.TestCase):
         host.note_host_name("one")
         payload = local_perception("a", "b", "c", preset="triple").to_payload()
         self.assertTrue(host.arm({"perception": payload})["ok"])
-        pending = host._pending_steps
-        with patch("autonomy.runtime.cycle_host.decision_steps", side_effect=AssertionError("rebuilt pending")):
+        pending = host._pending_restage
+        with patch("autonomy.runtime.cycle_host.load_runner", side_effect=AssertionError("rebuilt pending")):
             request = host.arm({"perception": payload})
         self.assertEqual(request["status"], "requested")
-        self.assertIs(host._pending_steps, pending)
+        self.assertIs(host._pending_restage, pending)
         cycle(host)
-        self.assertIs(host.steps, pending)
+        self.assertEqual({step: host.step(step) for step in STEPS}, pending.steps)
 
     def test_bundled_metadata_rearm_updates_runner_and_identity_without_rebuilding(self):
         with tempfile.TemporaryDirectory() as tmp:
@@ -232,7 +238,7 @@ class PipelineReplacementTests(unittest.TestCase):
 
     def test_mode_changes_keep_runners_map_and_generation(self):
         host = self.host()
-        host.execution = ControlExecution(Mock(write=Mock(return_value={})))
+        host.execution = ControlExecution(RecordingTarget())
         self.addCleanup(host.close)
         cycle(host)
         steps, memory, identity = host.steps, host.shared_memory, host.applied_decision()
@@ -262,7 +268,7 @@ class PipelineReplacementTests(unittest.TestCase):
         host = AutonomyCycleHost(steps=decision_steps({"perception": None}))
         host.catalog.include(selected_definitions(local_perception("a")))
         steps = host.steps
-        with patch.object(STEP_RUNNERS["action"], "validate_selection", side_effect=RuntimeError("refused")):
+        with patch.object(STEP_RUNNERS["perception"], "validate_selection", side_effect=RuntimeError("refused")):
             self.assertFalse(host.arm({"perception": ["a"]})["ok"])
         self.assertTrue(host.disarm({"perception": []}, all_plugins=True)["ok"])
         self.assertIsNone(host.selection_status()["error"])
@@ -273,14 +279,15 @@ class PipelineReplacementTests(unittest.TestCase):
         cycle(host, 1)
         self.assertEqual(host.step("perception").plugin_ids, ("a",))
 
-    def test_a_callable_without_executable_definitions_cannot_be_carried_into_a_replacement(self):
+    def test_an_unchanged_callable_is_carried_into_a_replacement(self):
         host = self.host()
-        host = AutonomyCycleHost(steps=replace(host.steps, proposal=lambda context: None))
-        steps = host.steps
+        proposal = lambda context: None
+        host = AutonomyCycleHost(steps=replace(host.steps, proposal=proposal))
         request = host.disarm({"perception": ["b"]})
-        self.assertFalse(request["ok"])
-        self.assertIn("cannot be reconstructed", request["error"])
-        self.assertIs(host.steps, steps)
+        self.assertTrue(request["ok"])
+        cycle(host)
+        self.assertIs(host.step("proposal"), proposal)
+        self.assertEqual(host.step("perception").plugin_ids, ("a",))
 
     def test_status_during_the_first_new_cycle_has_new_runner_reports_and_no_old_result(self):
         host = self.host()
@@ -310,7 +317,7 @@ class PipelineReplacementTests(unittest.TestCase):
                 self.assertTrue(entered.wait(2))
                 status = host.status()
                 self.assertNotEqual(status["applied_decision"]["generation_id"], previous)
-                self.assertEqual(status["steps"]["memory"]["run_count"], 0)
+                self.assertEqual(status["steps"]["memory"]["run_count"], 1)
             finally:
                 release.set()
                 thread.join(3)

@@ -1,10 +1,14 @@
 from __future__ import annotations
 
-import math
 from dataclasses import asdict, dataclass, field
+from collections.abc import Mapping
 from typing import Any
 
 from autonomy.decision_cycle.confidence import optional_confidence
+from autonomy.serialization import FrozenJsonObject, deep_freeze, frozen_mapping_to_dict
+from autonomy.fields import (
+    FieldError, require_ascii_id, require_keys, require_nested, require_number, require_text,
+)
 
 
 @dataclass(frozen=True)
@@ -17,6 +21,8 @@ class ViewLocation:
     polygon_xy_norm: tuple[tuple[float, float], ...] | None = None
 
     def __post_init__(self) -> None:
+        require_ascii_id(self.frame, field_name="frame")
+        require_ascii_id(self.zone, field_name="zone")
         object.__setattr__(
             self,
             "bbox_xyxy_norm",
@@ -33,12 +39,8 @@ class ViewLocation:
 
     @classmethod
     def from_dict(cls, data: dict[str, Any]) -> "ViewLocation":
-        return cls(
-            frame=str(data.get("frame") or "unknown"),
-            zone=str(data.get("zone") or "unknown"),
-            bbox_xyxy_norm=data.get("bbox_xyxy_norm"),
-            polygon_xy_norm=data.get("polygon_xy_norm"),
-        )
+        document = require_keys(data, ("frame", "zone", "bbox_xyxy_norm", "polygon_xy_norm"))
+        return cls(**document)
 
 
 @dataclass(frozen=True)
@@ -50,11 +52,24 @@ class PerceivedThing:
     label: str
     location: ViewLocation
     confidence: float | None = None
-    properties: dict[str, Any] = field(default_factory=dict)
+    properties: Mapping[str, object] = field(default_factory=dict)
     source_plugin_id: str | None = None
 
     def __post_init__(self) -> None:
-        _require_identifier(self.thing_id, record_name="perception thing")
+        require_ascii_id(self.thing_id, field_name="thing_id")
+        require_ascii_id(self.kind, field_name="kind")
+        require_text(self.label, field_name="label")
+        if not isinstance(self.location, ViewLocation):  # pyright: ignore[reportUnnecessaryIsInstance]  # Uploaded plugins construct these values.
+            raise FieldError("location", "must be ViewLocation")
+        if self.source_plugin_id is not None:
+            require_ascii_id(self.source_plugin_id, field_name="source_plugin_id")
+        if not isinstance(self.properties, (dict, FrozenJsonObject)):
+            raise FieldError("properties", "must be an object")
+        if not isinstance(self.properties, FrozenJsonObject):
+            try:
+                object.__setattr__(self, "properties", deep_freeze(self.properties, field_name="properties"))
+            except ValueError as exc:
+                raise FieldError("properties", str(exc)) from exc
         object.__setattr__(
             self,
             "confidence",
@@ -64,23 +79,25 @@ class PerceivedThing:
         )
 
     def to_dict(self) -> dict[str, Any]:
-        return asdict(self)
+        return {
+            "thing_id": self.thing_id, "kind": self.kind, "label": self.label,
+            "location": self.location.to_dict(), "confidence": self.confidence,
+            "properties": frozen_mapping_to_dict(self.properties), "source_plugin_id": self.source_plugin_id,
+        }
 
     @classmethod
     def from_dict(cls, data: dict[str, Any]) -> "PerceivedThing":
-        location = data.get("location") if isinstance(data.get("location"), dict) else {}
+        document = require_keys(data, (
+            "thing_id", "kind", "label", "location", "confidence", "properties", "source_plugin_id",
+        ))
+        confidence = document["confidence"]
+        if confidence is not None:
+            confidence = require_number(confidence, field_name="confidence", bounds=(0, 1))
         return cls(
-            thing_id=str(data.get("thing_id") or "unknown"),
-            kind=str(data.get("kind") or "unknown"),
-            label=str(data.get("label") or "unknown"),
-            location=ViewLocation.from_dict(location),
-            confidence=data.get("confidence"),
-            properties=data.get("properties") or {},
-            source_plugin_id=(
-                str(data["source_plugin_id"])
-                if data.get("source_plugin_id") is not None
-                else None
-            ),
+            thing_id=document["thing_id"], kind=document["kind"], label=document["label"],
+            location=require_nested(ViewLocation.from_dict, document["location"], field_name="location"),
+            confidence=confidence, properties=document["properties"],
+            source_plugin_id=document["source_plugin_id"],
         )
 
 
@@ -91,11 +108,22 @@ class PerceptionSignal:
     signal_id: str
     value: bool | int | float | str | None
     confidence: float | None = None
-    properties: dict[str, Any] = field(default_factory=dict)
+    properties: Mapping[str, object] = field(default_factory=dict)
     source_plugin_id: str | None = None
 
     def __post_init__(self) -> None:
-        _require_identifier(self.signal_id, record_name="perception signal")
+        require_ascii_id(self.signal_id, field_name="signal_id")
+        if self.source_plugin_id is not None:
+            require_ascii_id(self.source_plugin_id, field_name="source_plugin_id")
+        if not isinstance(self.properties, (dict, FrozenJsonObject)):
+            raise FieldError("properties", "must be an object")
+        if not isinstance(self.properties, FrozenJsonObject):
+            try:
+                object.__setattr__(self, "properties", deep_freeze(self.properties, field_name="properties"))
+            except ValueError as exc:
+                raise FieldError("properties", str(exc)) from exc
+        if self.value is not None and not isinstance(self.value, (bool, str)):
+            require_number(self.value, field_name="value")
         object.__setattr__(
             self,
             "confidence",
@@ -105,20 +133,20 @@ class PerceptionSignal:
         )
 
     def to_dict(self) -> dict[str, Any]:
-        return asdict(self)
+        return {
+            "signal_id": self.signal_id, "value": self.value, "confidence": self.confidence,
+            "properties": frozen_mapping_to_dict(self.properties), "source_plugin_id": self.source_plugin_id,
+        }
 
     @classmethod
     def from_dict(cls, data: dict[str, Any]) -> "PerceptionSignal":
+        document = require_keys(data, ("signal_id", "value", "confidence", "properties", "source_plugin_id"))
+        confidence = document["confidence"]
+        if confidence is not None:
+            confidence = require_number(confidence, field_name="confidence", bounds=(0, 1))
         return cls(
-            signal_id=str(data.get("signal_id") or "unknown"),
-            value=data.get("value"),
-            confidence=data.get("confidence"),
-            properties=data.get("properties") or {},
-            source_plugin_id=(
-                str(data["source_plugin_id"])
-                if data.get("source_plugin_id") is not None
-                else None
-            ),
+            signal_id=document["signal_id"], value=document["value"], confidence=confidence,
+            properties=document["properties"], source_plugin_id=document["source_plugin_id"],
         )
 
 
@@ -139,36 +167,15 @@ class PerceptionEvidenceBatch:
             raise ValueError("a plugin evidence batch cannot repeat thing ids")
 
 
-def _require_identifier(value: Any, *, record_name: str) -> None:
-    if not isinstance(value, str) or not value.strip():
-        raise ValueError(f"{record_name} ids must be non-empty strings")
-
-
-def _finite_float(value: Any, *, field_name: str) -> float:
-    try:
-        normalized = float(value)
-    except (TypeError, ValueError) as exc:
-        raise ValueError(f"{field_name} must be numeric") from exc
-    if not math.isfinite(normalized):
-        raise ValueError(f"{field_name} must be finite")
-    return normalized
-
-
-def _normalized_coordinate(value: Any) -> float:
-    coordinate = _finite_float(value, field_name="normalized coordinate")
-    if coordinate < 0.0 or coordinate > 1.0:
-        raise ValueError("normalized coordinates must be between 0.0 and 1.0")
-    return coordinate
-
-
 def _normalized_bbox(value: Any) -> tuple[float, float, float, float] | None:
     if value is None:
         return None
     if not isinstance(value, (list, tuple)) or len(value) != 4:
-        raise ValueError("normalized bounding boxes must contain four coordinates")
-    x1, y1, x2, y2 = tuple(_normalized_coordinate(item) for item in value)
+        raise FieldError("bbox_xyxy_norm", "must contain four coordinates")
+    x1, y1, x2, y2 = tuple(require_number(item, field_name=f"bbox_xyxy_norm.{index}", bounds=(0, 1))
+                           for index, item in enumerate(value))
     if x1 > x2 or y1 > y2:
-        raise ValueError("normalized bounding boxes must have ordered corners")
+        raise FieldError("bbox_xyxy_norm", "must have ordered corners")
     return (x1, y1, x2, y2)
 
 
@@ -176,15 +183,15 @@ def _normalized_polygon(value: Any) -> tuple[tuple[float, float], ...] | None:
     if value is None:
         return None
     if not isinstance(value, (list, tuple)) or len(value) < 3:
-        raise ValueError("normalized polygons must contain at least three points")
+        raise FieldError("polygon_xy_norm", "must contain at least three points")
     points: list[tuple[float, float]] = []
-    for point in value:
+    for index, point in enumerate(value):
         if not isinstance(point, (list, tuple)) or len(point) != 2:
-            raise ValueError("normalized polygon points must contain two coordinates")
+            raise FieldError(f"polygon_xy_norm.{index}", "must contain two coordinates")
         points.append(
             (
-                _normalized_coordinate(point[0]),
-                _normalized_coordinate(point[1]),
+                require_number(point[0], field_name=f"polygon_xy_norm.{index}.0", bounds=(0, 1)),
+                require_number(point[1], field_name=f"polygon_xy_norm.{index}.1", bounds=(0, 1)),
             )
         )
     return tuple(points)

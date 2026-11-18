@@ -37,7 +37,7 @@ class DeclaredIdTests(unittest.TestCase):
         with self._clashing("action"):
             with self.assertRaisesRegex(DuplicatePluginIdError, "duplicate action plugin id 'selected'"):
                 catalog.step_plugins("action")
-            self.assertEqual(sorted(catalog.step_plugins("memory")), ["bounded_evidence"])
+            self.assertEqual(sorted(catalog.step_plugins("memory")), ["bounded_evidence", "control_runs"])
 
     def test_plugins_list_reports_the_clash_and_exits_2(self) -> None:
         with self._clashing("action"), tempfile.TemporaryDirectory() as tmp:
@@ -57,6 +57,24 @@ class DeclaredIdTests(unittest.TestCase):
 
 
 class PresetActivationTests(unittest.TestCase):
+    def test_follow_policy_is_listed_and_arms_without_changing_the_default(self) -> None:
+        self.assertIn("follow_policy", catalog.step_presets("plan"))
+        activation = catalog.preset_activation("plan", "follow_policy")
+        self.assertEqual(activation.plugins, ("follow_policy",))
+        self.assertEqual(activation.metadata, {"preset": "follow_policy"})
+        runner = STEP_RUNNERS["plan"].from_activation(activation)
+        self.assertEqual(tuple(runner.plugin_ids), ("follow_policy",))
+        self.assertEqual(catalog.selection_activation("plan").plugins, ("highest_confidence",))
+        self.assertEqual(catalog.DEFAULT_STEP_PRESETS["plan"], "most_confident")
+
+    def test_control_runs_is_available_by_name_without_replacing_memory_default(self) -> None:
+        self.assertIn("control_runs", catalog.step_plugins("memory"))
+        self.assertNotIn("control_runs", catalog.step_presets("memory"))
+        activation = catalog.selection_activation("memory", plugins=["bounded_evidence", "control_runs"])
+        runner = STEP_RUNNERS["memory"].from_activation(activation)
+        self.assertEqual(tuple(runner.plugin_ids), ("bounded_evidence", "control_runs"))
+        self.assertEqual(catalog.selection_activation("memory").plugins, ("bounded_evidence",))
+
     def test_perception_memory_proposal_and_plan_are_the_steps_with_presets(self) -> None:
         self.assertEqual(tuple(catalog.STEP_PRESETS), ("perception", "memory", "proposal", "plan"))
         self.assertEqual(set(catalog.DEFAULT_STEP_PRESETS), set(catalog.STEP_PRESETS))

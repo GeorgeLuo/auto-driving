@@ -1,0 +1,9 @@
+{
+  "visuals": [
+    {"type": "cylinder", "x": 0, "y": 0.37, "z": 0, "width": 0.4, "depth": 0.4, "height": 0.05, "rotationRadians": 0, "material": "walnut"},
+    {"type": "cylinder", "x": -0.12, "y": 0, "z": -0.075, "width": 0.038, "depth": 0.038, "height": 0.38, "rotationRadians": 0, "material": "walnut", "rollRadians": -0.075},
+    {"type": "cylinder", "x": 0.12, "y": 0, "z": -0.075, "width": 0.038, "depth": 0.038, "height": 0.38, "rotationRadians": 0, "material": "walnut", "rollRadians": 0.075},
+    {"type": "cylinder", "x": 0, "y": 0, "z": 0.13, "width": 0.038, "depth": 0.038, "height": 0.38, "rotationRadians": 0, "material": "walnut", "pitchRadians": 0.075}
+  ],
+  "collision": {"type": "box", "width": 0.38, "depth": 0.38}
+}

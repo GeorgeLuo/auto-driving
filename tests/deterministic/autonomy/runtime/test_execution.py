@@ -12,21 +12,7 @@ from autonomy.runtime.control import AutonomyControl
 from autonomy.runtime.cycle_host import AutonomyCycleHost
 from autonomy.runtime.execution import CONTROL_APPLICATION_LIMIT, ControlApplication, ControlExecution
 from autonomy.runtime.session import RunConfiguration
-
-
-class _RecordingTarget:
-    def __init__(self) -> None:
-        self.writes: list[str] = []
-
-    def acquire(self) -> None:
-        pass
-
-    def write(self, control) -> dict:
-        self.writes.append(control.reason)
-        return {"boundary": "test_target", "write": len(self.writes)}
-
-    def release(self) -> None:
-        pass
+from tests.shared.autonomy.runtime.control_fixtures import RecordingTarget
 
 
 class _UnreachableTarget:
@@ -42,14 +28,16 @@ class _UnreachableTarget:
 
 class ControlExecutionTests(unittest.TestCase):
     def test_applications_keep_control_identity_and_mode_boundaries(self) -> None:
-        execution = ControlExecution(_RecordingTarget())
+        execution = ControlExecution(RecordingTarget())
         self.addCleanup(execution.close)
         with patch("autonomy.runtime.execution.time.time", return_value=1.0):
             execution.set_mode("autonomy")
             result = SimpleNamespace(
                 context=DecisionFrameContext("frame-1", 0, 1000),
                 action=SimpleNamespace(status="ok"),
-                control=AutonomyControl(steering=-0.5, throttle=0.3, reason="turn"),
+                control=AutonomyControl(steering=-0.5, throttle=0.3, reason="turn", metadata={
+                    "plugin_id": "query", "plan_metadata": {"policy": {"name": "search", "epoch": 0}},
+                }),
             )
             application = execution.apply(result, execution.ticket())
             execution.set_mode("manual")
@@ -57,6 +45,9 @@ class ControlExecutionTests(unittest.TestCase):
         self.assertEqual([item.reason for item in history],
                          ["awaiting-fresh-decision", "turn", "mode-changed"])
         self.assertIs(history[1], application)
+        self.assertEqual(application.control.metadata, result.control.metadata)
+        self.assertEqual(history[0].control.metadata, {})
+        self.assertEqual(history[2].control.metadata, {})
         self.assertEqual((history[0].mode, history[1].mode, history[2].mode),
                          ("autonomy", "autonomy", "manual"))
         self.assertEqual((history[2].control.steering, history[2].control.throttle), (0.0, 0.0))
@@ -91,7 +82,7 @@ class ControlExecutionTests(unittest.TestCase):
         self.assertEqual(decoded["applications"], [application])
 
     def test_failed_idle_write_leaves_idle_output_without_recording_a_write(self):
-        class FailsSecondWrite(_RecordingTarget):
+        class FailsSecondWrite(RecordingTarget):
             def write(self, control):
                 if len(self.writes) == 1:
                     raise ConnectionError("idle failed")
@@ -113,7 +104,7 @@ class ControlExecutionTests(unittest.TestCase):
             self.assertEqual(execution.ticket().control_applications, history)
 
     def test_watchdog_stop_is_recorded(self) -> None:
-        execution = ControlExecution(_RecordingTarget())
+        execution = ControlExecution(RecordingTarget())
         execution._deadline = 0.0
         with patch.object(execution._wake, "wait", side_effect=[False, True]):
             execution._watch()
@@ -121,7 +112,7 @@ class ControlExecutionTests(unittest.TestCase):
         self.assertEqual(execution.ticket().control_applications[0].control.throttle, 0.0)
 
     def test_applications_are_bounded_and_failed_writes_are_absent(self) -> None:
-        execution = ControlExecution(_RecordingTarget())
+        execution = ControlExecution(RecordingTarget())
         self.addCleanup(execution.close)
         for index in range(CONTROL_APPLICATION_LIMIT + 5):
             execution._write_idle(str(index))
@@ -134,7 +125,7 @@ class ControlExecutionTests(unittest.TestCase):
         self.assertEqual(failing.ticket().control_applications, ())
 
     def test_mode_changes_keep_the_idle_write_receipt(self) -> None:
-        target = _RecordingTarget()
+        target = RecordingTarget()
         execution = ControlExecution(target)
 
         taken = execution.set_mode("autonomy")["application"]
@@ -151,7 +142,7 @@ class ControlExecutionTests(unittest.TestCase):
         )
 
     def test_mode_read_does_not_export_application_and_status_stays_detached(self) -> None:
-        execution = ControlExecution(_RecordingTarget())
+        execution = ControlExecution(RecordingTarget())
         execution.set_mode("observe_only")
         with patch.object(execution, "status", side_effect=AssertionError("mode exported status")):
             self.assertEqual(execution.mode, "observe_only")
@@ -160,7 +151,7 @@ class ControlExecutionTests(unittest.TestCase):
         self.assertEqual(execution.status()["application"]["control"]["metadata"], {})
 
     def test_mode_change_without_a_write_records_the_mode(self) -> None:
-        target = _RecordingTarget()
+        target = RecordingTarget()
         application = ControlExecution(target).set_mode("observe_only")["application"]
 
         self.assertEqual(target.writes, [])

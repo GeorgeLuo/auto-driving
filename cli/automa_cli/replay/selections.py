@@ -11,10 +11,11 @@ from __future__ import annotations
 from collections.abc import Callable
 from dataclasses import dataclass, replace
 from pathlib import Path
-from typing import Any
 
-from autonomy.decision_cycle.activation import StepActivation, executable_document
+from autonomy.decision_cycle.activation import StepActivation
+from autonomy.decision_cycle.restage import Restaged, restage
 from autonomy.decision_cycle.steps import builtin_activation
+from autonomy.plugins import PluginManagementError
 from autonomy.runtime.plugin_loader import code_source_from_activation, load_runner
 from autonomy.shared_memory import read_shared_memory_file
 from implementations.decision_cycle.catalog import selection_activation
@@ -27,8 +28,8 @@ class SharedMemorySeed:
     """A run's starting map and the file document it was decoded from."""
 
     path: Path
-    document: dict[str, Any]
-    shared_memory: dict[str, Any]
+    document: dict[str, object]
+    shared_memory: dict[str, object]
 
 
 def read_shared_memory_seed(path: Path | None) -> SharedMemorySeed | None:
@@ -40,7 +41,7 @@ def read_shared_memory_seed(path: Path | None) -> SharedMemorySeed | None:
     return SharedMemorySeed(path, document, shared_memory)
 
 
-def add_seed_provenance(report: dict[str, Any], seed: SharedMemorySeed | None) -> None:
+def add_seed_provenance(report: dict[str, object], seed: SharedMemorySeed | None) -> None:
     """Record a seeded run's file path and document under ``shared_memory_seed``."""
 
     if seed is not None:
@@ -48,37 +49,22 @@ def add_seed_provenance(report: dict[str, Any], seed: SharedMemorySeed | None) -
 
 
 def replace_replay_pipeline(
-    runners: dict[str, Any],
+    runners: dict[str, object],
     activations: dict[str, StepActivation | None],
     recorded: dict[str, StepActivation | None],
     *,
     overrides: set[str],
-    build: Callable[[str, StepActivation], Any] | None = None,
-) -> tuple[dict[str, Any], dict[str, StepActivation | None], bool]:
-    """Build a fresh pipeline when the effective selection changed.
-
-    ``recorded`` replaces steps that are not overridden. The current runners
-    stay in place when that selection is the one already running, including
-    when an override cancels a recorded change. Construction finishes before
-    the caller installs the result or clears its map.
-    """
-
+    build: Callable[[str, StepActivation], object] | None = None,
+) -> Restaged | None:
+    """Resolve replay overrides and apply the cycle's restage rule."""
     desired = resolve_replay_activations(
         recorded, defaults=activations,
         overrides={step: activations[step] for step in overrides if step in activations},
     )
-    same = all(
-        executable_document(desired.get(step)) == executable_document(activations.get(step))
-        for step in set(desired) | set(activations)
+    return restage(
+        runners, activations, desired,
+        build=build or (lambda _step, activation: recorded_runner(activation)),
     )
-    if same:
-        return runners, activations, False
-    construct = build or (lambda step, activation: recorded_runner(activation))
-    built = {
-        step: None if activation is None else construct(step, activation)
-        for step, activation in desired.items()
-    }
-    return built, desired, True
 
 
 def default_selection(step: str) -> StepActivation:
@@ -111,7 +97,7 @@ def recorded_release(activation: StepActivation) -> tuple[str, str] | None:
     return None
 
 
-def recorded_runner(activation: StepActivation) -> Any:
+def recorded_runner(activation: StepActivation) -> object:
     """The selection's runner, imported from the controller release it records.
 
     A selection with no recorded release, such as a default or an override,
@@ -120,14 +106,21 @@ def recorded_runner(activation: StepActivation) -> Any:
     """
 
     release = recorded_release(activation)
-    if release is None:
-        return load_runner(activation)
-    host_name, tree_sha256 = release
-    code_dir, _ = release_code_dir(host_name, tree_sha256=tree_sha256)
-    return load_runner(activation, source=replace(code_source_from_activation(activation), bundle_root=code_dir))
+    source = code_source_from_activation(activation)
+    if release is not None:
+        host_name, tree_sha256 = release
+        code_dir, _ = release_code_dir(host_name, tree_sha256=tree_sha256)
+        source = replace(source, bundle_root=code_dir)
+    try:
+        return load_runner(activation, source=source)
+    except Exception as exc:
+        notes = getattr(exc, "__notes__", ())
+        if notes:
+            raise PluginManagementError(f"{' '.join(notes)}: {type(exc).__name__}: {exc}") from exc
+        raise
 
 
-def selection_record(activation: StepActivation) -> dict[str, Any]:
+def selection_record(activation: StepActivation) -> dict[str, object]:
     """Record the selected IDs, entrypoints and constructor config together."""
 
     return {
@@ -142,7 +135,7 @@ def selection_record(activation: StepActivation) -> dict[str, Any]:
     }
 
 
-def selection_report(activation: StepActivation) -> dict[str, Any]:
+def selection_report(activation: StepActivation) -> dict[str, object]:
     """A report's selection entry: the selection record and its plugin IDs."""
 
     return {**selection_record(activation), "plugins": list(activation.plugins)}

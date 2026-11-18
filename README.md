@@ -129,8 +129,9 @@ The command groups intentionally distinguish different kinds of state:
 
 A host's local browser entrypoint is **Automa**, with links to
 **Perception** at `/perception` and **Memory** at `/memory`. `hosts viewer
---name <host>` serves and opens it until interrupted; `plugins stream` serves
-the same pages beside its terminal output. A run serves no pages, so ending a
+--name <host>` serves and opens it until interrupted; `hosts still --name <host>`
+saves and opens one JPEG of that host's latest processed frame. `plugins stream`
+serves the same pages beside its terminal output. A run serves no pages, so ending a
 viewer or stream leaves the run going. Perception owns its image buffer, while
 `RuntimeViewServer` owns the listener, routes, and shutdown.
 
@@ -141,6 +142,7 @@ viewer or stream leaves the run going. Perception owns its image buffer, while
 | `vehicles discover` | Lists the vehicle given by `--provider` (`chase-sim` or `picar`) and `--url` in `vehicles status` once it can take a host; `--force` lists it regardless. A simulator that `simulators create` started is already listed; after `vehicles remove`, discovering it lists it again without writing a second record. |
 | `vehicles remove` | Stops listing the vehicle at `--url`. A simulator that `simulators create` started keeps running until `simulators delete`, and `vehicles discover` lists it again. |
 | `hosts viewer` | Serves the runtime viewer (Perception, Memory, Action and Plugins) fed from the host named by `--name`, or at `--host-url` (the URL `hosts status` shows for it), and opens it in the browser until interrupted. Exits 2 when no such host exists, it is not running, or it does not answer. |
+| `hosts still` | Saves a JPEG of the latest processed frame from the host named by `--name`, prints its frame id, age and health, and opens it. An idle Chase host has no frame until a run is started. A PiCar with no frame has a camera that is not ready. Exits 2 when no such host exists, it is not running, it does not answer, or it has no frame. |
 | `hosts status` | Shows each host's state and whether its simulator lists it. When that simulator does not answer, the attachment line says it is not answering. `--long` adds its deployment and the release `hosts update` last packaged, then each step's staged selection, `saved` when `plugins save` saved it and otherwise the step's `default`, beside the selection the running host applied with its runs, failures and last error, then the run and its view. A step reads `as staged` only when the host runs the staged plugins with their staged configs; restaged configs wait for a restart, so until then status names the plugins whose configs differ. An invalid staged step and an unavailable host are each reported without hiding the other. `--json` carries the same under each host's `run`. With `--name`, exits 1 when that host is missing, stopped, not answering, or reports an error. |
 | `plugins list` | Offline: lists the packaged catalog, each step's `implementations/decision_cycle/<step>/catalog.json`, by step, defaults first and marked, then each step's presets and their plugins, its default marked; `--step` filters and `--json` adds each definition's entrypoint, default config and description, and `step_presets`, each preset as its catalog file lists it with `default` marking the step's. With `--host-name` (or a runtime `--url`), lists what that host has armed instead; `--long` lists the host's whole catalog, packaged and uploaded, with its version and the armed plugins marked. A workbench `--url` arms nothing and lists only with `--long`. Exits 2 while the host's last arming failed. See the [simulator prototype flow](docs/reference/cli-simulator-perception-journey.md#arm-on-an-existing-runtime-host). |
 | `plugins upload` | With `--host-name` (or a runtime or workbench `--url`), stores `--file` in that existing catalog as `--name <step>/<plugin>` with its `--entrypoint` and optional `--config`, refusing source that does not compile. `--arm` also arms it through the same operation as `plugins arm`. |
@@ -154,7 +156,8 @@ viewer or stream leaves the run going. Perception owns its image buffer, while
 | `hosts update` | Packages a versioned release for the vehicle's host and stages each step's `plugins save` selection with it, else the step's default (`plugins list` marks the defaults), replacing whatever else each step had staged: a PiCar receives it over SSH, a simulator vehicle keeps it locally. With `--restart`, the host restarts onto it and verifies every step runs its staged plugins. |
 | `hosts run\|stop\|restart\|status` | Starts, stops, restarts or inspects a run on the host. Status includes the vehicle endpoint, host URL and simulator attachment. `stop` ends the run; the host stays attached until `hosts delete`. |
 | `simulators create` | Starts a headless Chase simulator from the Metrics UI checkout at `AUTOMA_METRICS_UI_DIR`, with its launcher's default configuration, on the first free port from 5051, and prints its URL. It runs until `simulators delete --url` ends it, which refuses while a host was created at it and removes only the record of one that has exited. `vehicles remove` stops listing it without ending it. |
-| `simulators status` | Shows each simulator `simulators create` started, whether it answers, its frontend, and the hosts created at it. `--long` adds its Metrics UI checkout, configuration and log. `--json` prints `automa_simulators_status`. With `--url`, exits 1 when that simulator is missing, exited, or unreachable. |
+| `simulators create --backend native` | Starts the standalone [experimental C++ environment](simulator/native/README.md). Equivalence with Metrics UI covers motion and protocol only. Camera and perception equivalence are unverified. Build it first. Use `--config FILE` for a custom map. |
+| `simulators status` | Shows each simulator `simulators create` started, whether it answers, its frontend, and the hosts created at it. `--long` adds the launcher location, configuration and log. `--json` prints `automa_simulators_status`. With `--url`, exits 1 when that simulator is missing, exited, or unreachable. |
 
 The runtime viewer's **Plugins** table refreshes every 500 ms. Revision columns
 are hidden by default; **Show revisions** reveals them for debugging. **Enabled**
@@ -329,6 +332,7 @@ preserves the operator's simulator session:
 ./cli/automa hosts create --name chase-sim-chaser --provider chase-sim --url http://localhost:5050
 ./cli/automa hosts run --name chase-sim-chaser --observe-only
 ./cli/automa hosts viewer --name chase-sim-chaser   # Ctrl-C ends the view, not the run
+./cli/automa hosts still --name chase-sim-chaser
 ./cli/automa hosts status --name chase-sim-chaser
 ./cli/automa hosts stop --name chase-sim-chaser
 ./cli/automa hosts status --name chase-sim-chaser
@@ -425,7 +429,7 @@ Useful run options:
   before counting the decision. The host owns its history under
   `runtime/automation/host-runs/`; the CLI exports it under
   `runtime/automation/runs/`. Separate directories keep the local Chase host
-  and CLI from overwriting each other's manifests. PiCar recordings are copied
+  and CLI from writing each other's recordings. PiCar recordings are copied
   from the onboard run in order and drained on completion or stop; later manual observations
   stay outside the recording. A successful recorded run reports matching
   `Decisions recorded` and `Decisions completed` counts.
@@ -482,6 +486,21 @@ including restaging at individual frames. `--preset` or repeatable `--plugin`
 overrides only the inspected step; without a recorded selection or override,
 each step uses its default. The two selection flags are exclusive. Perception,
 memory, proposal and plan accept presets; action accepts plugins.
+
+Use `--manifest` with either inspect or workbench to replace the recording's
+plugins by step and ID using a collection manifest accepted by `plugins upload`.
+The whole replay uses the installed package. Plugins outside the collection
+keep their recorded configs and order, and must be available in the installed
+catalog. Every plugin in the manifest must appear in the recording. Use the
+manifest separately from packaged preset and plugin flags.
+
+```sh
+./cli/automa plugins memory inspect path/to/recording --manifest path/to/collection/manifest.json --frame 2 --json
+./cli/automa workbench path/to/recording --manifest path/to/collection/manifest.json --pace realtime
+```
+
+The replay reports the manifest path, collection name, and replaced plugins.
+`inspect --record` keeps the replacement sources with the executed selections.
 
 Camera manifests (`camera_frames`) and inspection reports (`frames`) preserve
 their declared frame order, identity and timestamps. Equal millisecond
@@ -671,13 +690,12 @@ at `/workbench/`; `--open` also opens that page in a browser.
 button. It opens an empty workbench with each step's default preset. Enter an
 image directory, then press Start. The Automa icon returns to the viewer's home page.
 
-Changing plugins keeps retained definitions and configs, builds every runner
-again, and starts an empty shared-memory map. Newly enabled plugins use catalog defaults.
+Changing plugins keeps retained definitions and configs, rebuilds changed steps,
+and clears state from the first changed plugin onward. Newly enabled plugins use catalog defaults.
 Submitting the same ordered selection again does no extra processing.
 
 While playing, selections apply at the next frame boundary without replaying history.
-While paused, a change refreshes only the latest frame on the empty map, so temporal
-plugins begin warming up. Earlier results keep the selection they
+While paused, a change refreshes only the latest frame using the surviving state. Earlier results keep the selection they
 were computed with. After seeking backward, use **Return to latest frame** before
 editing plugins. **Reset**, then **Start**, replays from the beginning with the selected
 plugins. A currently executing plugin finishes before a change takes effect.
@@ -782,6 +800,7 @@ control both vehicles. Change only the host name:
 ```sh
 ./cli/automa hosts run --name chase-sim-chaser --num-decisions 10
 ./cli/automa hosts viewer --name chase-sim-chaser
+./cli/automa hosts still --name chase-sim-chaser
 ./cli/automa hosts stop --name chase-sim-chaser
 ./cli/automa hosts run --name piracer --num-decisions 10
 ./cli/automa hosts stop --name piracer
@@ -928,9 +947,6 @@ The surrounding cycle owns the sensor frame, so perception output does not
 duplicate it. Concrete camera decoding
 and every meaning-making algorithm live under
 `implementations/decision_cycle/perception/`.
-
-Both current vehicle adapters expose only the generic `front_camera` sensor
-through `CarInterface.read_sensors()`.
 
 ## Transitional Research Tools
 

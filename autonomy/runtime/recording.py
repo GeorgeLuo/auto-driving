@@ -2,15 +2,26 @@
 
 The host commits a cycle and its exact image before counting the decision or
 ending the run. Live latest-only publications are independent of this history.
+``manifest.json`` is a header written once. Each frame is appended as one JSON
+line in the entries file that header names, and a commit does not read or
+rewrite earlier entries. A final line with no newline was never committed. A
+manifest that carries an inline ``frames`` list, each with its own ``steps``,
+still loads.
+A frame line names the generation the host applied and holds none of its step
+selections. The recording stores each generation once, as
+``generations/<generation_id>.json``, before the first line that names it. A
+display-only change, such as a renamed preset, keeps the generation, so the
+stored selections keep the labels of its first frame.
 Each manifest entry carries a control application change: the number of records
 kept from the end of the previous window, followed by added records. Record
 order, not wall-clock order, preserves equal or backwards timestamps. Replay
-restores the recorded window independently of the runtime limit. Frame JSON
-omits the change; export reattaches it.
+restores the recorded window independently of the runtime limit.
 Each recorded step names the controller release the host imported, which is
 the code replay must run; a host outside a release records none. A plugin
 uploaded to the host's catalog is outside every release, so the recording keeps
-each uploaded source its steps name, as ``plugins/<sha256>.py``.
+each uploaded source its generations name, as ``plugins/<sha256>.py``.
+The host recording and the CLI export each write their own directory through
+one ``RecordingWriter``.
 """
 from __future__ import annotations
 
@@ -18,10 +29,11 @@ import base64
 import copy
 import hashlib
 import json
+import os
 import secrets
 import threading
+from collections.abc import Callable, Mapping
 from pathlib import Path
-from typing import Any, Callable, Mapping
 
 from autonomy.decision_cycle.activation import (
     STEPS, StepActivation, activation_generation_id, require_step,
@@ -32,19 +44,27 @@ from autonomy.decision_cycle.action.publication import (
     read_mode, read_user_steering, read_user_throttle,
 )
 from autonomy.decision_cycle.cycle import DecisionCycleResult
+from autonomy.fields import FieldError, require_nested
 from autonomy.plugins import uploaded_source
 from autonomy.runtime.execution import ControlApplication
 from autonomy.vehicle import FRONT_CAMERA_SENSOR_ID
 
 RECORDING_MANIFEST_SCHEMA = "automa_recording_manifest"
 RECORDING_MANIFEST_NAME = "manifest.json"
+# One JSON object per line, beside the header. Not the ``frames/`` image directory.
+RECORDING_ENTRIES_NAME = "manifest.jsonl"
+# Header field that names the entries file. An inline ``frames`` list has no such field.
+RECORDING_ENTRIES_FIELD = "entries"
+# The step selections of each generation, as ``<generation_id>.json``.
+GENERATIONS_DIR = "generations"
 # Uploaded plugin sources a recording carries, as ``<sha256>.py``.
 UPLOADED_SOURCES_DIR = "plugins"
 # Manifest entry change from the previous published application window.
 CONTROL_APPLICATION_CHANGE_FIELD = "control_application_change"
+TRANSPORT_BATCH = 8
 
 
-def control_application_windows(changes: list[Any]) -> list[tuple[ControlApplication, ...] | None]:
+def control_application_windows(changes: list[object]) -> list[tuple[ControlApplication, ...] | None]:
     """Decode manifest changes in order; missing windows break retained history."""
     windows: list[tuple[ControlApplication, ...] | None] = []
     previous: tuple[ControlApplication, ...] = ()
@@ -62,14 +82,20 @@ def control_application_windows(changes: list[Any]) -> list[tuple[ControlApplica
             if not isinstance(added, list):
                 raise ValueError("added must be a list")
             retained = previous[-kept:] if kept else ()
-            previous = retained + tuple(ControlApplication.from_dict(item) for item in added)
+            previous = retained + tuple(
+                require_nested(ControlApplication.from_dict, item,
+                               field_name=f"frames.{position}.control_application_change.added.{index}")
+                for index, item in enumerate(added)
+            )
+        except FieldError:
+            raise
         except (TypeError, ValueError) as exc:
             raise ValueError(f"frame {position} has invalid control applications: {exc}") from exc
         windows.append(previous)
     return windows
 
 
-def _installed_release() -> dict[str, Any] | None:
+def _installed_release() -> dict[str, object] | None:
     # Resolved at import: a later deploy may relink the package to another release.
     try:
         manifest = json.loads(
@@ -86,7 +112,7 @@ def _installed_release() -> dict[str, Any] | None:
 INSTALLED_RELEASE = _installed_release()
 
 
-def write_json_atomically(path: Path, payload: dict[str, Any]) -> None:
+def write_json_atomically(path: Path, payload: Mapping[str, object]) -> None:
     temporary = path.with_name(f".{path.name}.{secrets.token_hex(8)}.tmp")
     try:
         temporary.write_text(json.dumps(payload, indent=2, sort_keys=True), encoding="utf-8")
@@ -95,7 +121,7 @@ def write_json_atomically(path: Path, payload: dict[str, Any]) -> None:
         temporary.unlink(missing_ok=True)
 
 
-def recorded_selections(record: dict[str, Any]) -> dict[str, StepActivation | None]:
+def recorded_selections(record: Mapping[str, object]) -> dict[str, StepActivation | None]:
     """Read a frame's executable selections, preserving disabled steps."""
     if "steps" not in record:
         return {}
@@ -118,7 +144,7 @@ def recorded_selections(record: dict[str, Any]) -> dict[str, StepActivation | No
     return activations
 
 
-def _recording_text(value: Any, label: str) -> str:
+def _recording_text(value: object, label: str) -> str:
     if type(value) is not str or not value or any(char.isspace() for char in value):
         raise ValueError(f"{label} must be a nonempty string")
     return value
@@ -126,15 +152,15 @@ def _recording_text(value: Any, label: str) -> str:
 
 def recording_frame_entry(
     *, frame_id: str, timestamp_ms: int, image_path: str | None,
-    steps: dict[str, Any], frame_index: int | None = None,
-    context: dict[str, Any] | None = None,
-    control_application_change: dict[str, Any] | None = None,
-    mode: str | None = None, user_steering: float | None = None,
-    user_throttle: float | None = None, absence_reason: str | None = None,
-) -> dict[str, Any]:
+    steps: Mapping[str, object], frame_index: object = None,
+    context: object = None,
+    control_application_change: object = None,
+    mode: object = None, user_steering: object = None,
+    user_throttle: object = None, absence_reason: str | None = None,
+) -> dict[str, object]:
     """The inputs needed to replay one cycle; image paths are relative to its archive."""
 
-    entry: dict[str, Any] = {
+    entry: dict[str, object] = {
         "frame_id": frame_id,
         "timestamp_ms": timestamp_ms,
         "image_path": image_path,
@@ -154,92 +180,69 @@ def recording_frame_entry(
     return entry
 
 
-def append_recording_frame(
-    run_dir: Path,
-    *,
-    host_name: str,
-    run_id: str,
-    generation_id: str,
-    frame_id: str,
-    timestamp_ms: int,
-    image_path: Path,
-    steps: dict[str, Any],
-    frame_index: int | None = None,
-    context: dict[str, Any] | None = None,
-    control_application_change: dict[str, Any] | None = None,
-    mode: str | None = None, user_steering: float | None = None,
-    user_throttle: float | None = None,
-) -> None:
-    """Append one recorded frame to the run directory's manifest.
+def append_recording_entry(path: Path, entry: Mapping[str, object]) -> int:
+    """Append one committed frame as a single JSON line; return its length in bytes.
 
-    Chase and PiCar both call this. The image path is stored relative to the
-    run directory, which is the directory replay loads. The frame keeps the
-    report identity, original capture time, applied step selections, and inputs.
-    ``control_application_change`` describes the retained suffix and added
-    applications, or is ``None`` when the host recorded no window.
+    The line's trailing newline is the commit. A write that does not finish
+    is discarded, and a reader ignores a trailing line with no newline, so
+    earlier frames stay readable.
     """
 
-    host_name = _recording_text(host_name, "host_name")
-    run_id = _recording_text(run_id, "run_id")
-    generation_id = _recording_text(generation_id, "generation_id")
-    frame_id = _recording_text(frame_id, "frame_id")
-    if type(timestamp_ms) is not int or timestamp_ms < 0:
-        raise ValueError("timestamp_ms must be a nonnegative int")
-    if type(steps) is not dict:
-        raise ValueError("steps must be the staged step selections")
-    if set(steps) != set(STEPS):
-        raise ValueError("recording requires the applied selections of every cycle step")
-    recorded_selections({"steps": steps, "generation_id": generation_id})
-    if frame_index is not None and (type(frame_index) is not int or frame_index < 0):
-        raise ValueError("frame_index must be a nonnegative int")
-    root = Path(run_dir)
-    root.mkdir(parents=True, exist_ok=True)
-    candidate = Path(image_path)
-    if not candidate.is_absolute():
-        resolved = candidate.resolve()
-        candidate = resolved if resolved.is_relative_to(root.resolve()) else root / candidate
+    line = (json.dumps(entry) + "\n").encode("utf-8")
+    descriptor = os.open(path, os.O_APPEND | os.O_CREAT | os.O_WRONLY, 0o644)
     try:
-        relative_image = candidate.resolve().relative_to(root.resolve()).as_posix()
-    except ValueError as exc:
-        raise ValueError("recorded image must stay inside the run directory") from exc
-    entry = {
-        "host_name": host_name, "run_id": run_id, "generation_id": generation_id,
-        **recording_frame_entry(
-            frame_id=frame_id, frame_index=frame_index, timestamp_ms=timestamp_ms,
-            image_path=relative_image, steps=steps, context=context,
-            control_application_change=control_application_change, mode=mode,
-            user_steering=user_steering, user_throttle=user_throttle,
-        ),
-    }
-    manifest_path = root / RECORDING_MANIFEST_NAME
-    payload: dict[str, Any] = {
-        "schema": RECORDING_MANIFEST_SCHEMA,
-        "host_name": host_name,
-        "run_id": run_id,
-        "frames": [],
-    }
-    if manifest_path.is_file():
-        loaded = json.loads(manifest_path.read_text(encoding="utf-8"))
-        if not isinstance(loaded, dict):
-            raise ValueError("recording manifest must be a JSON object")
-        payload = loaded
-    frames = payload.get("frames")
-    if not isinstance(frames, list):
-        frames = []
-    for index, item in enumerate(frames):
-        if isinstance(item, dict) and item.get("frame_id") == frame_id:
-            frames[index] = entry
-            break
-    else:
-        frames.append(entry)
-    payload["schema"] = RECORDING_MANIFEST_SCHEMA
-    payload["host_name"] = host_name
-    payload["run_id"] = run_id
-    payload["frames"] = frames
-    write_json_atomically(manifest_path, payload)
+        end = os.lseek(descriptor, 0, os.SEEK_END)
+        complete = False
+        try:
+            complete = os.write(descriptor, line) == len(line)
+        finally:
+            if not complete:
+                os.ftruncate(descriptor, end)
+        if not complete:
+            raise OSError(f"could not append a recording entry to {path.name}")
+    finally:
+        os.close(descriptor)
+    return len(line)
 
 
-def uploaded_sources(steps: dict[str, Any]) -> set[str]:
+def _entries_path(root: Path, name: object) -> Path:
+    if type(name) is not str or not name or name != Path(name).name or name in {".", ".."}:
+        raise ValueError("recording entries must name a file beside the manifest")
+    path = Path(root) / name
+    if path.is_symlink():
+        raise ValueError("recording entries must be a regular file")
+    return path
+
+
+def _read_appended_entries(path: Path) -> list[object]:
+    try:
+        data = path.read_bytes()
+    except FileNotFoundError:
+        return []
+    except OSError as exc:
+        raise ValueError(f"recording entries could not be read: {exc}") from exc
+    if not data.endswith(b"\n"):
+        cut = data.rfind(b"\n")
+        data = b"" if cut < 0 else data[:cut + 1]
+    entries: list[object] = []
+    for index, line in enumerate(data.splitlines()):
+        try:
+            item = json.loads(line)
+        except json.JSONDecodeError as exc:
+            raise ValueError(f"recording entry {index} is not a JSON object") from exc
+        if not isinstance(item, dict):
+            raise ValueError(f"recording entry {index} must be an object")
+        entries.append(item)
+    return entries
+
+
+def recording_entries(root: Path, manifest: Mapping[str, object]) -> list[object]:
+    """Committed entries of an append-only run recording, in record order."""
+
+    return _read_appended_entries(_entries_path(root, manifest.get(RECORDING_ENTRIES_FIELD)))
+
+
+def uploaded_sources(steps: Mapping[str, object]) -> set[str]:
     """The uploaded source files, ``<sha256>.py``, these step selections name."""
 
     return {
@@ -250,68 +253,134 @@ def uploaded_sources(steps: dict[str, Any]) -> set[str]:
     }
 
 
-def write_recorded_frame(
-    run_dir: Path, frame: dict[str, Any], image: bytes, extension: str,
-    sources: Mapping[str, bytes],
-) -> None:
-    """Commit the same replay artifacts locally or from an onboard transport.
+def entry_selections(
+    root: Path, manifest: Mapping[str, object], entries: list[object],
+) -> list[dict[str, StepActivation | None]]:
+    """Each entry's step selections, read and validated once per generation.
 
-    ``sources`` holds each uploaded source the frame names that the run
-    directory does not have yet.
+    An appended entry names a stored generation, and every frame of that
+    generation shares one selections mapping. An inline entry carries its own
+    ``steps``; one without them selects nothing.
     """
-    frame_id = frame["frame_id"]
-    if not frame_id or Path(frame_id).name != frame_id or frame_id in {".", ".."}:
+
+    if RECORDING_ENTRIES_FIELD not in manifest:
+        return [recorded_selections(entry) if isinstance(entry, dict) else {} for entry in entries]
+    generations: dict[object, dict[str, StepActivation | None]] = {}
+    selections = []
+    for entry in entries:
+        generation_id = entry.get("generation_id") if isinstance(entry, dict) else None
+        if generation_id not in generations:
+            generations[generation_id] = _stored_generation(root, generation_id)
+        selections.append(generations[generation_id])
+    return selections
+
+
+def _stored_generation(root: Path, generation_id: object) -> dict[str, StepActivation | None]:
+    if type(generation_id) is not str or Path(generation_id).name != generation_id:
+        raise ValueError("a recorded frame must name its generation")
+    try:
+        steps = json.loads((root / GENERATIONS_DIR / f"{generation_id}.json").read_text(encoding="utf-8"))
+    except (OSError, ValueError) as exc:
+        raise ValueError(f"recorded generation {generation_id} could not be read: {exc}") from exc
+    return recorded_selections({"steps": steps, "generation_id": generation_id})
+
+
+def _require_frame_file_name(frame_id: object) -> str:
+    if not isinstance(frame_id, str) or not frame_id or Path(frame_id).name != frame_id or frame_id in {".", ".."}:
         raise ValueError("recorded frame_id must be a filename")
-    if extension not in {".jpg", ".jpeg", ".png"} or not image:
-        raise ValueError("recorded camera image is missing or has an unsupported extension")
-    for name in sorted(uploaded_sources(frame["step_activations"])):
-        path = run_dir / UPLOADED_SOURCES_DIR / name
-        if path.is_file():
-            continue
-        source = sources.get(name)
-        if source is None or f"{hashlib.sha256(source).hexdigest()}.py" != name:
-            raise ValueError(f"recorded frame {frame_id} ran uploaded source {name} without carrying it")
-        path.parent.mkdir(parents=True, exist_ok=True)
-        path.write_bytes(source)
-    image_path = run_dir / "frames" / f"{frame_id}_{FRONT_CAMERA_SENSOR_ID}{extension}"
-    perception_path = run_dir / "perception" / frame_id / "perception.json"
-    image_path.parent.mkdir(parents=True, exist_ok=True)
-    perception_path.parent.mkdir(parents=True, exist_ok=True)
-    image_path.write_bytes(image)
-    # Applications live once in the manifest; read() reattaches them for
-    # transport to another host, whose writer uses this same representation.
-    write_json_atomically(
-        perception_path, {key: value for key, value in frame.items() if key != CONTROL_APPLICATION_CHANGE_FIELD},
-    )
-    append_recording_frame(
-        run_dir, host_name=frame["host_name"], run_id=frame["run_id"],
-        generation_id=frame["generation_id"], frame_id=frame_id,
-        frame_index=frame["frame_index"], timestamp_ms=frame["captured_at_ms"],
-        image_path=image_path, steps=frame["step_activations"], context=frame["context"],
-        control_application_change=frame.get(CONTROL_APPLICATION_CHANGE_FIELD),
-        mode=frame.get("action_policy"), user_steering=frame.get("user_steering"),
-        user_throttle=frame.get("user_throttle"),
-    )
+    return frame_id
+
+
+class RecordingWriter:
+    """Writes one new run directory: each generation once, then a line per frame.
+
+    The host recording and the CLI export each own one, so both directories
+    hold the same files. ``offsets`` holds where each committed line starts.
+    """
+
+    def __init__(self, root: Path, *, host_name: str, run_id: str) -> None:
+        self.root = Path(root)
+        self.host_name = _recording_text(host_name, "host_name")
+        self.run_id = _recording_text(run_id, "run_id")
+        if (self.root / RECORDING_MANIFEST_NAME).exists():
+            raise ValueError("recording run already exists")
+        self.offsets: list[int] = []
+        self.size = 0
+        self._frame_ids: set[str] = set()
+        self._generations: set[object] = set()
+
+    def store_generation(
+        self, generation_id: object, steps: object, read_source: Callable[[str], bytes | None],
+    ) -> None:
+        """Write a generation and the uploaded sources it names, unless the run holds it.
+
+        ``steps`` must hash to ``generation_id``, and each source to its name.
+        """
+
+        if generation_id in self._generations:
+            return
+        generation_id = _recording_text(generation_id, "generation_id")
+        if type(steps) is not dict or set(steps) != set(STEPS):
+            raise ValueError("recording requires the applied selections of every cycle step")
+        recorded_selections({"steps": steps, "generation_id": generation_id})
+        for name in sorted(uploaded_sources(steps)):
+            source = read_source(name)
+            if source is None or f"{hashlib.sha256(source).hexdigest()}.py" != name:
+                raise ValueError(f"recorded generation {generation_id} ran uploaded source {name} without carrying it")
+            (self.root / UPLOADED_SOURCES_DIR).mkdir(parents=True, exist_ok=True)
+            (self.root / UPLOADED_SOURCES_DIR / name).write_bytes(source)
+        (self.root / GENERATIONS_DIR).mkdir(parents=True, exist_ok=True)
+        write_json_atomically(self.root / GENERATIONS_DIR / f"{generation_id}.json", steps)
+        self._generations.add(generation_id)
+
+    def commit(self, frame: Mapping[str, object], image: bytes, extension: str) -> None:
+        """Commit one frame of a stored generation and its camera image.
+
+        Every check runs before the frame writes anything. The first commit
+        writes the header. The line is durable when this returns.
+        """
+
+        frame_id = _require_frame_file_name(frame.get("frame_id"))
+        if frame_id in self._frame_ids:
+            raise ValueError("recorded frame_id must be unique within the run")
+        if frame.get("host_name") != self.host_name or frame.get("run_id") != self.run_id:
+            raise ValueError("recorded frame belongs to another run or vehicle")
+        if frame.get("generation_id") not in self._generations:
+            raise ValueError("recorded frame names a generation the run has not stored")
+        if extension not in {".jpg", ".jpeg", ".png"} or not image:
+            raise ValueError("recorded camera image is missing or has an unsupported extension")
+        image_path = f"frames/{frame_id}_{FRONT_CAMERA_SENSOR_ID}{extension}"
+        (self.root / "frames").mkdir(parents=True, exist_ok=True)
+        if not self.offsets:
+            write_json_atomically(self.root / RECORDING_MANIFEST_NAME, {
+                "schema": RECORDING_MANIFEST_SCHEMA,
+                "host_name": self.host_name,
+                "run_id": self.run_id,
+                RECORDING_ENTRIES_FIELD: RECORDING_ENTRIES_NAME,
+            })
+        (self.root / image_path).write_bytes(image)
+        start = self.size
+        self.size += append_recording_entry(self.root / RECORDING_ENTRIES_NAME, {**frame, "image_path": image_path})
+        self.offsets.append(start)
+        self._frame_ids.add(frame_id)
 
 
 def cycle_frame(
     result: DecisionCycleResult, *, host_name: str, run_id: str,
     status: str = "ok", error: str | None = None,
-) -> dict[str, Any]:
-    """The same completed frame, selections and application on either host.
+) -> dict[str, object]:
+    """One completed frame's line: its outputs, inputs, application and generation.
 
-    The generation and step payloads are the ones the host applied. Recording
-    does not add provenance after that identity was computed.
+    The generation is the one the host applied. The line holds none of its
+    step selections; the recording stores those once.
     """
 
     context = result.context
-    steps = copy.deepcopy(context.metadata["step_activations"])
     generation = context.metadata["generation_id"]
     if not isinstance(generation, str) or not generation:
         raise ValueError("cycle frame requires the applied generation_id")
-    cycle = result.export_cycle()
     application = None
-    if result.application is not None and result.application.control is not None:
+    if result.application is not None:
         control = result.application.control
         application = {
             "applied": result.application.applied,
@@ -320,23 +389,30 @@ def cycle_frame(
             "steering": control.steering,
             "throttle": control.throttle,
         }
-    return {
-        "host_name": host_name, "run_id": run_id,
+    frame: dict[str, object] = {
+        "host_name": host_name, "run_id": run_id, "generation_id": generation,
         "frame_id": context.frame_id, "frame_index": context.frame_index,
-        "captured_at_ms": context.sensor_frame.readings[FRONT_CAMERA_SENSOR_ID].captured_at_ms,
+        "timestamp_ms": context.sensor_frame.readings[FRONT_CAMERA_SENSOR_ID].captured_at_ms,
         "completed_at_ms": result.completed_at_ms,
-        "timing": copy.deepcopy(result.timing),
-        "generation_id": generation, "step_activations": steps,
-        "context": context.to_dict(),
+        "timing": result.timing,
+        "context": {
+            "timestamp_ms": context.timestamp_ms,
+            "metadata": {key: value for key, value in context.metadata.items() if key != "step_activations"},
+        },
         "status": status,
         "error": error,
-        "application": copy.deepcopy(application),
-        **cycle,
+        "application": application,
+        **result.export_cycle(),
         "control": result.control_record(),
-        "action_policy": read_mode(context.shared_memory),
-        "user_steering": read_user_steering(context.shared_memory),
-        "user_throttle": read_user_throttle(context.shared_memory),
     }
+    for key, value in (
+        ("mode", read_mode(context.shared_memory)),
+        ("user_steering", read_user_steering(context.shared_memory)),
+        ("user_throttle", read_user_throttle(context.shared_memory)),
+    ):
+        if value is not None:
+            frame[key] = value
+    return frame
 
 
 def host_runs_dir(runtime_root: Path) -> Path:
@@ -352,18 +428,21 @@ class RunRecording:
     """Durable ordered cycles for exactly one run; bounded batches for transport."""
 
     def __init__(self, root: Path, *, host_name: str, run_id: str | None = None,
-                 encode_image: Callable[[Any], bytes] | None = None) -> None:
+                 encode_image: Callable[[object], bytes] | None = None) -> None:
         self.run_id = run_id or f"automation-{secrets.token_hex(12)}"
         if Path(self.run_id).name != self.run_id or self.run_id in {".", ".."}:
             raise ValueError("recording run_id must be a directory name")
         self.root = Path(root) / self.run_id
         self.host_name = host_name
         self.encode_image = encode_image
-        self.count = 0
+        self.writer = RecordingWriter(self.root, host_name=host_name, run_id=self.run_id)
         self._lock = threading.RLock()
         self._previous_applications = ()
-        if (self.root / RECORDING_MANIFEST_NAME).exists():
-            raise ValueError("recording run already exists")
+
+    @property
+    def count(self) -> int:
+        """Committed frames; a frame counts once its line is durable."""
+        return len(self.writer.offsets)
 
     def append(
         self, result: DecisionCycleResult,
@@ -401,47 +480,54 @@ class RunRecording:
                 frame[CONTROL_APPLICATION_CHANGE_FIELD] = {
                     "kept": kept, "added": [item.to_dict() for item in applications[kept:]],
                 }
-            if (self.root / "perception" / context.frame_id / "perception.json").exists():
-                raise ValueError("recorded frame_id must be unique within the run")
-            sources = {
-                name: uploaded_source(name).read_bytes()
-                for name in uploaded_sources(frame["step_activations"])
-                if not (self.root / UPLOADED_SOURCES_DIR / name).is_file()
-            }
-            write_recorded_frame(self.root, frame, image, extension, sources)
+            self.writer.store_generation(
+                context.metadata["generation_id"], context.metadata["step_activations"],
+                lambda name: uploaded_source(name).read_bytes(),
+            )
+            self.writer.commit(frame, image, extension)
             self._previous_applications = applications
-            self.count += 1
 
-    def status(self) -> dict[str, Any]:
+    def status(self) -> dict[str, object]:
         # Count is published after append commits; export must not block status.
         return {"run_id": self.run_id, "recorded_count": self.count}
 
-    def read(self, *, run_id: str, after: int) -> dict[str, Any]:
+    def read(self, *, run_id: str, after: int) -> dict[str, object]:
+        """Up to a batch of committed frames, and the generations and sources they name."""
         with self._lock:
             if run_id != self.run_id:
                 raise ValueError("recording belongs to another run")
-            if type(after) is not int or not 0 <= after <= self.count:
+            recorded_count = self.count
+            if type(after) is not int or not 0 <= after <= recorded_count:
                 raise ValueError("recording cursor is outside the committed history")
-            entries = (
-                json.loads((self.root / RECORDING_MANIFEST_NAME).read_text())["frames"]
-                if self.count else []
-            )
-            frames = []
-            names: set[str] = set()
-            for entry in entries[after:after + 8]:
-                frame_id = entry["frame_id"]
-                image_path = self.root / entry["image_path"]
-                frame = json.loads((self.root / "perception" / frame_id / "perception.json").read_text())
-                if CONTROL_APPLICATION_CHANGE_FIELD in entry:
-                    frame[CONTROL_APPLICATION_CHANGE_FIELD] = entry[CONTROL_APPLICATION_CHANGE_FIELD]
-                names |= uploaded_sources(frame["step_activations"])
-                frames.append({
-                    "frame": frame,
-                    "image_base64": base64.b64encode(image_path.read_bytes()).decode("ascii"),
-                    "image_extension": image_path.suffix,
-                })
-            sources = {
-                name: base64.b64encode((self.root / UPLOADED_SOURCES_DIR / name).read_bytes()).decode("ascii")
-                for name in sorted(names)
-            }
-            return {**self.status(), "after": after, "frames": frames, "sources": sources}
+            stop = min(after + TRANSPORT_BATCH, recorded_count)
+            start = self.writer.offsets[after] if after < recorded_count else self.writer.size
+            end = self.writer.offsets[stop] if stop < recorded_count else self.writer.size
+        # Committed lines and files never change, so they are read without the lock.
+        frames = _committed_lines(self.root / RECORDING_ENTRIES_NAME, start, end)
+        generations = {
+            generation_id: json.loads((self.root / GENERATIONS_DIR / f"{generation_id}.json").read_text(encoding="utf-8"))
+            for generation_id in {frame["generation_id"] for frame in frames}
+        }
+        names = sorted({name for steps in generations.values() for name in uploaded_sources(steps)})
+        return {
+            "run_id": self.run_id, "recorded_count": recorded_count, "after": after,
+            "frames": [{
+                "frame": frame,
+                "image_base64": _base64(self.root / frame["image_path"]),
+                "image_extension": Path(frame["image_path"]).suffix,
+            } for frame in frames],
+            "generations": generations,
+            "sources": {name: _base64(self.root / UPLOADED_SOURCES_DIR / name) for name in names},
+        }
+
+
+def _committed_lines(path: Path, start: int, end: int) -> list[dict[str, object]]:
+    if start == end:
+        return []
+    with path.open("rb") as entries:
+        entries.seek(start)
+        return [json.loads(line) for line in entries.read(end - start).splitlines()]
+
+
+def _base64(path: Path) -> str:
+    return base64.b64encode(path.read_bytes()).decode("ascii")

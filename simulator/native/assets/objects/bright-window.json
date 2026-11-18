@@ -1,0 +1,10 @@
+{
+  "visuals": [
+    {"type": "box", "x": 0, "y": 1.12, "z": 0, "width": 0.86, "depth": 0.012, "height": 1.08, "rotationRadians": 0, "material": "window-light"},
+    {"type": "box", "x": -0.44, "y": 1.08, "z": 0.01, "width": 0.028, "depth": 0.02, "height": 1.16, "rotationRadians": 0, "material": "black-metal"},
+    {"type": "box", "x": 0.44, "y": 1.08, "z": 0.01, "width": 0.028, "depth": 0.02, "height": 1.16, "rotationRadians": 0, "material": "black-metal"},
+    {"type": "box", "x": 0, "y": 1.08, "z": 0.01, "width": 0.91, "depth": 0.02, "height": 0.03, "rotationRadians": 0, "material": "black-metal"},
+    {"type": "box", "x": 0, "y": 2.18, "z": 0.01, "width": 0.91, "depth": 0.02, "height": 0.03, "rotationRadians": 0, "material": "black-metal"}
+  ],
+  "collision": null
+}

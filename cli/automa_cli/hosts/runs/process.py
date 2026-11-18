@@ -3,20 +3,20 @@
 from __future__ import annotations
 
 import os
-import shlex
 import signal
 import subprocess
 import sys
 import time
 from contextlib import nullcontext
 from pathlib import Path
-from typing import Any, Literal
+from typing import Literal
 
 from autonomy.runtime.session import RunConfiguration
 
-from ...shared.io.processes import pid_alive, reap_on_exit
+from ...shared.io.processes import command_tokens, command_option_matches, pid_alive, reap_on_exit
 from ...shared.paths import ROOT
-from .models import WORKER_MODULE
+from .lifecycle import keep
+from .models import RunState, WORKER_MODULE
 from .store import mark_automation_startup_error, read_run_state
 
 
@@ -44,10 +44,7 @@ def automation_command_matches_host(command: str, host_name: str) -> bool:
     if not host_name or not str(host_name).strip():
         return False
     host_key = str(host_name).strip()
-    try:
-        tokens = shlex.split(command)
-    except ValueError:
-        return False
+    tokens = command_tokens(command)
     if not tokens:
         return False
     if not any(
@@ -55,14 +52,7 @@ def automation_command_matches_host(command: str, host_name: str) -> bool:
         for index in range(len(tokens) - 1)
     ):
         return False
-    for index, token in enumerate(tokens):
-        if token == "--name":
-            if index + 1 < len(tokens) and tokens[index + 1] == host_key:
-                return True
-        elif token.startswith("--name="):
-            if token[len("--name=") :] == host_key:
-                return True
-    return False
+    return command_option_matches(tokens, "--name", host_key)
 
 
 def process_command(pid: int) -> str | None:
@@ -131,7 +121,7 @@ def worker_command(
 
 def launch_worker(
     command: list[str], *, log_path: Path | None
-) -> subprocess.Popen[Any]:
+) -> subprocess.Popen[str]:
     """Start one detached worker and release the parent's log descriptor."""
 
     target = (
@@ -173,21 +163,31 @@ def _wait_for_exit(pid: int, *, timeout_s: float, interval_s: float) -> bool:
     return False
 
 
-def _state_dict(automation_dir: Path) -> dict[str, Any]:
-    state = read_run_state(automation_dir)
-    return state if isinstance(state, dict) else {}
+def _failed(reason: str, state: RunState | None) -> dict[str, object]:
+    return {"status": "failed", "reason": reason, "state": state.to_dict() if state is not None else {}}
 
 
-def _failed(reason: str, state: dict[str, Any]) -> dict[str, Any]:
-    return {"status": "failed", "reason": reason, "state": state}
+def _record_startup_exit(automation_dir: Path, reason: str, exit_code: int, begun: int | None) -> None:
+    """Record a worker that exited before its session was ready, unless a stop claimed the run."""
+
+    def write() -> None:
+        mark_automation_startup_error(
+            automation_dir=automation_dir, error=reason, exit_code=exit_code,
+        )
+
+    if begun is None:
+        write()
+        return
+    keep(automation_dir, begun, write)
 
 
 def wait_for_automation_startup(
     *,
-    process: subprocess.Popen[Any],
+    process: subprocess.Popen[str],
     automation_dir: Path,
     timeout_s: float,
-) -> dict[str, Any]:
+    begun: int | None = None,
+) -> dict[str, object]:
     """Wait until the worker's runtime session is running, or the worker ends its run.
 
     Only the record this worker's pid wrote counts. While the worker is alive,
@@ -201,20 +201,20 @@ def wait_for_automation_startup(
     while True:
         # Read the record after the exit check, so an exited worker's last write is seen.
         exit_code = process.poll()
-        state = _state_dict(automation_dir)
-        own = state.get("pid") == process.pid
-        status = state.get("status") if own else None
-        session = state.get("session") if own and isinstance(state.get("session"), dict) else {}
+        state = read_run_state(automation_dir) or RunState()
+        own = state.pid == process.pid
+        status = state.status if own else None
+        session = (state.session or {}) if own else {}
         if status == "completed":
-            return {"status": "completed", "processed_count": state.get("processed_count", 0), "state": state}
+            return {"status": "completed", "processed_count": state.processed_count, "state": state.to_dict()}
         if status in {"stopped", "error"}:
-            return _failed(state.get("error") or state.get("stop_reason") or f"the run {status}", state)
+            return _failed(state.error or state.stop_reason or f"the run {status}", state)
         if exit_code is not None:
             reason = f"automation worker exited with code {exit_code} before the runtime session completed"
-            mark_automation_startup_error(automation_dir=automation_dir, error=reason, exit_code=exit_code)
-            return _failed(reason, _state_dict(automation_dir))
+            _record_startup_exit(automation_dir, reason, exit_code, begun)
+            return _failed(reason, read_run_state(automation_dir))
         if session.get("status") == "running":
-            return {"status": "ready", "processed_count": session.get("processed_decisions", 0), "state": state}
+            return {"status": "ready", "processed_count": session.get("processed_decisions", 0), "state": state.to_dict()}
         if time.monotonic() >= deadline:
             return _failed(
                 f"runtime session is {session.get('status') or 'missing'} and the worker is alive "

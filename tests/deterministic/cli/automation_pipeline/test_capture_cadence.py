@@ -13,6 +13,7 @@ from cli.automa_cli.hosts.runs.service import run_host_automation
 from cli.automa_cli.releases.paths import controller_bundle_paths
 from tests.deterministic.cli.automation_pipeline.cadence_fixtures import GatedPerception
 from tests.shared.implementations.runtime.wait import wait_until
+from tests.shared.autonomy.runtime.recording_fixtures import read_recording_entries
 from tests.shared.cli.automation_pipeline.pipeline_fixtures import (
     HOST_NAME, _FakeCar, _write_activations, chase_runtime, staged_runners,
 )
@@ -86,13 +87,13 @@ class ChaseCaptureCadenceTests(unittest.TestCase):
             self.assertEqual(state["frames_dropped"], state["frames_received"] - state["processed_count"])
             self.assertEqual(state["num_decisions"], state["processed_count"])
             self.assertEqual(state["session"]["processed_decisions"], 2)
-            records = [json.loads(p.read_text()) for p in Path(state["run_dir"]).glob("perception/*/perception.json")]
+            records = read_recording_entries(Path(state["run_dir"]))
             records.sort(key=lambda r: r["context"]["metadata"]["capture_sequence"])
             self.assertEqual([r["context"]["metadata"]["simulator_frame_index"] for r in records], [100, 103])
             self.assertEqual(records[-1]["context"]["metadata"]["simulation_epoch"], "chase-run:test")
-            self.assertEqual(result.state["frames_received"], 4)
-            self.assertEqual(result.state["processed_count"], 2)
-            self.assertEqual(result.state["recorded_count"], 2)
+            self.assertEqual(result.state.frames_received, 4)
+            self.assertEqual(result.state.processed_count, 2)
+            self.assertEqual(result.state.recorded_count, 2)
 
     def test_bounded_completion_does_not_wait_after_the_worker_finishes(self) -> None:
         perception = GatedPerception(1)

@@ -13,6 +13,7 @@ from autonomy.decision_cycle.memory.interface import (
 )
 from autonomy.decision_cycle.memory.runner import MemoryRunner
 from autonomy.decision_cycle.observation.values import Observation
+from autonomy.decision_cycle.perception.evidence.values import PerceivedThing, ViewLocation
 from tests.shared.autonomy.decision_cycle.memory.activation_fixtures import _EvidenceMemory, _RecordingMemory
 
 # Selection order of ``two_plugin_runner``: the publisher first, so the last
@@ -74,13 +75,7 @@ def two_plugin_runner(*, frames: int = 1) -> tuple[MemoryRunner, dict[str, Any]]
             created_at_ms=timestamp_ms,
             sensor_frame={},
             things=(
-                {
-                    "thing_id": "boundary",
-                    "kind": "floor_boundary",
-                    "label": "boundary",
-                    "confidence": 0.9,
-                    "location": {"frame": "image", "zone": "center"},
-                },
+                PerceivedThing("boundary", "floor_boundary", "boundary", ViewLocation("image", "center"), 0.9),
             ),
         )
         runner.update(

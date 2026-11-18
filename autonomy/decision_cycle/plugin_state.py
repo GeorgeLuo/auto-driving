@@ -2,7 +2,7 @@
 
 History that later frames need lives in shared memory (``autonomy/shared_memory.py``);
 an instance holds configuration and resources set when it was constructed.
-Each step runner calls its plugins inside ``unchanged_instance``, which fails
+``StepRunner`` wraps plugin calls with ``unchanged_instance``, which fails
 the call with ``RetainedStateError`` when the instance's attributes differ
 after it.
 
@@ -27,7 +27,7 @@ CONTAINERS = (dict, *SEQUENCES, *SETS)
 
 
 class RetainedStateError(RuntimeError):
-    """A plugin call changed its instance; the state belongs in shared memory."""
+    """A plugin call retained instance state or changed keys it does not own."""
 
 
 @contextmanager

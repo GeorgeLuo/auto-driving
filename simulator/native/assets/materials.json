@@ -1,0 +1,134 @@
+{
+  "floor": {
+    "baseColor": [214, 206, 194],
+    "texture": {"kind": "grain", "seed": 0, "scale": 1.25}
+  },
+  "obstacle": {
+    "baseColor": [184, 135, 82],
+    "texture": {"kind": "grain", "seed": 0, "scale": 1.25}
+  },
+  "wall": {
+    "baseColor": [243, 240, 232],
+    "texture": {"kind": "none"}
+  },
+  "sky": {
+    "baseColor": [216, 214, 207],
+    "texture": {"kind": "none"}
+  },
+  "room-carpet": {
+    "baseColor": [155, 145, 133],
+    "texture": {"kind": "carpet", "seed": 113, "scale": 1.05}
+  },
+  "walnut": {
+    "baseColor": [133, 84, 53],
+    "texture": {"kind": "wood", "seed": 31, "scale": 0.86, "strength": 0.88}
+  },
+  "brown-leather": {
+    "baseColor": [104, 59, 44],
+    "texture": {"kind": "leather", "seed": 72, "scale": 0.83}
+  },
+  "bag-fabric": {
+    "baseColor": [38, 40, 43],
+    "texture": {"kind": "fabric", "seed": 23, "scale": 0.62}
+  },
+  "pocket-fabric": {
+    "baseColor": [50, 54, 56],
+    "texture": {"kind": "fabric", "seed": 75, "scale": 0.7}
+  },
+  "strap": {
+    "baseColor": [26, 28, 28],
+    "texture": {"kind": "fabric", "seed": 62, "scale": 0.55, "strength": 0.64}
+  },
+  "shipping-cardboard": {
+    "baseColor": [179, 128, 69],
+    "texture": {"kind": "cardboard", "seed": 28, "scale": 1.1, "print": true, "tape": true}
+  },
+  "blue-rug": {
+    "baseColor": [37, 70, 110],
+    "texture": {"kind": "patterned_rug", "seed": 49, "scale": 0.76}
+  },
+  "baseboard": {
+    "baseColor": [222, 212, 195],
+    "texture": {"kind": "wood", "seed": 2, "scale": 1.9, "strength": 0.26}
+  },
+  "seat-fabric": {
+    "baseColor": [133, 64, 52],
+    "texture": {"kind": "fabric", "seed": 18, "scale": 1.04}
+  },
+  "case-label": {
+    "baseColor": [255, 251, 246],
+    "texture": {"kind": "image", "file": "textures/case-label.png"}
+  },
+  "shag-carpet": {
+    "baseColor": [176, 158, 142],
+    "texture": {"kind": "carpet", "seed": 19, "scale": 0.34, "strength": 0.88}
+  },
+  "quilt-blue": {
+    "baseColor": [138, 152, 164],
+    "texture": {"kind": "fabric", "seed": 41, "scale": 0.72, "strength": 0.8}
+  },
+  "black-metal": {
+    "baseColor": [24, 26, 28],
+    "texture": {"kind": "none"}
+  },
+  "black-wood": {
+    "baseColor": [34, 28, 24],
+    "texture": {"kind": "wood", "seed": 8, "scale": 0.7, "strength": 0.35}
+  },
+  "caramel-leather": {
+    "baseColor": [186, 128, 72],
+    "texture": {"kind": "leather", "seed": 81, "scale": 0.48, "strength": 1}
+  },
+  "chair-black": {
+    "baseColor": [32, 34, 36],
+    "texture": {"kind": "fabric", "seed": 15, "scale": 0.4, "strength": 0.7}
+  },
+  "desk-white": {
+    "baseColor": [236, 234, 228],
+    "texture": {"kind": "none"}
+  },
+  "monitor-black": {
+    "baseColor": [22, 24, 28],
+    "texture": {"kind": "none"}
+  },
+  "door-wood": {
+    "baseColor": [150, 98, 54],
+    "texture": {"kind": "wood", "seed": 44, "scale": 0.95, "strength": 0.82}
+  },
+  "trim-wood": {
+    "baseColor": [102, 66, 40],
+    "texture": {"kind": "wood", "seed": 11, "scale": 1.6, "strength": 0.62}
+  },
+  "plain-cardboard": {
+    "baseColor": [186, 142, 86],
+    "texture": {"kind": "cardboard", "seed": 17, "scale": 0.42, "strength": 0.85, "print": false, "tape": false}
+  },
+  "carton-print": {
+    "baseColor": [255, 255, 255],
+    "texture": {"kind": "image", "file": "textures/carton-print.png", "scale": 1}
+  },
+  "chevron-rug": {
+    "baseColor": [255, 255, 255],
+    "texture": {"kind": "image", "file": "textures/chevron-rug.png", "scale": 1}
+  },
+  "cable-black": {
+    "baseColor": [16, 16, 18],
+    "texture": {"kind": "none"}
+  },
+  "pack-webbing": {
+    "baseColor": [78, 80, 82],
+    "texture": {"kind": "fabric", "seed": 62, "scale": 0.4, "strength": 0.5}
+  },
+  "buckle": {
+    "baseColor": [92, 94, 98],
+    "texture": {"kind": "none"}
+  },
+  "window-light": {
+    "baseColor": [255, 252, 246],
+    "texture": {"kind": "none"}
+  },
+  "hallway-dark": {
+    "baseColor": [18, 20, 24],
+    "texture": {"kind": "none"}
+  }
+}

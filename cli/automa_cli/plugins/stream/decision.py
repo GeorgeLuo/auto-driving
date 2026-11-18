@@ -3,9 +3,11 @@
 from __future__ import annotations
 
 from copy import deepcopy
-from typing import Any, Callable
+from typing import Callable
 
 from autonomy.decision_cycle.activation import DECISION_STEPS
+from autonomy.runtime.frame_loop import FramePublication
+from autonomy.runtime.report import HostReport
 
 from ...hosts.publications.decision import (
     DecisionSurfaceError,
@@ -17,7 +19,6 @@ from ...hosts.publications.frame_publication import step_unavailable
 from ...hosts.publications.host_publications import fetch_frame_publication
 from ...hosts.discovery import runtime_base_url
 from ...hosts.errors import RuntimeHostError
-from ...shared.timestamps import timestamp_ms
 from ...releases.paths import bundle_paths
 from .models import StreamEvent, StreamResult
 from .polling import poll_events, preflight_failure, unavailable_probe
@@ -58,75 +59,93 @@ def stream_decision(
         )
 
     view = StreamView(host_name, base_url=base_url, timeout_s=timeout_s) if serve_view else None
-
-    def unreadable(detail: str) -> DecisionSurfaceError:
-        return DecisionSurfaceError(
-            "runtime_decision_unavailable",
-            f"Could not read the decision publication at {base_url}: {detail}",
-            host_name=host_name,
-            details={"reason": "missing", "transport": detail},
-        )
-
-    def read_frame(publication: dict[str, Any] | None = None) -> dict[str, Any]:
-        try:
-            if publication is None:
-                publication = fetch_frame_publication(base_url, timeout_s=timeout_s)
-        except (ConnectionError, OSError) as exc:
-            raise unreadable(str(exc)) from exc
-        normalized = accept_decision_publication(
-            publication, host_name=host_name, now_ms=timestamp_ms(),
-        )
-        report = normalized["report"]
-        activation = report.values["activation"]
-        cycle = report.cycle
-        frame = {
-            "schema": f"host_{step}_stream",
-            "host_name": report.host_name,
-            "run_id": report.run_id,
-            "generation_id": report.generation_id,
-            "frame_id": report.frame_id,
-            "frame_index": report.frame_index,
-            "timestamp_ms": report.timestamp_ms,
-            # The host computes the result age on its own clock.
-            "freshness": {"age_ms": normalized["result_age_ms"], "max_age_ms": normalized["max_age_ms"]},
-            "plugins": list((activation["steps"].get(step) or {}).get("plugins") or []),
-            "record": deepcopy(cycle.get(step)),
-            # The cycle's timing; a host that does not publish it leaves None.
-            "timing": deepcopy(report.values.get("timing")),
-        }
-        if step == "action":
-            frame["application"] = report.application.to_dict()
-        if step == "proposal":
-            frame["observation"] = deepcopy(cycle["observation"])
-            frame["memory"] = deepcopy(cycle["memory"])
-        unavailable = step_unavailable(publication, step)
-        if unavailable is None:
-            return {**frame, "status": "live"}
-        return {**frame, "status": unavailable[0], "error": unavailable[1]}
-
-    def probe() -> tuple[dict[str, Any], None]:
-        publication = None
-        try:
-            if view is not None:
-                publication, error = view.read_observation()
-                view.publish(publication)
-                if error is not None:
-                    raise unreadable(error)
-            return read_frame(publication), None
-        except DecisionSurfaceError as exc:
-            return _error_probe(exc), None
-
-    def outbound(event: StreamEvent) -> None:
-        emit(with_view(view, event))
-
     try:
-        return poll_events(step=step, probe=probe, refresh_s=refresh_s, once=once, emit=outbound)
+        return poll_events(
+            step=step,
+            probe=lambda: _probe_decision(
+                step, view=view, host_name=host_name, base_url=base_url, timeout_s=timeout_s,
+            ),
+            refresh_s=refresh_s, once=once, emit=lambda event: emit(with_view(view, event)),
+        )
     finally:
         if view is not None:
             view.close()
 
 
-def _error_probe(exc: DecisionSurfaceError) -> dict[str, Any]:
+def _unreadable(base_url: str, host_name: str, detail: str) -> DecisionSurfaceError:
+    return DecisionSurfaceError(
+        "runtime_decision_unavailable",
+        f"Could not read the decision publication at {base_url}: {detail}",
+        host_name=host_name,
+        details={"reason": "missing", "transport": detail},
+    )
+
+
+def _read_decision_frame(
+    step: str,
+    publication: FramePublication | None,
+    *,
+    host_name: str,
+    base_url: str,
+    timeout_s: float,
+) -> tuple[dict[str, object], HostReport]:
+    try:
+        if publication is None:
+            publication = fetch_frame_publication(base_url, timeout_s=timeout_s)
+    except (ConnectionError, OSError) as exc:
+        raise _unreadable(base_url, host_name, str(exc)) from exc
+    report = accept_decision_publication(publication, host_name=host_name)
+    steps = report.values.activation.steps
+    record = report.cycle.record(step)
+    frame = {
+        "schema": f"host_{step}_stream",
+        "host_name": report.host_name,
+        "run_id": report.run_id,
+        "generation_id": report.generation_id,
+        "frame_id": report.frame_id,
+        "frame_index": report.frame_index,
+        "timestamp_ms": report.timestamp_ms,
+        # The host computes the result age on its own clock.
+        "freshness": {"age_ms": publication.result_age_ms, "max_age_ms": publication.stale_after_ms},
+        "plugins": list((steps.get(step) or {}).get("plugins") or []),
+        "record": None if record is None else record.to_dict(),
+        # The cycle's timing; a host that does not publish it leaves None.
+        "timing": deepcopy(report.values.timing),
+    }
+    if step == "action":
+        frame["application"] = report.application.to_dict()
+    if step == "proposal":
+        frame["observation"] = None if report.cycle.observation is None else report.cycle.observation.to_dict()
+        frame["memory"] = None if report.cycle.memory is None else report.cycle.memory.to_dict()
+    unavailable = step_unavailable(publication, step)
+    if unavailable is None:
+        return {**frame, "status": "live"}, report
+    return {**frame, "status": unavailable[0], "error": unavailable[1]}, report
+
+
+def _probe_decision(
+    step: str,
+    *,
+    view: StreamView | None,
+    host_name: str,
+    base_url: str,
+    timeout_s: float,
+) -> tuple[dict[str, object], HostReport | None]:
+    publication = None
+    try:
+        if view is not None:
+            publication, error = view.read_observation()
+            view.publish(publication)
+            if error is not None:
+                raise _unreadable(base_url, host_name, error)
+        return _read_decision_frame(
+            step, publication, host_name=host_name, base_url=base_url, timeout_s=timeout_s,
+        )
+    except DecisionSurfaceError as exc:
+        return _error_probe(exc), None
+
+
+def _error_probe(exc: DecisionSurfaceError) -> dict[str, object]:
     """A decision error as a stream probe: ``error`` is its text and ``error_code`` its code."""
 
     return {

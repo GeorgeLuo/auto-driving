@@ -3,6 +3,9 @@
 from __future__ import annotations
 
 import unittest
+import json
+from autonomy.fields import FieldError
+from autonomy.shared_memory import shared_memory_document, shared_memory_from_document
 
 import numpy as np
 
@@ -23,6 +26,28 @@ class SharedMemoryValueTests(unittest.TestCase):
 
         self.assertTrue(restored.pixels.flags.writeable)
         self.assertEqual(int(image.pixels[0, 0]), 0)
+
+    def test_stored_images_load_from_seeds_with_exact_shape_dtype_and_bytes(self) -> None:
+        for pixels in (np.arange(6, dtype=np.uint8).reshape(2, 3), np.zeros((0, 3), dtype=np.float32), np.array(7, dtype=np.int16)):
+            with self.subTest(shape=pixels.shape):
+                image = StoredImage(pixels)
+                seed = json.loads(json.dumps(shared_memory_document({"perception.motion_tracks.previous": image})))
+                restored = shared_memory_from_document(seed)["perception.motion_tracks.previous"]
+                self.assertEqual(restored, image)
+                self.assertTrue(restored.pixels.flags.writeable)
+                self.assertFalse(np.shares_memory(restored.pixels, pixels))
+
+    def test_stored_image_rejects_coerced_shape_and_noncanonical_encoding(self) -> None:
+        original = StoredImage(np.arange(6, dtype=np.uint8).reshape(2, 3)).to_dict()
+        for field, value, error_field in (
+            ("shape", [True, 6], "shape.0"), ("shape", [2, "3"], "shape.1"),
+            ("shape", [2, 3.0], "shape.1"), ("shape", [2, -3], "shape.1"),
+            ("dtype", "uint8", "dtype"), ("dtype", "|O", "dtype"),
+            ("base64", "AA==", "base64"), ("base64", "!!!!!!", "base64"),
+        ):
+            with self.subTest(field=field, value=value), self.assertRaises(FieldError) as invalid:
+                StoredImage.from_dict({**original, field: value})
+            self.assertEqual(invalid.exception.field_name, error_field)
 
     def test_a_history_counter_takes_only_a_json_integer(self) -> None:
         """Regression: plugins read "9", True or 9.5 as a next id."""

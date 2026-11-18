@@ -11,6 +11,11 @@ from unittest.mock import patch
 
 from PIL import Image
 
+from autonomy.decision_cycle.cycle import DecisionCycleResult
+from autonomy.decision_cycle.proposal.result import ProposalResult
+from autonomy.decision_cycle.proposal.values import ActionProposal
+from autonomy.decision_cycle.observation.values import Observation
+from autonomy.decision_cycle.memory.interface import MemoryReport, MemoryPluginReport
 from autonomy.decision_cycle.activation import DECISION_STEPS, STEPS, StepActivation, step_activation
 from autonomy.decision_cycle.perception.evidence.values import PerceptionEvidenceBatch, PerceptionSignal
 from autonomy.decision_cycle.perception.plugin import PerceptionPluginContract
@@ -68,8 +73,8 @@ def _record_steps(frames: Path, steps: dict[int, dict[str, StepActivation]]) -> 
     return frames
 
 
-def _source(metadata: dict | None = None) -> ImageSource:
-    frame = ReplayFrame("automation", "frame-0", 0, 0, 0, None, metadata=metadata or {})
+def _source(selections: dict[str, StepActivation | None] | None = None) -> ImageSource:
+    frame = ReplayFrame("automation", "frame-0", 0, 0, 0, None, selections=selections or {})
     return ImageSource(source_path=Path("automation"), source_id="automation", frames=(frame,))
 
 
@@ -111,23 +116,31 @@ class StepInspectTests(unittest.TestCase):
                 self.assertIn(f"{step.capitalize()} inspect", text)
                 self.assertIn("Memory: plugin=" if step == "memory" else f"{step.capitalize()}: status=", text)
 
+    def test_inspect_text_keeps_the_cycle_typed_for_every_step(self) -> None:
+        with (
+            patch.object(DecisionCycleResult, "to_dict", side_effect=AssertionError("cycle exported for rendering")),
+            patch.object(ActionProposal, "from_dict", side_effect=AssertionError("candidate reparsed for rendering")),
+        ):
+            for step in INSPECT_STEPS:
+                with self.subTest(step=step):
+                    result = inspect_step(step, source=self.frames)
+                    self.assertEqual(result.exit_code, 0, result.message)
+                    self.assertIn(f"{step.capitalize()} inspect", result.message)
+
     def test_proposal_lines_show_observation_each_plugin_and_only_publisher_evidence(self) -> None:
         retained = [
             {"record_id": f"r-{index}", "kind": "obstacle", "confidence": None,
              "origin": {"frame_id": "frame-0"}}
             for index in range(13)
         ]
-        memory = {
-            "plugins": [
-                {"plugin_id": "model", "state": {"health": "healthy", "records": [{"record_id": "wrong"}]}},
-                {"plugin_id": "ledger", "state": {
-                    "health": "healthy", "record_count": 13, "epoch_id": "epoch-1", "records": retained,
-                }},
-            ],
-            "evidence_publisher": "ledger",
-        }
+        memory = MemoryReport("memory_report", (
+            MemoryPluginReport("model", {"health": "healthy", "records": [{"record_id": "wrong"}]}),
+            MemoryPluginReport("ledger", {
+                "health": "healthy", "record_count": 13, "epoch_id": "epoch-1", "records": retained,
+            }),
+        ), evidence_publisher="ledger")
         lines = format_step_record(
-            "proposal", {"status": "ready"}, observation={"observation_id": "obs-1"}, memory=memory,
+            "proposal", ProposalResult("frame-1", "ok"), observation=Observation("obs-1", 100, {}), memory=memory,
         )
         self.assertIn("Observation: obs-1", lines)
         self.assertIn("Memory: plugin=model health=healthy records=0 epoch=None", lines)
@@ -136,7 +149,7 @@ class StepInspectTests(unittest.TestCase):
         self.assertEqual(len([line for line in lines if line.startswith("Retained:")]), 12)
         self.assertIn("Retained: record_id=r-0 kind=obstacle confidence=none frame_id=frame-0", lines)
         self.assertNotIn("wrong", "\n".join(lines))
-        absent = format_step_record("proposal", {"status": "ready"})
+        absent = format_step_record("proposal", ProposalResult("frame-1", "ok"))
         self.assertIn("Observation: none", absent)
         self.assertIn("Memory: publisher=none", absent)
 
@@ -283,7 +296,7 @@ class StepInspectTests(unittest.TestCase):
         self.assertIn("nope", unknown.message)
     def test_a_recording_that_disabled_a_selectable_step_replays_without_its_plugins(self) -> None:
         """A recorded absent slot stays absent, even when its step is clearable."""
-        replay = StepReplay(_source({"steps": dict.fromkeys(PRESET_STEPS)}), steps=PRESET_STEPS)
+        replay = StepReplay(_source(dict.fromkeys(PRESET_STEPS)), steps=PRESET_STEPS)
         for step in PRESET_STEPS:
             with self.subTest(step=step):
                 self.assertIsNone(replay.activations[step])
@@ -293,17 +306,17 @@ class StepInspectTests(unittest.TestCase):
         """Regression: a source that records selections only per frame built default
         runners, and frame 0's restage reset them over the map, replacing the ledger."""
 
-        recorded = _local("memory", {"recording_test": RECORDING_SPEC}).to_payload()
-        source = _source({"steps": {"memory": recorded}})
+        recorded = _local("memory", {"recording_test": RECORDING_SPEC})
+        source = _source({"memory": recorded})
         replay = StepReplay(source, steps=("memory",))
-        self.assertEqual(replay.activations["memory"].to_payload(), recorded)
+        self.assertEqual(replay.activations["memory"], recorded)
         runner = replay.runners["memory"]
-        replay.shared_memory["recording_test.state"] = {"epoch": 7, "records": ()}
+        replay.shared_memory["memory.recording_test.state"] = {"epoch": 7, "records": ()}
 
         replay.restage(source.frames[0])
 
         self.assertIs(replay.runners["memory"], runner)
-        self.assertEqual(replay.shared_memory["recording_test.state"]["epoch"], 7)
+        self.assertEqual(replay.shared_memory["memory.recording_test.state"]["epoch"], 7)
 
     def test_every_step_restages_the_selection_each_frame_records(self) -> None:
         local = _local("perception", LOCAL_PERCEPTION)
@@ -318,16 +331,16 @@ class StepInspectTests(unittest.TestCase):
                         [[run["plugin_id"] for run in item["record"]["plugin_runs"]] for item in report["frames"]],
                         expected,
                     )
-    def test_cli_has_one_inspect_group_and_no_decision_command(self) -> None:
+    def test_cli_inspect_spellings_share_flags_and_no_decision_command(self) -> None:
         for step in INSPECT_STEPS:
             with self.subTest(step=step):
                 flags = invoke_automa("plugins", "inspect", step, "--help").stdout
-                for flag in ("--plugin", "--frame", "--record", "--json", "--max-frames", "--shared-memory"):
+                for flag in ("--plugin", "--frame", "--record", "--json", "--max-frames", "--shared-memory", "--manifest"):
                     self.assertIn(flag, flags)
                 for removed in ("--name", "--frames", "--interval-s", "--timeout-s"):
                     self.assertNotIn(removed, flags)
-                old_order = invoke_automa("plugins", step, "inspect", "--help", check=False)
-                self.assertEqual(old_order.returncode, 2)
+                step_first = invoke_automa("plugins", step, "inspect", "--help").stdout
+                self.assertIn("--manifest", step_first)
                 removed_host = invoke_automa("hosts", step, "inspect", "--help", check=False)
                 self.assertEqual(removed_host.returncode, 2)
         removed = invoke_automa("vehicles", "decision", "help", check=False)

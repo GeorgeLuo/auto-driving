@@ -1,0 +1,9 @@
+{
+  "visuals": [
+    {"type": "box", "x": 0, "y": 0, "z": 0, "width": 0.78, "depth": 0.04, "height": 1.96, "rotationRadians": 0, "material": "door-wood"},
+    {"type": "box", "x": 0, "y": 0.18, "z": 0.022, "width": 0.58, "depth": 0.012, "height": 0.72, "rotationRadians": 0, "material": "door-wood"},
+    {"type": "box", "x": 0, "y": 1.05, "z": 0.022, "width": 0.58, "depth": 0.012, "height": 0.72, "rotationRadians": 0, "material": "door-wood"},
+    {"type": "box", "x": 0.26, "y": 0.92, "z": 0.03, "width": 0.14, "depth": 0.02, "height": 0.025, "rotationRadians": 0, "material": "black-metal"}
+  ],
+  "collision": {"type": "box", "width": 0.78, "depth": 0.08}
+}

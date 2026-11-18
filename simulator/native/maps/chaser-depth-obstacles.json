@@ -1,0 +1,119 @@
+{
+  "scenarioId": "chaser-depth-obstacles",
+  "map": {
+    "columns": 9,
+    "rows": 8,
+    "obstacles": [
+      {
+        "id": "room-wall-north",
+        "x": 0,
+        "z": -4,
+        "width": 9.18,
+        "depth": 0.18,
+        "height": 2.4,
+        "rotationRadians": 0,
+        "boundary": true
+      },
+      {
+        "id": "room-wall-south",
+        "x": 0,
+        "z": 4,
+        "width": 9.18,
+        "depth": 0.18,
+        "height": 2.4,
+        "rotationRadians": 0,
+        "boundary": true
+      },
+      {
+        "id": "room-wall-west",
+        "x": -4.5,
+        "z": 0,
+        "width": 0.18,
+        "depth": 8.18,
+        "height": 2.4,
+        "rotationRadians": 0,
+        "boundary": true
+      },
+      {
+        "id": "room-wall-east",
+        "x": 4.5,
+        "z": 0,
+        "width": 0.18,
+        "depth": 8.18,
+        "height": 2.4,
+        "rotationRadians": 0,
+        "boundary": true
+      },
+      {
+        "id": "near-short-block",
+        "x": -0.75,
+        "z": 1.8,
+        "width": 0.8,
+        "depth": 0.45,
+        "height": 0.28,
+        "rotationRadians": -0.17453292519943295,
+        "boundary": false
+      },
+      {
+        "id": "middle-medium-block",
+        "x": 0.15,
+        "z": 0.1,
+        "width": 1.05,
+        "depth": 0.55,
+        "height": 0.68,
+        "rotationRadians": 0.12217304763960307,
+        "boundary": false
+      },
+      {
+        "id": "far-tall-block",
+        "x": 1.1,
+        "z": -2.2,
+        "width": 1.25,
+        "depth": 0.65,
+        "height": 1.12,
+        "rotationRadians": 0.24434609527920614,
+        "boundary": false
+      }
+    ]
+  },
+  "spawn": {
+    "x": 0,
+    "z": 3.05,
+    "headingRadians": -1.5707963267948966
+  },
+  "vehicle": {
+    "speedUnitsPerFrame": 0.037,
+    "wheelbase": 0.46,
+    "radius": 0.259422435421457,
+    "maxSteeringAngleRadians": 0.6457718232379019
+  },
+  "fps": 60,
+  "camera": {
+    "height": 0.16,
+    "pitchDownRadians": 0.048869219055841226,
+    "verticalFovDegrees": 69.93683003268463,
+    "near": 0.04,
+    "far": 14,
+    "barrelDistortion": 0.12,
+    "vignette": 0.1
+  },
+  "materials": {
+    "floor": [
+      214,
+      206,
+      194
+    ],
+    "obstacle": [
+      184,
+      135,
+      82
+    ],
+    "wall": [
+      243,
+      240,
+      232
+    ],
+    "seed": 0,
+    "textureScale": 1.25
+  }
+}

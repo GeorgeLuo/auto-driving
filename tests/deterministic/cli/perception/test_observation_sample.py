@@ -6,14 +6,15 @@ import io
 import json
 import tempfile
 import unittest
+from dataclasses import replace
 from pathlib import Path
-from unittest.mock import Mock, patch
+from unittest.mock import patch
 from urllib.error import HTTPError, URLError
 
 from PIL import Image
 
-from autonomy.runtime.frame_loop import FRAME_TRANSACTION_SCHEMA
-from cli.automa_cli.frontend.perception_view import PerceptionView
+from autonomy.runtime.frame_loop import FRAME_TRANSACTION_SCHEMA, FramePublication
+from autonomy.runtime.report import HostReport, ReportCycle, ReportApplication, ReportValues
 from cli.automa_cli.hosts.publications import host_publications as publications
 from cli.automa_cli.hosts.views import view_feed as viewer
 
@@ -26,24 +27,33 @@ class _Response(io.BytesIO):
         self.headers = {"ETag": 'W/"test"'} if headers is None else headers
 
 
-def _publication(frame_id="first"):
+def _publication(frame_id="first") -> FramePublication:
+    return FramePublication(
+        health="healthy",
+        read_at_ms=1000,
+        result_age_ms=0,
+        stale_after_ms=1000,
+        report=HostReport(
+            host_name="fixture", run_id="run", generation_id="decision-test",
+            frame_id=frame_id, frame_index=1, timestamp_ms=900, published_at_ms=1000,
+            cycle=ReportCycle(),
+            application=ReportApplication(False, "observe_only", "idle", 0.0, 0.0),
+            values=ReportValues.from_dict({
+                "source_id": "fixture:local", "stale_after_ms": 1000, "activation": {"steps": {}}, "delivered_at_ms": None, "delivery_error": None, "receipt": None, "timing": None,
+            }),
+        ),
+    )
+
+
+def _warming() -> dict[str, object]:
     return {
         "schema": "host_frame_publication",
-        "health": "healthy",
-        "ok": True,
-        "host_name": "fixture",
-        "report": {
-            "schema": "host_report", "host_name": "fixture", "run_id": "run", "generation_id": "decision-test",
-            "cycle": {step: None for step in ("perception", "observation", "memory", "proposal", "plan", "action")},
-            "application": {"applied": False, "mode": "observe_only", "reason": "idle", "steering": 0, "throttle": 0},
-            "values": {},
-            "frame_id": frame_id,
-            "frame_index": 1,
-            "timestamp_ms": 900,
-            "published_at_ms": 1000,
-            "status": "ok",
-            "error": None,
-        },
+        "ok": False,
+        "health": "warming",
+        "read_at_ms": 1000,
+        "result_age_ms": None,
+        "stale_after_ms": 1000,
+        "report": None,
     }
 
 
@@ -53,26 +63,10 @@ def _jpeg(size, color) -> bytes:
     return buffer.getvalue()
 
 
-def _feed():
-    feed = viewer.ViewFeed.__new__(viewer.ViewFeed)
-    feed._observation_cache = publications.TransactionCache()
-    feed._observation = None
-    feed.base_url, feed.timeout_s = "http://host.invalid", 1.0
-    feed.error = None
-    feed.server = Mock()
-    feed.server.perception = PerceptionView(host_name="fixture")
-    feed.observation = viewer.ObservationPublisher(feed.server.perception)
-    feed.decision = Mock()
-    def publish(publication, jpeg):
-        feed.observation.publish(publication, jpeg)
-    feed.decision.publish_publication.side_effect = publish
-    return feed
-
-
 def _transaction(frame_id="first"):
     return {
         "schema": FRAME_TRANSACTION_SCHEMA,
-        "publication": _publication(frame_id),
+        "publication": _publication(frame_id).to_dict(),
         "image_frame_id": frame_id,
         "image_content_type": "image/jpeg",
         "image_base64": base64.b64encode(b"jpeg").decode(),
@@ -81,6 +75,16 @@ def _transaction(frame_id="first"):
 
 
 class ObservationSampleTests(unittest.TestCase):
+    def _feed(self):
+        root = Path(self.enterContext(tempfile.TemporaryDirectory()))
+        with patch.object(viewer, "runtime_view_dir", return_value=root):
+            feed = viewer.ViewFeed("fixture", base_url="http://host.invalid", timeout_s=1.0)
+        self.addCleanup(feed.stop)
+        self.assertIsNone(feed.error)
+        self.enterContext(patch("cli.automa_cli.hosts.views.decision_live.fetch_host_telemetry_latest",
+                                side_effect=ConnectionError("no telemetry")))
+        return feed
+
     def test_conditional_observation_read_reuses_image_without_downloading_it(self):
         cache = publications.TransactionCache()
         first = _Response(_transaction(), headers={"ETag": 'W/"first"'})
@@ -89,14 +93,14 @@ class ObservationSampleTests(unittest.TestCase):
             publication, jpeg = publications.fetch_frame_sample("http://host.invalid", cache=cache)
             publication, again = publications.fetch_frame_sample("http://host.invalid", cache=cache)
         self.assertIs(again, jpeg)
-        self.assertEqual(publication["read_at_ms"], 2000)
+        self.assertEqual(publication.read_at_ms, 2000)
         self.assertEqual(read.call_args.args[0].get_header("If-none-match"), 'W/"first"')
 
     def test_unavailable_transaction_invalidates_image_cache_and_can_recover(self):
         cache = publications.TransactionCache()
         unavailable = HTTPError("http://host.invalid", 503, "warming", {}, io.BytesIO(json.dumps({
             "schema": FRAME_TRANSACTION_SCHEMA,
-            "publication": {"health": "warming", "ok": False, "report": None},
+            "publication": _warming(),
             "image_base64": None,
         }).encode()))
         replies = [_Response(_transaction(), headers={"ETag": 'W/"first"'}), unavailable,
@@ -106,15 +110,15 @@ class ObservationSampleTests(unittest.TestCase):
             publication, jpeg = publications.fetch_frame_sample("http://host.invalid", cache=cache)
             self.assertIsNone(jpeg)
             self.assertIsNone(cache.image)
-            self.assertEqual(publication["health"], "warming")
-            self.assertIsNone(publication["report"])
+            self.assertEqual(publication.health, "warming")
+            self.assertIsNone(publication.report)
             _, jpeg = publications.fetch_frame_sample("http://host.invalid", cache=cache)
         self.assertEqual(jpeg, b"jpeg")
 
     def test_a_refused_transaction_clears_the_cache_before_a_later_304(self):
         cache = publications.TransactionCache()
         unavailable = HTTPError("http://host.invalid", 503, "unavailable", {}, io.BytesIO(json.dumps({
-            "publication": {"health": "warming", "report": None}, "image_base64": None,
+            "publication": _warming(), "image_base64": None,
         }).encode()))
         unchanged = HTTPError("http://host.invalid", 304, "unchanged", {}, io.BytesIO())
         with patch.object(publications.urllib.request, "urlopen",
@@ -160,11 +164,11 @@ class ObservationSampleTests(unittest.TestCase):
 
     def test_warming_returns_no_image(self):
         payload = _transaction()
-        payload.update(publication={"health": "warming", "ok": False, "report": None}, image_base64=None)
+        payload.update(publication=_warming(), image_base64=None)
         with patch.object(publications.urllib.request, "urlopen", return_value=_Response(payload)):
             publication, jpeg = publications.fetch_frame_sample("http://host.invalid")
-        self.assertEqual(publication["health"], "warming")
-        self.assertIsNone(publication["report"])
+        self.assertEqual(publication.health, "warming")
+        self.assertIsNone(publication.report)
         self.assertIsNone(jpeg)
 
     def test_invalid_transactions_do_not_hide_a_report(self):
@@ -189,7 +193,7 @@ class ObservationSampleTests(unittest.TestCase):
                     publication, jpeg = publications.fetch_frame_sample("http://host.invalid")
                 self.assertEqual(read.call_count, 1)
                 self.assertIsNone(jpeg)
-                self.assertEqual(publication["report"]["frame_id"], "first")
+                self.assertEqual(publication.report.frame_id, "first")
 
     def test_transport_and_server_errors_do_not_fall_back(self):
         failures = (
@@ -204,7 +208,7 @@ class ObservationSampleTests(unittest.TestCase):
                 self.assertEqual(read.call_count, 1)
 
     def test_stream_view_uses_the_transaction_metadata_when_the_host_advances(self):
-        feed = _feed()
+        feed = self._feed()
         jpeg = _jpeg((4, 4), (1, 2, 3))
         with patch.object(viewer, "fetch_frame_sample", return_value=(_publication("second"), jpeg)):
             feed.publish(_publication("first"))
@@ -212,9 +216,10 @@ class ObservationSampleTests(unittest.TestCase):
         self.assertEqual(payload["report"]["frame_id"], "second")
         self.assertEqual(payload["image"]["frame_id"], "second")
         self.assertIsNone(feed.error)
+        self.assertIsNone(feed.decision_error)
 
     def test_stream_terminal_and_view_share_one_read_and_skip_unchanged_publication(self):
-        feed = _feed()
+        feed = self._feed()
         jpeg = _jpeg((4, 4), (1, 2, 3))
         with (
             patch.object(viewer, "fetch_frame_sample", return_value=(_publication(), jpeg)) as read,
@@ -223,9 +228,12 @@ class ObservationSampleTests(unittest.TestCase):
             publication, error = feed.read_observation()
             self.assertIsNone(error)
             feed.publish(publication)
+            first_count = publish.call_count
             feed.publish(publication)
         self.assertEqual(read.call_count, 1)
-        self.assertEqual(publish.call_count, 1)
+        self.assertGreater(first_count, 0)
+        self.assertEqual(publish.call_count, first_count)
+        self.assertIsNone(feed.decision_error)
 
     def test_an_unavailable_capture_keeps_a_readable_report(self):
         publication, jpeg = _publication(), _jpeg((4, 4), (1, 2, 3))
@@ -235,7 +243,7 @@ class ObservationSampleTests(unittest.TestCase):
         ):
             samples = [(publication, jpeg), unavailable, (publication, jpeg)]
             with self.subTest(name), patch.object(viewer, "fetch_frame_sample", side_effect=samples):
-                feed = _feed()
+                feed = self._feed()
                 feed.publish(feed.read_observation()[0])
                 self.assertIsNotNone(feed.server.perception.latest_json())
                 feed.publish(feed.read_observation()[0])
@@ -247,18 +255,20 @@ class ObservationSampleTests(unittest.TestCase):
                 feed.publish(feed.read_observation()[0])
                 self.assertEqual(feed.server.perception.frame(), (jpeg, "image/jpeg"))
                 self.assertIsNone(feed.error)
+                self.assertIsNone(feed.decision_error)
         for name, unavailable in (
             ("missing image", (publication, None)),
-            ("stale frame", ({**publication, "health": "stale"}, jpeg)),
+            ("stale frame", (replace(publication, health="stale"), jpeg)),
         ):
             samples = [(publication, jpeg), unavailable, (publication, jpeg)]
             with self.subTest(name), patch.object(viewer, "fetch_frame_sample", side_effect=samples):
-                feed = _feed()
+                feed = self._feed()
                 feed.publish(feed.read_observation()[0])
                 feed.publish(feed.read_observation()[0])
                 payload = json.loads(feed.server.perception.latest_json())
-                self.assertEqual(payload["report"]["frame_id"], publication["report"]["frame_id"])
+                self.assertEqual(payload["report"]["frame_id"], publication.report.frame_id)
                 self.assertIsNone(feed.error)
+                self.assertIsNone(feed.decision_error)
                 if name == "stale frame":
                     self.assertEqual(payload["health"], "stale")
                     self.assertEqual(feed.server.perception.frame(), (jpeg, "image/jpeg"))
@@ -267,18 +277,9 @@ class ObservationSampleTests(unittest.TestCase):
 
     def test_a_cleared_view_shows_the_same_frame_when_the_host_answers_again(self):
         publication = _publication()
-        publication["report"]["values"] = {
-            "source_id": "fixture:local", "stale_after_ms": 1000,
-            "activation": {"generation_id": "decision-test", "steps": {}},
-        }
         pair = publication, _jpeg((4, 4), (1, 2, 3))
-        with tempfile.TemporaryDirectory() as tmp, patch.object(viewer, "runtime_view_dir", return_value=Path(tmp)):
-            feed = viewer.ViewFeed("fixture", base_url="http://host.invalid", timeout_s=1.0)
-        self.addCleanup(feed.stop)
-        self.assertIsNone(feed.error)
-        with patch.object(viewer, "fetch_frame_sample", side_effect=[pair, ConnectionError("down"), pair]), \
-                patch("cli.automa_cli.hosts.views.decision_live.read_host_telemetry_panel",
-                      return_value={"status": "unavailable"}):
+        feed = self._feed()
+        with patch.object(viewer, "fetch_frame_sample", side_effect=[pair, ConnectionError("down"), pair]):
             feed.publish(feed.read_observation()[0])
             self.assertIsNone(feed.decision_error)
             self.assertIsNotNone(feed.server.perception.latest_json())
@@ -288,13 +289,13 @@ class ObservationSampleTests(unittest.TestCase):
         self.assertIsNotNone(feed.server.perception.latest_json())
 
     def test_observation_remains_available_when_decision_refresh_fails(self):
-        feed = _feed()
+        feed = self._feed()
         publication, jpeg = _publication(), _jpeg((4, 4), (1, 2, 3))
-        feed.decision.publish_publication.side_effect = ConnectionError("no decision")
         feed._observation = publication, jpeg
-        feed.publish(publication)
+        with patch.object(feed.decision, "publish_publication", side_effect=ConnectionError("no decision")):
+            feed.publish(publication)
         self.assertEqual(feed.server.perception.frame(), (jpeg, "image/jpeg"))
         payload = json.loads(feed.server.perception.latest_json())
-        self.assertEqual(payload["report"]["frame_id"], publication["report"]["frame_id"])
-        self.assertEqual(payload["image"]["frame_id"], publication["report"]["frame_id"])
+        self.assertEqual(payload["report"]["frame_id"], publication.report.frame_id)
+        self.assertEqual(payload["image"]["frame_id"], publication.report.frame_id)
         self.assertIn("no decision", feed.decision_error)

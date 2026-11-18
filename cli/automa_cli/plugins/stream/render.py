@@ -7,6 +7,7 @@ from typing import Any
 
 from autonomy.decision_cycle.memory.interface import BOUNDS, EPOCH_ID, HEALTH, RECORD_COUNT
 from autonomy.runtime.frame_loop import LATEST_JSON_PATH
+from autonomy.runtime.report import HostReport
 
 from ...hosts.publications.frame_publication import presets_text
 from ...shared.memory_report import evidence_publisher, plugin_ledgers
@@ -83,7 +84,7 @@ def _memory_screen(event: StreamEvent) -> str:
     ]
     if source.error:
         lines.append(f"publication memory: {source.error}")
-    elif isinstance(source.report, dict):
+    elif source.report is not None:
         lines.append(
             f"publication memory: evidence publisher {evidence_publisher(source.report) or 'none'}"
         )
@@ -95,15 +96,15 @@ def _decision_screen(event: StreamEvent) -> str:
     live = event.live
     # A stale or raised frame keeps its records under the reason it is not live.
     parts = [] if live.get("status") == "live" else [str(live.get("error") or "")]
-    if "freshness" in live:
-        parts.append(_format_stream_frame(event.step, live))
+    if "freshness" in live and isinstance(event.source, HostReport):
+        parts.append(_format_stream_frame(event.step, live, event.source))
     text = "\n".join(parts)
     if event.view is None:
         return text
     return "\n".join([text, "", *_view_lines(event.view, *_DECISION_PAGES)])
 
 
-def _format_stream_frame(step: str, frame: dict[str, Any]) -> str:
+def _format_stream_frame(step: str, frame: dict[str, object], report: HostReport) -> str:
     freshness = frame["freshness"]
     lines = [
         f"{step.capitalize()} stream: {frame['host_name']} frame={frame['frame_id']} "
@@ -111,16 +112,16 @@ def _format_stream_frame(step: str, frame: dict[str, Any]) -> str:
         f"Generation: {frame['generation_id']}",
         f"Plugins: {', '.join(frame['plugins']) or 'none'}",
         *format_step_record(
-            step, frame["record"], observation=frame.get("observation"), memory=frame.get("memory"),
+            step, report.cycle.record(step), observation=report.cycle.observation, memory=report.cycle.memory,
         ),
     ]
     if step == "action":
-        application = frame["application"]
+        application = report.application
         lines.append(
             "Host application: "
-            f"applied={str(application.get('applied') is True).lower()} "
-            f"mode={application.get('mode')} reason={application.get('reason')} "
-            f"steering={application.get('steering')} throttle={application.get('throttle')}"
+            f"applied={str(application.applied).lower()} "
+            f"mode={application.mode} reason={application.reason} "
+            f"steering={application.steering} throttle={application.throttle}"
         )
     lines.append(format_step_timing(step, frame["timing"]))
     return "\n".join(lines)

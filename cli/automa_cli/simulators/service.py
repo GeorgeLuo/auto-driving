@@ -14,7 +14,9 @@ from pathlib import Path
 from ..hosts.discovery import hosts_by_vehicle
 from ..providers.registry import CHASE_SIM
 from ..providers.urls import chase_operator_url, normalize_chase_url
+from ..shared.io.lock import registry
 from .models import SimulatorResult
+from .native import NATIVE_SIM_BINARY, NATIVE_SIM_DIR
 from .process import SimulatorStartError, start_simulator, stop_simulator
 from .store import simulator_records
 
@@ -26,27 +28,38 @@ SIMULATOR_PORTS = range(5051, 5100)
 SIMULATOR_START_TIMEOUT_S = 45.0
 
 
-def create_simulator(*, timeout_s: float = SIMULATOR_START_TIMEOUT_S) -> SimulatorResult:
+def create_simulator(*, timeout_s: float = SIMULATOR_START_TIMEOUT_S,
+                     backend: str = "metrics-ui", config: str | None = None) -> SimulatorResult:
     """Start a headless Chase simulator on the first free port in ``SIMULATOR_PORTS``.
 
-    Metrics UI's launcher runs it with its default configuration and checks
-    it is ready. It outlives this command. ``vehicles status`` lists it until
+    The selected launcher prints its URL once ready. It outlives this command.
+    ``vehicles status`` lists it until
     ``vehicles remove`` stops listing it or ``delete_simulator`` ends it.
     """
 
-    ui_dir, error = _metrics_ui_dir()
-    if ui_dir is None:
+    workdir, error = _simulator_dir(backend)
+    if workdir is None:
         return SimulatorResult(2, "create_error", error=error)
-    port = next((port for port in SIMULATOR_PORTS if not _port_in_use(port)), None)
-    if port is None:
-        return SimulatorResult(2, "create_error", error=f"ports {SIMULATOR_PORTS[0]}-{SIMULATOR_PORTS[-1]} are all in use.")
-    try:
-        record = start_simulator(_headless_sim_command(port), cwd=ui_dir, port=port, timeout_s=timeout_s)
-    except OSError as exc:
-        return SimulatorResult(2, "create_error", error=str(exc))
-    except SimulatorStartError as exc:
-        return SimulatorResult(2, "error", error=str(exc))
-    return SimulatorResult(0, "created", url=record["url"])
+    if config is not None:
+        config = str(Path(config).expanduser().resolve())
+        if not Path(config).is_file():
+            return SimulatorResult(2, "create_error", error=f"Configuration file not found: {config}")
+    with registry():
+        return _start_on_a_free_port(workdir, timeout_s, backend, config)
+
+
+def _simulator_dir(backend: str) -> tuple[Path | None, str | None]:
+    if backend == "metrics-ui":
+        return _metrics_ui_dir()
+    if backend != "native":
+        return None, f"Unknown simulator backend: {backend}"
+    if not os.access(NATIVE_SIM_BINARY, os.X_OK):
+        return None, (
+            "Native simulator is not built. Run from the repository root:\n"
+            "cmake -S simulator/native -B simulator/native/build -DCMAKE_BUILD_TYPE=Release\n"
+            "cmake --build simulator/native/build -j 4"
+        )
+    return NATIVE_SIM_DIR, None
 
 
 def delete_simulator(*, url: str) -> SimulatorResult:
@@ -60,6 +73,25 @@ def delete_simulator(*, url: str) -> SimulatorResult:
         ws_url = normalize_chase_url(url)
     except ValueError as exc:
         return SimulatorResult(2, "error", error=str(exc))
+    with registry():
+        return _delete_recorded(url, ws_url)
+
+
+def _start_on_a_free_port(workdir: Path, timeout_s: float, backend: str, config: str | None) -> SimulatorResult:
+    port = next((port for port in SIMULATOR_PORTS if not _port_in_use(port)), None)
+    if port is None:
+        return SimulatorResult(2, "create_error", error=f"ports {SIMULATOR_PORTS[0]}-{SIMULATOR_PORTS[-1]} are all in use.")
+    try:
+        record = start_simulator(_headless_sim_command(port, backend, config), cwd=workdir, port=port,
+                                 timeout_s=timeout_s, backend=backend, config=config or "default")
+    except OSError as exc:
+        return SimulatorResult(2, "create_error", error=str(exc))
+    except SimulatorStartError as exc:
+        return SimulatorResult(2, "error", error=str(exc))
+    return SimulatorResult(0, "created", url=record["url"])
+
+
+def _delete_recorded(url: str, ws_url: str) -> SimulatorResult:
     records = simulator_records()
     record = next((simulator for simulator in records if simulator["url"] == ws_url), None)
     if record is None:
@@ -91,7 +123,10 @@ def _port_in_use(port: int) -> bool:
     return True
 
 
-def _headless_sim_command(port: int) -> list[str]:
+def _headless_sim_command(port: int, backend: str, config: str | None) -> list[str]:
     override = os.environ.get("AUTOMA_HEADLESS_SIM_COMMAND")
-    launcher = shlex.split(override) if override else ["node", HEADLESS_SIM_SCRIPT]
-    return [*launcher, "--port", str(port)]
+    if backend == "native":
+        launcher = [str(NATIVE_SIM_BINARY)]
+    else:
+        launcher = shlex.split(override) if override else ["node", HEADLESS_SIM_SCRIPT]
+    return [*launcher, "--port", str(port), *(["--config", config] if config else [])]

@@ -3,6 +3,7 @@ from __future__ import annotations
 import unittest
 from pathlib import Path
 from tempfile import TemporaryDirectory
+from unittest.mock import patch
 
 from autonomy.decision_cycle.perception.interface import PerceptionText
 from cli.automa_cli.replay.source import normalize_image_directory
@@ -123,7 +124,7 @@ class WorkbenchTests(unittest.TestCase):
             self.assertIsNone(broken_state["perception"])
 
     def test_runner_fails_closed_on_mapper_and_memory_errors(self) -> None:
-        with image_source(2) as root:
+        with image_source(2) as root, patch.object(PerceptionText, "from_dict", side_effect=AssertionError("local reparse")):
             error_mapper = ErrorStatusMapper()
             runner = ImageReplayRunner(
                 root,
@@ -135,6 +136,7 @@ class WorkbenchTests(unittest.TestCase):
             self.assertEqual(state["phase"], "failed")
             self.assertEqual(state["failure_boundary"], "perception")
             self.assertEqual(state["perception"]["status"], "error")
+            self.assertTrue(state["perception"]["text"].startswith("schema="))
 
             memory_mapper = FixtureMapper()
             memory_runner = ImageReplayRunner(
@@ -150,6 +152,7 @@ class WorkbenchTests(unittest.TestCase):
             )
             self.assertEqual(memory_state["phase"], "failed")
             self.assertEqual(memory_state["failure_boundary"], "memory")
+            self.assertTrue(memory_state["perception"]["text"].startswith("schema="))
             self.assertIsNone(memory_state["cycle"]["memory"])
             self.assertIsNone(memory_state["cycle"]["proposal"])
             self.assertIsNone(memory_state["cycle"]["plan"])

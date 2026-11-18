@@ -34,6 +34,13 @@ def format_workbench_status(
         ),
         f"progress: {progress.get('completed', 0)}/{progress.get('total', 0)}",
     ]
+    manifest = state.get("collection_manifest")
+    if manifest is not None:
+        lines.extend([
+            f"manifest: {manifest['path']}",
+            f"collection: {manifest['collection']}",
+            f"replaced plugins: {', '.join(manifest['replaced_plugins'])}",
+        ])
     if server_url:
         lines.append(f"workbench: {server_url}")
     if serving:

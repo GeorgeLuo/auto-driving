@@ -1,31 +1,46 @@
 """The run record every host's run shares.
 
 Every runtime host executes the decision cycle while the CLI monitors it
-(``monitor``), writing this ``state.json`` record. A recording also appends
-the same ``manifest.json``, which replay loads. The lines a terminal prints
+(``monitor``), writing this ``state.json`` record. Recording appends each
+committed frame beside that run's ``manifest.json``, which replay loads. The
+host and the CLI export keep separate copies. The lines a terminal prints
 come from ``render``.
 """
 from __future__ import annotations
 
+import json
 import os
+from collections.abc import Mapping
 from pathlib import Path
-from typing import Any
+from typing import Literal
 
+from autonomy.fields import FieldError
 from autonomy.runtime.session import RunConfiguration
 
 from ...shared.io.json_files import read_json, write_json_atomically
 from ...shared.paths import display_path
 from ...shared.timestamps import timestamp_ms
+from ..errors import RuntimeHostError
 from ..host_formatting import perception_stream_command
 from ..publications.host_publications import observation_component
 from ..staging import automation_dir as host_automation_dir
-from .models import RunResult
+from .models import RunResult, RunState, WorkerProcess
 
 RUN_STATE_SCHEMA = "automa_automation_run_state"
 
 
 # Every run's host applies its own wheel commands.
 CONTROL_SOURCE = "runtime_host"
+
+
+class RunRecordError(RuntimeHostError):
+    """A persisted run record is unreadable; the message names its recovery."""
+
+    def __init__(self, path: Path, problem: Exception) -> None:
+        super().__init__(
+            f"Could not read run record {path}: {problem}. "
+            f"Recovery: once no worker is running, remove {path} and retry."
+        )
 
 
 def control_application(configuration: RunConfiguration) -> str:
@@ -43,31 +58,19 @@ def new_run_state(
     control_source: str,
     run_dir: Path | None,
     started_at_ms: int | None = None,
-) -> dict[str, Any]:
+) -> RunState:
     started_at_ms = timestamp_ms() if started_at_ms is None else started_at_ms
-    return {
-        "schema": RUN_STATE_SCHEMA,
-        "host_name": host_name,
-        "run_id": run_id,
-        "status": status,
-        "pid": pid,
-        "started_at_ms": started_at_ms,
-        "updated_at_ms": started_at_ms,
-        "frames_received": 0,
-        "frames_dropped": None,
-        "processed_count": 0,
-        "num_decisions": configuration.num_decisions,
-        "pipeline": "latest_frame_async_decision",
-        "control_source": control_source,
-        "action_policy": configuration.mode,
-        "control_application": control_application(configuration),
-        "recording": record,
-        "recorded_count": 0,
-        "run_dir": display_path(run_dir) if run_dir is not None else None,
-    }
+    return RunState(
+        schema=RUN_STATE_SCHEMA, host_name=host_name, run_id=run_id, status=status, pid=pid,
+        started_at_ms=started_at_ms, updated_at_ms=started_at_ms,
+        num_decisions=configuration.num_decisions, pipeline="latest_frame_async_decision",
+        control_source=control_source, action_policy=configuration.mode,
+        control_application=control_application(configuration), recording=record,
+        run_dir=display_path(run_dir) if run_dir is not None else None,
+    )
 
 
-def decision_record(identity: dict[str, Any]) -> dict[str, Any]:
+def decision_record(identity: dict[str, object]) -> dict[str, object]:
     return {
         "generation_id": identity["generation_id"],
         "steps": identity["steps"],
@@ -76,7 +79,7 @@ def decision_record(identity: dict[str, Any]) -> dict[str, Any]:
     }
 
 
-def step_status(host_status: dict[str, Any]) -> dict[str, Any]:
+def step_status(host_status: Mapping[str, object]) -> dict[str, object]:
     """Each step's plugin IDs and configs, preset, run and failure counts and last error, without the per-cycle records.
 
     A step whose report the host could not read keeps that error.
@@ -89,7 +92,7 @@ def step_status(host_status: dict[str, Any]) -> dict[str, Any]:
     }
 
 
-def _step_report(item: Any) -> dict[str, Any] | None:
+def _step_report(item: object) -> dict[str, object] | None:
     if not isinstance(item, dict):
         return None
     if item.get("status") == "error":
@@ -105,8 +108,8 @@ def _step_report(item: Any) -> dict[str, Any] | None:
 
 
 def applied_selections(
-    selections: dict[str, dict[str, Any]], steps: Any,
-) -> dict[str, dict[str, Any]] | None:
+    selections: dict[str, dict[str, object]], steps: object,
+) -> dict[str, dict[str, object]] | None:
     """``selections`` as a running host reports applying them, when it reports its steps."""
 
     if not isinstance(steps, dict) or not any(step in steps for step in selections):
@@ -124,7 +127,7 @@ def applied_selections(
     return applied
 
 
-def latest_frame(host_status: dict[str, Any]) -> dict[str, Any] | None:
+def latest_frame(host_status: Mapping[str, object]) -> dict[str, object] | None:
     """The host's latest observed frame from its ``/host/status`` metadata, or ``None`` before one."""
 
     latest = observation_component(host_status).get("latest")
@@ -145,7 +148,7 @@ def latest_frame(host_status: dict[str, Any]) -> dict[str, Any] | None:
     }
 
 
-def record_host_status(state: dict[str, Any], host_status: dict[str, Any]) -> None:
+def record_host_status(state: RunState, host_status: Mapping[str, object]) -> None:
     """Record the steps and selections the host applied, each selection's report, its decision, and latest frame.
 
     A run starts with the staged selections; once the host reports its
@@ -154,25 +157,25 @@ def record_host_status(state: dict[str, Any], host_status: dict[str, Any]) -> No
     """
 
     steps = host_status.get("steps") if isinstance(host_status.get("steps"), dict) else {}
-    state["steps"] = step_status(host_status)
+    state.steps = step_status(host_status)
     applied = host_status.get("applied_decision")
     if isinstance(applied, dict) and applied.get("generation_id") and isinstance(applied.get("steps"), dict):
-        state["decision"].update(
+        state.decision.update(
             generation_id=applied["generation_id"], steps=applied["steps"],
             published=applied["steps"].get("proposal") is not None,
         )
     if "arming" in host_status:
-        state["arming"] = host_status["arming"]
-    for step, selection in state["selections"].items():
+        state.arming = host_status["arming"]
+    for step, selection in state.selections.items():
         selection["status"] = steps.get(step) or "absent"
-    state["selections"] = applied_selections(state["selections"], steps) or state["selections"]
+    state.selections = applied_selections(state.selections, steps) or state.selections
     frame = latest_frame(host_status)
     if frame is not None:
-        state["last_frame"] = frame
+        state.last_frame = frame
 
 
 def finish_run(
-    state: dict[str, Any],
+    state: RunState,
     *,
     status: str,
     stop_reason: str | None = None,
@@ -183,41 +186,27 @@ def finish_run(
     An incomplete recording export fails the run even when its session completed.
     """
 
-    if status == "completed" and state["recording"] and state["recorded_count"] != state["processed_count"]:
+    if status == "completed" and state.recording and state.recorded_count != state.processed_count:
         status, error = "error", "Recording count does not match completed decisions"
-    state["status"] = status
+    state.complete(status)
     if stop_reason is not None:
-        state["stop_reason"] = stop_reason
+        state.stop_reason = stop_reason
     if status == "error":
-        state["error"] = error
-    state["completed_at_ms"] = state["updated_at_ms"] = timestamp_ms()
+        state.error = error
 
 
-def mark_process_stopped(path: Path, process: Any, *, stopped_by: str) -> None:
-    record = process if isinstance(process, dict) else {}
-    updated = {
-        **record,
-        "status": "stopped",
-        "stopped_by": stopped_by,
-        "stopped_at_ms": timestamp_ms(),
-    }
-    write_json_atomically(path, updated)
+def mark_process_stopped(path: Path, process: WorkerProcess | None, *, stopped_by: str) -> None:
+    record = process or WorkerProcess()
+    record.status, record.stopped_by, record.stopped_at_ms = "stopped", stopped_by, timestamp_ms()
+    write_json_atomically(path, record.to_dict())
 
 
 def mark_state_stopped(path: Path, *, stopped_by: str) -> None:
-    state = read_json(path)
-    if not isinstance(state, dict):
-        return
-    if state.get("status") not in ("starting", "running", "error"):
-        return
-    updated = {
-        **state,
-        "status": "stopped",
-        "stop_reason": stopped_by,
-        "completed_at_ms": timestamp_ms(),
-        "updated_at_ms": timestamp_ms(),
-    }
-    write_json_atomically(path, updated)
+    state = read_run_state(path.parent)
+    if state is not None and state.status in ("starting", "running", "error"):
+        state.complete("stopped")
+        state.stop_reason = stopped_by
+        write_json_atomically(path, state.to_dict())
 
 
 def record_host_automation_terminal_result(
@@ -231,23 +220,14 @@ def record_host_automation_terminal_result(
         return
     automation_dir = host_automation_dir(host_name)
     state_path = automation_dir / "state.json"
-    state = read_json(state_path)
-    if not isinstance(state, dict) or state.get("status") != "starting":
+    state = read_run_state(automation_dir)
+    if state is None or state.status != "starting":
         return
-    completed_at_ms = timestamp_ms()
-    write_json_atomically(
-        state_path,
-        {
-            **state,
-            "status": "error",
-            "pid": os.getpid(),
-            "error": result.message or f"automation worker exited with code {result.exit_code}",
-            **({"activation_problems": result.problems} if result.problems else {}),
-            "exit_code": result.exit_code,
-            "completed_at_ms": completed_at_ms,
-            "updated_at_ms": completed_at_ms,
-        },
-    )
+    state.startup_error(result.message or f"automation worker exited with code {result.exit_code}", result.exit_code)
+    state.pid = os.getpid()
+    if result.problems:
+        state.activation_problems = result.problems
+    write_json_atomically(state_path, state.to_dict())
 
 
 def initialize_automation_startup(
@@ -258,20 +238,12 @@ def initialize_automation_startup(
     configuration: RunConfiguration,
     record: bool,
 ) -> None:
-    write_json_atomically(
-        automation_dir / "state.json",
-        new_run_state(
-            host_name=host_name,
-            run_id="starting",
-            status="starting",
-            pid=None,
-            configuration=configuration,
-            record=record,
-            control_source=CONTROL_SOURCE,
-            run_dir=None,
-            started_at_ms=started_at_ms,
-        ),
+    state = new_run_state(
+        host_name=host_name, run_id="starting", status="starting", pid=None,
+        configuration=configuration, record=record, control_source=CONTROL_SOURCE,
+        run_dir=None, started_at_ms=started_at_ms,
     )
+    write_json_atomically(automation_dir / "state.json", state.to_dict())
 
 
 def mark_automation_startup_error(
@@ -281,20 +253,9 @@ def mark_automation_startup_error(
     exit_code: int | None = None,
 ) -> None:
     state_path = automation_dir / "state.json"
-    state = read_json(state_path)
-    state = state if isinstance(state, dict) else {}
-    completed_at_ms = timestamp_ms()
-    write_json_atomically(
-        state_path,
-        {
-            **state,
-            "status": "error",
-            "error": error,
-            "exit_code": exit_code,
-            "completed_at_ms": completed_at_ms,
-            "updated_at_ms": completed_at_ms,
-        },
-    )
+    state = read_run_state(automation_dir) or RunState()
+    state.startup_error(error, exit_code)
+    write_json_atomically(state_path, state.to_dict())
 
 
 def run_directory(host_name: str, *, create: bool = False) -> Path:
@@ -304,43 +265,92 @@ def run_directory(host_name: str, *, create: bool = False) -> Path:
     return directory
 
 
-def read_process_record(automation_dir: Path) -> Any:
-    return read_json(automation_dir / "process.json")
+def read_process_record(automation_dir: Path) -> WorkerProcess | None:
+    path = automation_dir / "process.json"
+    try:
+        payload = _read_record(path)
+        return None if payload is None else WorkerProcess.from_dict(payload)
+    except (FieldError, OSError, UnicodeError) as exc:
+        raise RunRecordError(path, exc) from exc
 
 
-def read_run_state(automation_dir: Path) -> Any:
-    return read_json(automation_dir / "state.json")
+def read_stop_count(automation_dir: Path) -> int:
+    """Stops that have claimed this run. A missing record has claimed none."""
+
+    document = read_json(automation_dir / "order.json")
+    stops = document.get("stops") if isinstance(document, dict) else 0
+    return stops if type(stops) is int else 0
+
+
+def write_stop_count(automation_dir: Path, stops: int) -> None:
+    write_json_atomically(automation_dir / "order.json", {"stops": stops})
+
+
+def read_run_state(automation_dir: Path) -> RunState | None:
+    path = automation_dir / "state.json"
+    try:
+        payload = _read_record(path)
+        return None if payload is None else RunState.from_dict(payload)
+    except (FieldError, OSError, UnicodeError) as exc:
+        raise RunRecordError(path, exc) from exc
+
+
+def _read_record(path: Path) -> dict | None:
+    try:
+        text = path.read_text(encoding="utf-8")
+    except FileNotFoundError:
+        return None
+    try:
+        payload = json.loads(text)
+    except json.JSONDecodeError as exc:
+        raise FieldError("$", f"{path.name} must contain valid JSON") from exc
+    if not isinstance(payload, dict):
+        raise FieldError("$", f"{path.name} must contain an object")
+    return convert_legacy_run_record(payload, record_name=path.name)
+
+
+def convert_legacy_run_record(
+    payload: dict[str, object], *, record_name: Literal["state.json", "process.json"],
+) -> dict[str, object]:
+    """Restore only fields omitted by main build 5f0cf136's run-record writers.
+
+    That build omits later fields equal to None or {}. Absent nullable fields
+    recover their default None; selections, decision and last_frame recover {}.
+    Present values and all other keys are left for the strict document parser.
+    """
+
+    if record_name == "state.json":
+        defaults: dict[str, object] = dict.fromkeys((
+            "completed_at_ms", "stop_reason", "error", "exit_code", "activation_problems",
+            "session", "execution", "steps", "arming",
+        ))
+        defaults.update(selections={}, decision={}, last_frame={})
+    else:
+        defaults = dict.fromkeys(("startup", "status", "stopped_by", "stopped_at_ms"))
+    return defaults | payload
 
 
 def record_background_worker(
     automation_dir: Path, *, host_name: str, pid: int, started_at_ms: int,
     command: list[str], log_to_disk: bool,
-) -> dict[str, Any]:
+) -> WorkerProcess:
     """Record the launched worker before ``hosts run`` waits for its session."""
 
-    log_path = automation_dir / "automation.log"
-    record = {
-        "schema": "automa_automation_process",
-        "host_name": host_name,
-        "pid": pid,
-        "started_at_ms": started_at_ms,
-        "command": command,
-        "log_to_disk": bool(log_to_disk),
-        "log_path": display_path(log_path) if log_to_disk else None,
-        "state_path": display_path(automation_dir / "state.json"),
-        "stream_command": perception_stream_command(host_name),
-    }
-    write_json_atomically(automation_dir / "process.json", record)
+    record = WorkerProcess(
+        schema="automa_automation_process", host_name=host_name, pid=pid, started_at_ms=started_at_ms,
+        command=command, log_to_disk=bool(log_to_disk),
+        log_path=display_path(automation_dir / "automation.log") if log_to_disk else None,
+        state_path=display_path(automation_dir / "state.json"), stream_command=perception_stream_command(host_name),
+    )
+    write_json_atomically(automation_dir / "process.json", record.to_dict())
     return record
 
 
 def record_worker_startup(
-    automation_dir: Path, process_record: dict[str, Any], startup: dict[str, Any],
-) -> dict[str, Any]:
+    automation_dir: Path, process_record: WorkerProcess, startup: dict[str, object],
+) -> WorkerProcess:
     """Persist the startup verdict without duplicating the full run state."""
 
-    record = {**process_record, "startup": {
-        key: value for key, value in startup.items() if key != "state"
-    }}
-    write_json_atomically(automation_dir / "process.json", record)
-    return record
+    process_record.startup = {key: value for key, value in startup.items() if key != "state"}
+    write_json_atomically(automation_dir / "process.json", process_record.to_dict())
+    return process_record

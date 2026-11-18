@@ -1,36 +1,49 @@
 from __future__ import annotations
 
 import unittest
+from autonomy.decision_cycle.memory.interface import MemoryReport
+from autonomy.decision_cycle.perception.interface import PerceptionText
+from autonomy.decision_cycle.perception.evidence.values import PerceivedThing, ViewLocation
+from autonomy.runtime.frame_loop import FRAME_PUBLICATION_SCHEMA, FramePublication
+from autonomy.runtime.report import HostReport, ReportCycle, ReportApplication, ReportValues
 from cli.automa_cli.shared.memory_report import evidence_publisher, plugin_states
-from cli.automa_cli.frontend.perception_view import (
-    PUBLICATION_SCHEMA,
-    _publication_payload,
-)
+from cli.automa_cli.frontend.perception_view import _publication_payload
 from tests.support.memory_fixtures import TWO_PLUGIN_IDS, memory_report, two_plugin_runner
 
 
-def _frame_record(*, frame_id: str, memory: dict, perception: dict | None = None, duration_ms: int = 12) -> dict:
-    return {
-        "schema": "host_frame_publication",
-        "health": "healthy",
-        "ok": True,
-        "host_name": "piracer",
-        "stale_after_ms": 1_000,
-        "report": {
-            "host_name": "piracer",
-            "frame_id": frame_id,
-            "frame_index": 1,
-            "timestamp_ms": 100,
-            "published_at_ms": 110,
-            "status": "ok",
-            "error": None,
-            "cycle": {
-                "perception": perception if perception is not None else {"things": []},
-                "memory": memory,
-            },
-            "values": {"timing": {"duration_ms": duration_ms, "steps": []}},
-        },
-    }
+def _publication(
+    *, frame_id: str, memory: dict, perception: dict | None = None, duration_ms: int = 12,
+) -> FramePublication:
+    perception_data = perception or {"things": []}
+    cycle = ReportCycle(
+        perception=PerceptionText("perception_text", "fixture", "ok", (), tuple(
+            PerceivedThing(item["thing_id"], item["kind"], item.get("label", item["kind"]), ViewLocation("image", "center"))
+            for item in perception_data["things"]
+        )),
+        memory=MemoryReport.from_dict(memory) if isinstance(memory, dict) else memory,
+    )
+    return FramePublication(
+        health="healthy",
+        read_at_ms=110,
+        result_age_ms=0,
+        stale_after_ms=1000,
+        report=HostReport(
+            host_name="piracer",
+            run_id="run",
+            generation_id="generation",
+            frame_id=frame_id,
+            frame_index=1,
+            timestamp_ms=100,
+            published_at_ms=110,
+            cycle=cycle,
+            application=ReportApplication(False, "observe_only", "idle", 0.0, 0.0),
+            values=ReportValues.from_dict({
+                "source_id": "fixture", "activation": {"steps": {}}, "stale_after_ms": 1000,
+                "delivered_at_ms": None, "delivery_error": None, "receipt": None,
+                "timing": {"duration_ms": duration_ms, "steps": []},
+            }),
+        ),
+    )
 
 
 class MemoryViewPublicationTests(unittest.TestCase):
@@ -72,7 +85,7 @@ class MemoryViewPublicationTests(unittest.TestCase):
                 "height_px": 480,
                 "url": "/frame?v=donkey_frame_1",
             },
-            frame_record=_frame_record(
+            publication=_publication(
                 frame_id="donkey_frame_1",
                 memory=memory,
                 perception={
@@ -90,10 +103,12 @@ class MemoryViewPublicationTests(unittest.TestCase):
                     ]
                 },
             ),
+            host_telemetry=None,
+            evidence=None,
             generated_at_ms=200,
         )
-        self.assertEqual(view_payload["schema"], PUBLICATION_SCHEMA)
-        self.assertEqual(PUBLICATION_SCHEMA, "host_frame_publication")
+        self.assertEqual(view_payload["schema"], FRAME_PUBLICATION_SCHEMA)
+        self.assertEqual(FRAME_PUBLICATION_SCHEMA, "host_frame_publication")
         self.assertEqual(view_payload["report"]["values"]["timing"]["duration_ms"], 12)
         self.assertNotIn("memory", view_payload)
         shown_memory = view_payload["report"]["cycle"]["memory"]
@@ -112,11 +127,13 @@ class MemoryViewPublicationTests(unittest.TestCase):
         view_payload = _publication_payload(
             host_name="piracer",
             image={"frame_id": "donkey_frame_1", "frame_index": 1},
-            frame_record=_frame_record(frame_id="donkey_frame_1", memory=report, perception={"things": []}),
+            publication=_publication(frame_id="donkey_frame_1", memory=report, perception={"things": []}),
+            host_telemetry=None,
+            evidence=None,
             generated_at_ms=200,
         )
         shown_memory = view_payload["report"]["cycle"]["memory"]
-        self.assertEqual(shown_memory, report)
+        self.assertEqual(shown_memory, report.to_dict())
         states = dict(plugin_states(shown_memory))
         self.assertEqual(tuple(states), TWO_PLUGIN_IDS)
         self.assertEqual(states["evidence_test"]["record_count"], 1)

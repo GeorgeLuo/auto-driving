@@ -11,9 +11,10 @@ from pathlib import Path
 from types import SimpleNamespace
 from unittest.mock import patch
 
+from cli.automa_cli.hosts.runs.models import WorkerProcess
 from cli.automa_cli.hosts.runs import process, service, store
 from cli.automa_cli.frontend.server import RuntimeViewServer
-from cli.automa_cli.hosts.runs.models import RestartResult, StartResult, StopResult
+from cli.automa_cli.hosts.runs.models import RestartResult, RunState, StartResult, StopResult
 from cli.automa_cli.hosts.runs.worker import startup_printer
 from cli.automa_cli.hosts.runs.render import render_lifecycle_result
 
@@ -30,7 +31,8 @@ class LifecycleResultTests(unittest.TestCase):
         self.stack.enter_context(patch.object(service, "running_base_url", return_value=None))
 
     def write(self, name, data):
-        (self.root / name).write_text(json.dumps(data))
+        record = RunState(**data) if name == "state.json" else WorkerProcess(**data)
+        (self.root / name).write_text(json.dumps(record.to_dict()))
 
     def test_existing_start_verdicts_do_not_launch_or_print(self):
         self.write("process.json", {"pid": 42})
@@ -156,9 +158,9 @@ class WorkerProcessTests(unittest.TestCase):
     def test_running_session_with_no_decisions_is_ready(self):
         with tempfile.TemporaryDirectory() as directory:
             root = Path(directory)
-            (root / "state.json").write_text(json.dumps({
-                "pid": 43434, "status": "running", "session": {"status": "running", "processed_decisions": 0},
-            }))
+            (root / "state.json").write_text(json.dumps(RunState(
+                pid=43434, status="running", session={"status": "running", "processed_decisions": 0},
+            ).to_dict()))
             result = self.wait(root, lambda: None, pid=43434)
         self.assertEqual(result["status"], "ready")
         self.assertEqual(result["processed_count"], 0)
@@ -170,7 +172,7 @@ class WorkerProcessTests(unittest.TestCase):
             with self.subTest(pid=state["pid"]), tempfile.TemporaryDirectory() as directory, \
                  patch.object(process.time, "monotonic", side_effect=[0.0, 2.0]):
                 root = Path(directory)
-                (root / "state.json").write_text(json.dumps(state))
+                (root / "state.json").write_text(json.dumps(RunState(**state).to_dict()))
                 result = self.wait(root, lambda: None, timeout_s=1.0)
             self.assertEqual(result["status"], "failed")
             self.assertIn("runtime session is missing", result["reason"])
@@ -182,7 +184,7 @@ class WorkerProcessTests(unittest.TestCase):
             with self.subTest(final=final), tempfile.TemporaryDirectory() as directory:
                 root = Path(directory)
                 session = {"status": "completed", "processed_decisions": 2}
-                (root / "state.json").write_text(json.dumps({"pid": 42424, "status": "running", "session": session}))
+                (root / "state.json").write_text(json.dumps(RunState(pid=42424, status="running", session=session).to_dict()))
                 ending = {"pid": 42424, "status": final, "session": session, "processed_count": 2,
                           "error": "Could not stop the run or finish its recording" if final == "error" else None}
                 polls = iter([None, None, 2 if final == "error" else 0])
@@ -190,7 +192,7 @@ class WorkerProcessTests(unittest.TestCase):
                 def poll():
                     exit_code = next(polls)
                     if exit_code is not None:
-                        (root / "state.json").write_text(json.dumps(ending))
+                        (root / "state.json").write_text(json.dumps(RunState(**ending).to_dict()))
                     return exit_code
 
                 result = self.wait(root, poll, timeout_s=5.0)
@@ -205,18 +207,18 @@ class WorkerProcessTests(unittest.TestCase):
             root = Path(directory)
             stopped = {"pid": 42424, "status": "stopped", "stop_reason": "keyboard_interrupt",
                        "session": {"status": "running", "processed_decisions": 1}}
-            (root / "state.json").write_text(json.dumps(stopped))
+            (root / "state.json").write_text(json.dumps(RunState(**stopped).to_dict()))
             result = self.wait(root, lambda: 130)
             on_disk = json.loads((root / "state.json").read_text())
         self.assertEqual((result["status"], result["reason"]), ("failed", "keyboard_interrupt"))
-        self.assertEqual(on_disk, stopped)
+        self.assertEqual(on_disk, RunState(**stopped).to_dict())
 
     def test_exited_worker_whose_run_did_not_end_fails(self):
         with tempfile.TemporaryDirectory() as directory:
             root = Path(directory)
-            (root / "state.json").write_text(json.dumps({
-                "pid": 42424, "status": "running", "session": {"status": "running", "processed_decisions": 1},
-            }))
+            (root / "state.json").write_text(json.dumps(RunState(
+                pid=42424, status="running", session={"status": "running", "processed_decisions": 1},
+            ).to_dict()))
             result = self.wait(root, lambda: 7)
             on_disk = json.loads((root / "state.json").read_text())
         self.assertEqual(result["status"], "failed")
@@ -235,8 +237,9 @@ class WorkerProcessTests(unittest.TestCase):
                     "recorded_count": 1,
                     "processed_count": 2,
                 }
+                state = RunState(**state)
                 store.finish_run(state, status="completed")
-                (root / "state.json").write_text(json.dumps(state))
+                (root / "state.json").write_text(json.dumps(state.to_dict()))
                 result = self.wait(root, lambda: exit_code)
                 self.assertEqual(result["status"], "failed")
                 self.assertIn("Recording count does not match", result["reason"])
@@ -259,7 +262,8 @@ class ExplicitViewTests(unittest.TestCase):
         self.stack.enter_context(patch.object(RuntimeViewServer, "__init__", side_effect=no_view))
 
     def write(self, name, data):
-        (self.root / name).write_text(json.dumps(data))
+        record = RunState(**data) if name == "state.json" else WorkerProcess(**data)
+        (self.root / name).write_text(json.dumps(record.to_dict()))
 
     def test_a_started_or_completed_run_names_the_viewer_command(self):
         for status in ("ready", "completed"):
@@ -290,11 +294,10 @@ class ExplicitViewTests(unittest.TestCase):
 
 class StartupPrinterTests(unittest.TestCase):
     def test_the_accepted_run_is_printed(self):
-        state = {
-            "host_name": "car", "selections": {"perception": {"plugins": ["frame"], "preset": None}},
-            "run_dir": None, "control_source": "runtime_host", "action_policy": "observe_only",
-            "decision": {"generation_id": "g-1"}, "num_decisions": None,
-        }
+        state = RunState(
+            host_name="car", selections={"perception": {"plugins": ["frame"], "preset": None}},
+            control_source="runtime_host", action_policy="observe_only", decision={"generation_id": "g-1"},
+        )
         output = io.StringIO()
         startup_printer(output)(state)
         self.assertIn("Run started on host car.", output.getvalue())

@@ -58,6 +58,11 @@ class ComposedPlanTests(unittest.TestCase):
         self.assertAlmostEqual(result.control.steering, -0.1)
         self.assertEqual(result.control.reason, "weighted_mean")
         self.assertIsNone(result.control.confidence)
+        self.assertEqual(result.control.metadata["plugin_ids"], ["left", "right"])
+        self.assertNotIn("plugin_id", result.control.metadata)
+        self.assertNotIn("proposal_id", result.control.metadata)
+        self.assertEqual(result.control.metadata["selector_id"], "weighted_mean")
+        self.assertEqual(result.control.metadata["plan_metadata"], {})
         self.assertEqual(
             result.control.metadata["proposal_ids"],
             [item.proposal_id for item in plan.contributions],

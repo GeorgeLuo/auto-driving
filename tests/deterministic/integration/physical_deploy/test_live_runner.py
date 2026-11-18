@@ -6,7 +6,8 @@ import os
 import unittest
 from contextlib import redirect_stdout
 from pathlib import Path
-from unittest.mock import MagicMock, patch
+from unittest.mock import patch
+from urllib.response import addinfourl
 
 from tests.run import prepare_live_pi
 
@@ -14,20 +15,18 @@ from tests.run import prepare_live_pi
 ROOT = Path(__file__).resolve().parents[4]
 
 
-def _runtime_status_response(*, mode: str, action: list[str] | None = ["hold"]) -> MagicMock:
+def _runtime_status_response(*, mode: str, action: list[str] | None = ["hold"]) -> addinfourl:
     steps = {"perception": {"plugin_ids": ["frame", "floor_plane"]}}
     if action is not None:
         steps["action"] = {"plugin_ids": action}
-    response = MagicMock()
-    response.__enter__.return_value = response
-    response.read.return_value = json.dumps(
+    body = json.dumps(
         {
             "ok": True,
             "mode": mode,
             "host": {"steps": steps, "components": {}},
         }
     ).encode("utf-8")
-    return response
+    return addinfourl(io.BytesIO(body), {}, "http://piracer.test:8887/host/status", code=200)
 
 
 class PiLiveRunnerTests(unittest.TestCase):

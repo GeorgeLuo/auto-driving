@@ -10,20 +10,20 @@ from __future__ import annotations
 import argparse
 import sys
 from collections.abc import Callable
-from typing import Any, TextIO
+from typing import TextIO
 
 from ...shared.paths import display_path
 from ..step_formatting import format_activation_problems
-from .models import WORKER_MODULE
+from .models import RunState, WORKER_MODULE
 from .render import render_run_result, startup_lines
 from .service import run_host_automation
 from .store import record_host_automation_terminal_result
 
 
-def startup_printer(output: TextIO) -> Callable[[dict[str, Any]], None]:
+def startup_printer(output: TextIO) -> Callable[[RunState], None]:
     """Print the accepted run's lines to ``output``; the closing result is printed separately."""
 
-    def print_startup(state: dict[str, Any]) -> None:
+    def print_startup(state: RunState) -> None:
         for line in startup_lines(state):
             print(line, file=output, flush=True)
 

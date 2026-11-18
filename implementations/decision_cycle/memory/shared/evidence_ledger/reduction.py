@@ -17,12 +17,13 @@ reducer uses mutable working data for one update and is then discarded.
 from __future__ import annotations
 
 from dataclasses import replace
-from typing import Any
+import base64
+import hashlib
 
 from autonomy.decision_cycle.context import DecisionFrameContext
 from autonomy.decision_cycle.observation.values import Observation
 from autonomy.decision_cycle.memory.evidence import MemoryOrigin, RetainedEvidence
-from autonomy.serialization import canonical_json_size_bytes, ensure_strict_json_value
+from autonomy.serialization import canonical_json_size_bytes, frozen_mapping_to_dict
 from implementations.decision_cycle.memory.shared.evidence_ledger.ledger import (
     DEFAULT_MAX_PROPERTY_BYTES,
     DEFAULT_MAX_SERIALIZED_BYTES,
@@ -31,7 +32,7 @@ from implementations.decision_cycle.memory.shared.evidence_ledger.ledger import 
     empty_ledger,
     serialized_ledger_bytes,
 )
-from autonomy.decision_cycle.perception.evidence.values import ViewLocation
+from autonomy.decision_cycle.perception.evidence.values import PerceivedThing, PerceptionSignal, ViewLocation
 
 CONFLICT_POLICY = "bounded_evidence_structural"
 MAX_REPORTED_DROPS = 12
@@ -54,7 +55,6 @@ class BoundedEvidenceReducer:
         retain_signals: bool = True,
         max_property_bytes: int | None = DEFAULT_MAX_PROPERTY_BYTES,
         max_serialized_bytes: int | None = DEFAULT_MAX_SERIALIZED_BYTES,
-        **_ignored: Any,
     ) -> None:
         if eviction_policy != "oldest_first":
             raise ValueError(
@@ -175,7 +175,7 @@ class BoundedEvidenceReducer:
         # Pure read: must not zero last_update_conflict_count.
         return self._latest
 
-    def _metadata(self, *, observation_id: str | None) -> dict[str, Any]:
+    def _metadata(self, *, observation_id: str | None) -> dict[str, object]:
         return {
             "policy": "bounded_evidence_recency",
             "observation_id": observation_id,
@@ -219,75 +219,70 @@ class BoundedEvidenceReducer:
         ):
             if not enabled:
                 continue
-            is_thing = kind == "thing"
             for candidate in candidates:
-                if not isinstance(candidate, dict):
-                    self._report_drop(f"<{kind}>", "invalid_candidate", "not_admitted")
-                    continue
-                # The floor filters scored evidence. Unscored evidence is retained.
-                confidence = candidate.get("confidence")
-                if confidence is not None and float(confidence) < self.min_confidence:
-                    continue
-                observed_id = str(candidate.get(f"{kind}_id") or "").strip()
-                if not observed_id:
-                    self._report_drop(f"<{kind}>", "missing_observed_id", "not_admitted")
-                    continue
-                value = candidate.get("value") if kind == "signal" else None
-                # Keep affirmative / present signals; skip explicit false.
-                if kind == "signal" and value is False:
-                    continue
-                source_plugin = candidate.get("source_plugin_id")
-                if source_plugin is None:
-                    source_plugin = observation.perception_plugin_id
-                record_id = namespaced_record_id(kind, observed_id, source_plugin)
-                location = (
-                    _location_from_payload(candidate.get("location"))
-                    if is_thing else None
+                record = self._admitted_record(
+                    kind, candidate, context=context, observation=observation, now_ms=now_ms
                 )
-                try:
-                    properties = ensure_strict_json_value(
-                        dict(candidate.get("properties") or {})
-                    )
-                except (TypeError, ValueError):
-                    self._report_drop(record_id, "invalid_properties", "not_admitted")
-                    continue
-                if kind == "signal":
-                    properties["value"] = value
-                    try:
-                        properties = ensure_strict_json_value(properties)
-                    except ValueError:
-                        self._report_drop(record_id, "invalid_properties", "not_admitted")
-                        continue
-                if not self._properties_within_bound(properties):
-                    self._report_drop(record_id, "properties_too_large", "not_admitted")
-                    continue
-                label = str(candidate.get("label") or observed_id) if is_thing else observed_id
-                records.append(
-                    RetainedEvidence(
-                        record_id=record_id,
-                        kind=str(candidate.get("kind") or "thing") if is_thing else "signal",
-                        label=label,
-                        confidence=confidence,
-                        origin=MemoryOrigin(
-                            observation_id=observation.observation_id,
-                            observed_id=observed_id,
-                            coordinate_frame=(
-                                location.frame if location is not None else "image"
-                            ) if is_thing else "observation",
-                            observed_at_ms=int(observation.created_at_ms),
-                            updated_at_ms=now_ms,
-                            source_plugin_id=(
-                                str(source_plugin) if source_plugin is not None else None
-                            ),
-                            frame_id=context.frame_id,
-                        ),
-                        location=location,
-                        properties=properties,
-                    )
-                )
+                if record is not None:
+                    records.append(record)
         return records
 
-    def _properties_within_bound(self, properties: dict[str, Any]) -> bool:
+    def _admitted_record(
+        self,
+        kind: str,
+        candidate: PerceivedThing | PerceptionSignal,
+        *,
+        context: DecisionFrameContext,
+        observation: Observation,
+        now_ms: int,
+    ) -> RetainedEvidence | None:
+        """The record one candidate becomes, or None when it is not admitted."""
+
+        # The floor filters scored evidence. Unscored evidence is retained.
+        confidence = candidate.confidence
+        if confidence is not None and confidence < self.min_confidence:
+            return None
+        observed_id = candidate.thing_id if isinstance(candidate, PerceivedThing) else candidate.signal_id
+        is_thing = isinstance(candidate, PerceivedThing)
+        value = candidate.value if isinstance(candidate, PerceptionSignal) else None
+        # Keep affirmative / present signals; skip explicit false.
+        if value is False:
+            return None
+        source_plugin = candidate.source_plugin_id
+        if source_plugin is None:
+            source_plugin = observation.perception_plugin_id
+        record_id = namespaced_record_id(kind, observed_id, source_plugin)
+        location = candidate.location if isinstance(candidate, PerceivedThing) else None
+        properties = frozen_mapping_to_dict(candidate.properties)
+        if not is_thing:
+            properties["value"] = value
+        if not self._properties_within_bound(properties):
+            self._report_drop(record_id, "properties_too_large", "not_admitted")
+            return None
+        label = candidate.label if isinstance(candidate, PerceivedThing) else observed_id
+        return RetainedEvidence(
+            record_id=record_id,
+            kind=candidate.kind if isinstance(candidate, PerceivedThing) else "signal",
+            label=label,
+            confidence=confidence,
+            origin=MemoryOrigin(
+                observation_id=observation.observation_id,
+                observed_id=observed_id,
+                coordinate_frame=(
+                    location.frame if location is not None else "image"
+                ) if is_thing else "observation",
+                observed_at_ms=int(observation.created_at_ms),
+                updated_at_ms=now_ms,
+                source_plugin_id=(
+                    str(source_plugin) if source_plugin is not None else None
+                ),
+                frame_id=context.frame_id,
+            ),
+            location=location,
+            properties=properties,
+        )
+
+    def _properties_within_bound(self, properties: dict[str, object]) -> bool:
         limit = self.bounds.max_property_bytes
         if limit is None:
             return True
@@ -376,7 +371,7 @@ def reduce_evidence(
     observation: Observation | None,
     *,
     plugin_id: str,
-    **config: Any,
+    **config: object,
 ) -> EvidenceLedger:
     """Reduce one cycle from an explicit prior ledger without retaining a reducer."""
     reducer = BoundedEvidenceReducer(**config)
@@ -402,7 +397,7 @@ def namespaced_record_id(
     observed_id: str,
     source_plugin_id: str | None,
 ) -> str:
-    """Build an injective plugin-safe ledger key.
+    """Build a plugin-safe ledger key within the field standard's 64 characters.
 
     Formats:
     - absent source: ``{kind}:0:{observed_len}:{observed}``
@@ -411,25 +406,20 @@ def namespaced_record_id(
     Optional presence is encoded explicitly so ``None`` never collides with a
     plugin literally named ``\"unknown\"``. Plugin and observed strings are kept
     exactly as supplied (no strip), so whitespace-distinct IDs remain distinct.
-    Length-prefixed components keep delimiter-containing IDs collision-free.
+    Length-prefixed components keep delimiter-containing IDs distinct. Keys over
+    64 characters use a SHA-256 suffix of that complete key.
     """
 
     observed = str(observed_id)
     if source_plugin_id is None:
-        return f"{kind_prefix}:0:{len(observed)}:{observed}"
-    plugin = str(source_plugin_id)
-    return (
-        f"{kind_prefix}:1:{len(plugin)}:{plugin}:{len(observed)}:{observed}"
-    )
-
-
-def _location_from_payload(payload: Any) -> ViewLocation | None:
-    if not isinstance(payload, dict):
-        return None
-    try:
-        return ViewLocation.from_dict(payload)
-    except (TypeError, ValueError):
-        return None
+        record_id = f"{kind_prefix}:0:{len(observed)}:{observed}"
+    else:
+        plugin = str(source_plugin_id)
+        record_id = f"{kind_prefix}:1:{len(plugin)}:{plugin}:{len(observed)}:{observed}"
+    if len(record_id) <= 64:
+        return record_id
+    digest = base64.urlsafe_b64encode(hashlib.sha256(record_id.encode("utf-8")).digest()).decode("ascii").rstrip("=")
+    return f"{kind_prefix}:sha256:{digest}"
 
 
 def location_geometry_signature(
@@ -445,7 +435,7 @@ def location_geometry_signature(
     )
 
 
-def json_values_equal(left: Any, right: Any) -> bool:
+def json_values_equal(left: object, right: object) -> bool:
     """Deep JSON value equality with exact int/float compare (no float())."""
 
     if type(left) is bool or type(right) is bool:
@@ -458,7 +448,7 @@ def json_values_equal(left: Any, right: Any) -> bool:
         return left == right
     if isinstance(left, list) and isinstance(right, list):
         return len(left) == len(right) and all(
-            json_values_equal(a, b) for a, b in zip(left, right)
+            json_values_equal(a, b) for a, b in zip(left, right, strict=True)
         )
     if isinstance(left, dict) and isinstance(right, dict):
         if set(left) != set(right):
@@ -475,14 +465,7 @@ def payload_equal(left: RetainedEvidence, right: RetainedEvidence) -> bool:
         and left.kind == right.kind
         and left.label == right.label
         and left.confidence == right.confidence
-        and (
-            (left.location is None and right.location is None)
-            or (
-                left.location is not None
-                and right.location is not None
-                and left.location.to_dict() == right.location.to_dict()
-            )
-        )
+        and left.location == right.location
         and json_values_equal(left.properties, right.properties)
     )
 

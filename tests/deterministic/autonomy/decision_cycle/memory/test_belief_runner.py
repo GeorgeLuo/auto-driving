@@ -7,11 +7,10 @@ from dataclasses import replace
 from autonomy.decision_cycle.context import DecisionFrameContext
 from autonomy.decision_cycle.steps import decision_steps
 from autonomy.decision_cycle.proposal.runner import ProposalRunner
-from autonomy.runtime.report import report_from_host_result
+from autonomy.runtime.report import ReportValues, report_from_host_result
 from implementations.runtime.picar.control import DonkeyControlTarget
 from autonomy.runtime.cycle_host import AutonomyCycleHost
 from autonomy.decision_cycle.memory.beliefs import Belief, Check
-from autonomy.decision_cycle.memory.interface import MemoryReport
 from autonomy.decision_cycle.memory.plugin import MemoryPluginContract
 from autonomy.decision_cycle.memory.publication import belief_key, read_belief
 from autonomy.decision_cycle.memory.runner import MemoryRunner
@@ -57,7 +56,13 @@ class BeliefRunnerTests(unittest.TestCase):
         )
         self.addCleanup(host.close)
         result = host.run(_context({}))
-        report = report_from_host_result(result, host_name="test", run_id="run", generation_id="gen").to_dict()
+        report = report_from_host_result(
+            result, host_name="test", run_id="run", generation_id="gen",
+            values=ReportValues.from_dict({
+                "source_id": "fixture", "activation": {"steps": {}}, "stale_after_ms": 1000,
+                "delivered_at_ms": None, "delivery_error": None, "receipt": None, "timing": None,
+            }),
+        ).to_dict()
         state = report["cycle"]["memory"]["plugins"][0]["state"]
         self.assertIn("status_error", state)
         self.assertIn("JSON", state["status_error"])
@@ -104,7 +109,7 @@ class BeliefRunnerTests(unittest.TestCase):
         shared = {}
         runner = MemoryRunner.from_plugins({"counter": Counter()})
         report = runner.update(_context(shared))
-        self.assertEqual(report["beliefs"], {})
+        self.assertEqual(report.beliefs, {})
         self.assertEqual(runner.status()["beliefs"], {})
         self.assertIsNone(read_belief(shared, "counter.count"))
 
@@ -120,7 +125,7 @@ class BeliefRunnerTests(unittest.TestCase):
         shared = {}
         runner = MemoryRunner.from_plugins({"learner": _Learner(), "second": Second()})
         report = runner.update(_context(shared))
-        self.assertEqual(report["beliefs"]["learner.row"]["value"], 99)
+        self.assertEqual(report.beliefs["learner.row"]["value"], 99)
         self.assertEqual(read_belief(shared, "learner.row").source_plugin_id, "second")
 
     def test_selected_plugins_publish_their_own_beliefs(self):
@@ -129,25 +134,22 @@ class BeliefRunnerTests(unittest.TestCase):
         second.contract = MemoryPluginContract(belief_ids=("second.row",))
         runner = MemoryRunner.from_plugins({"learner": _Learner(), "second": second})
         report = runner.update(_context({}))
-        self.assertEqual(set(report["beliefs"]), {"learner.row", "second.row"})
-        self.assertEqual(report["beliefs"]["second.row"]["source_plugin_id"], "second")
+        self.assertEqual(set(report.beliefs), {"learner.row", "second.row"})
+        self.assertEqual(report.beliefs["second.row"]["source_plugin_id"], "second")
 
     def test_report_serializes_confidence(self):
         runner = MemoryRunner.from_plugins({"learner": _Learner()})
         shared = {}
         first = runner.update(_context(shared))
         second = runner.update(_context(shared, 20))
-        self.assertAlmostEqual(first["beliefs"]["learner.row"]["confidence"], 2 / 3)
-        self.assertAlmostEqual(second["beliefs"]["learner.row"]["confidence"], 3 / 4)
-        decoded = MemoryReport.from_dict(json.loads(json.dumps(first)))
-        self.assertEqual(decoded.to_dict(), first)
-        self.assertEqual(set(first["beliefs"]["learner.row"]), {
+        self.assertAlmostEqual(first.beliefs["learner.row"]["confidence"], 2 / 3)
+        self.assertAlmostEqual(second.beliefs["learner.row"]["confidence"], 3 / 4)
+        self.assertEqual(json.loads(json.dumps(first.to_dict())), first.to_dict())
+        self.assertEqual(set(first.beliefs["learner.row"]), {
             "value", "source_plugin_id", "updated_at_ms", "confidence", "by_method",
             "corroborated", "open_trials",
         })
         self.assertIn("checks", runner.status()["beliefs"]["learner.row"])
-        self.assertIsNot(MemoryReport.from_dict(first).beliefs["learner.row"], first["beliefs"]["learner.row"])
-        self.assertIsNot(decoded.to_dict()["beliefs"]["learner.row"], decoded.beliefs["learner.row"])
         self.assertAlmostEqual(runner.status()["beliefs"]["learner.row"]["confidence"], 3 / 4)
 
     def test_reset_and_deselection_remove_only_declared_beliefs_even_on_reset_failure(self):
@@ -170,7 +172,7 @@ class BeliefRunnerTests(unittest.TestCase):
         shared = {belief_key("a"): belief, belief_key("b"): belief}
         runner = MemoryRunner.from_plugins({})
         report = runner.update(_context(shared))
-        self.assertEqual(set(report["beliefs"]), {"a", "b"})
+        self.assertEqual(set(report.beliefs), {"a", "b"})
         self.assertEqual(set(runner.status()["beliefs"]), {"a", "b"})
 
     def test_reset_preserves_fresh_beliefs_and_advances_the_epoch(self):

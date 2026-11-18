@@ -42,9 +42,19 @@ Confirm changes adhere to the priorities defined in this document.
    locally or in the PR's Python quality summary
    ([tests/README.md](../../tests/README.md#python-quality-checks)). Investigate
    material candidates and report their locations and dispositions: fixed,
-   retained with a code-based reason, or unresolved. If a review check cannot
+   retained because the code is better that way, or unresolved. If a review check cannot
    run, report why. Review questions are observations, not a merge gate; a passing check
    does not mean they were reviewed.
+
+A document the code writes and reads back follows `autonomy/fields.py`: every
+key is written and `None` is written as `null`, identifiers are rejected rather
+than trimmed, and a bad field raises `FieldError` naming it. A class with
+`from_dict` and `to_dict` registers samples in
+`tests/deterministic/autonomy/test_documents.py`, which checks it against those
+rules. Messages from another program keep that program's shape; parse them once
+into a typed value. The quality check lists the inputs a change makes each
+registered document reject, accept, or write back differently; the PR
+describes each one.
 
 Do not create extra planning documents, alternate implementations, or process
 artifacts unless the user explicitly asks for them or the repository requires
@@ -72,7 +82,7 @@ Before commit, verify changes do not introduce new vocabulary for like concepts
 in the codebase. Verify overlapping vocabulary for different concepts is not
 introduced. Verify code for readability, that branches of code from the same
 abstraction points have similar patterns, customization only appears when
-appropriate. Err on the side of readability over coverage of edge-case behavior
+appropriate. Err on the side of readability over coverage of hypothetical edge cases
 and flag where refactors can be applied to branching lanes from common abstraction.
 
 

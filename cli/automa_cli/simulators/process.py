@@ -12,11 +12,13 @@ import signal
 import subprocess
 import time
 from pathlib import Path
-from typing import Any, Literal
+from typing import Literal
 
 from ..hosts.local import log_tail
-from ..shared.io.processes import pid_alive, reap_on_exit
+from ..hosts.runs.process import process_command
+from ..shared.io.processes import command_tokens, command_option_matches, pid_alive, reap_on_exit
 from ..shared.timestamps import timestamp_ms
+from .native import NATIVE_SIM_BINARY
 from .store import SIMULATOR_SCHEMA, remove_simulator_record, simulator_dir, write_simulator_record
 
 
@@ -24,6 +26,8 @@ from .store import SIMULATOR_SCHEMA, remove_simulator_record, simulator_dir, wri
 SIMULATOR_LOG = "simulator.log"
 # The headless launcher prints this line once its simulator is ready.
 SIMULATOR_READY = "CHASE_UI_WS_URL="
+# Basename of the script ``simulators create`` launches. ``ps`` may show a full path.
+_HEADLESS_SIM_NAME = "play-chase-headless.mjs"
 
 
 class SimulatorStartError(RuntimeError):
@@ -41,22 +45,31 @@ def _ended(pid: int) -> bool:
     return not pid_alive(pid)
 
 
-def _end_process_group(pid: int, *, wait_s: float = 3.0) -> bool:
-    """Terminate the process group ``pid`` leads; ``True`` when it had to be killed."""
-
+def _signal_group(pid: int, sig: signal.Signals) -> None:
     with contextlib.suppress(ProcessLookupError):
-        os.killpg(pid, signal.SIGTERM)
+        os.killpg(pid, sig)
+
+
+def _wait_for_end(pid: int, wait_s: float) -> bool:
     deadline = time.monotonic() + wait_s
     while not _ended(pid):
         if time.monotonic() >= deadline:
-            with contextlib.suppress(ProcessLookupError):
-                os.killpg(pid, signal.SIGKILL)
-            return True
+            return False
         time.sleep(0.05)
-    return False
+    return True
 
 
-def _wait_for_simulator(log_path: Path, process: subprocess.Popen[Any], timeout_s: float) -> str:
+def _end_process_group(pid: int, *, wait_s: float = 3.0) -> bool:
+    """Terminate the process group ``pid`` leads; ``True`` when it had to be killed."""
+
+    _signal_group(pid, signal.SIGTERM)
+    if _wait_for_end(pid, wait_s):
+        return False
+    _signal_group(pid, signal.SIGKILL)
+    return True
+
+
+def _wait_for_simulator(log_path: Path, process: subprocess.Popen[bytes], timeout_s: float) -> str:
     deadline = time.monotonic() + timeout_s
     while True:
         for line in log_path.read_text(encoding="utf-8", errors="replace").splitlines():
@@ -74,7 +87,8 @@ def _wait_for_simulator(log_path: Path, process: subprocess.Popen[Any], timeout_
         time.sleep(0.1)
 
 
-def start_simulator(command: list[str], *, cwd: Path, port: int, timeout_s: float) -> dict[str, Any]:
+def start_simulator(command: list[str], *, cwd: Path, port: int, timeout_s: float,
+                    backend: str = "metrics-ui", config: str = "default") -> dict[str, object]:
     """Run a headless simulator launcher on ``port`` and record it once it prints its URL.
 
     The launcher leads its own session, so the simulator outlives this
@@ -97,10 +111,12 @@ def start_simulator(command: list[str], *, cwd: Path, port: int, timeout_s: floa
             "pid": process.pid,
             "port": port,
             "url": _wait_for_simulator(log_path, process, timeout_s),
-            "metrics_ui_dir": str(cwd),
-            "config": "default",
+            "metrics_ui_dir": str(cwd) if backend == "metrics-ui" else None,
+            "config": config,
             "started_at_ms": timestamp_ms(),
         }
+        if backend == "native":
+            record.update({"backend": backend, "executable": str(NATIVE_SIM_BINARY)})
         write_simulator_record(record)
         return record
     except BaseException:
@@ -108,16 +124,66 @@ def start_simulator(command: list[str], *, cwd: Path, port: int, timeout_s: floa
         raise
 
 
-def stop_simulator(record: dict[str, Any]) -> Literal["exited", "stopped", "killed"]:
-    """End a created simulator and remove its record; how it ended.
+def _launcher_matches(tokens: list[str]) -> bool:
+    if Path(tokens[0]).resolve() == NATIVE_SIM_BINARY.resolve():
+        return True
+    override = os.environ.get("AUTOMA_HEADLESS_SIM_COMMAND")
+    if not override:
+        return any(Path(token).name == _HEADLESS_SIM_NAME for token in tokens)
+    prefix = command_tokens(override)
+    if prefix is None:
+        return False
+    # ps reports a resolved interpreter, so the executable token is not compared.
+    return len(prefix) >= 2 and tokens[1:len(prefix)] == prefix[1:]
 
-    One whose process has exited is not signalled: its pid may belong to
-    another process by now.
+
+def simulator_command_matches(command: str, port: int) -> bool:
+    """Pure check: command is the headless simulator on exactly ``port``.
+
+    Matches the known native executable, Metrics UI's launcher, or its explicit
+    override. ``--port`` matches exactly. For interpreted launchers, ignore the
+    interpreter because ``ps`` may show its resolved path.
     """
 
-    if not pid_alive(record["pid"]):
-        ended = "exited"
+    # ps can show unquoted paths containing spaces. The native launcher always
+    # puts its port first, so match that prefix before splitting shell tokens.
+    native_prefix = f"{NATIVE_SIM_BINARY} --port {port}"
+    if command == native_prefix or command.startswith(native_prefix + " "):
+        return True
+
+    tokens = command_tokens(command)
+    if tokens is None or not command_option_matches(tokens, "--port", str(port)):
+        return False
+    return _launcher_matches(tokens)
+
+
+def _our_simulator(pid: int, port: int) -> bool:
+    if not pid_alive(pid):
+        return False
+    command = process_command(pid)
+    return command is None or simulator_command_matches(command, port)
+
+
+def stop_simulator(record: dict[str, object], *, wait_s: float = 3.0) -> Literal["exited", "stopped", "killed"]:
+    """End a created simulator and remove its record; how it ended.
+
+    A pid whose process has exited, or whose command is not this simulator,
+    is not signalled: the pid may belong to another process. The command is
+    read again before ``SIGKILL``, so a pid reused during the wait is left
+    alone. An unreadable command is still stopped.
+    """
+
+    pid = record.get("pid")
+    port = record.get("port")
+    if type(pid) is int and type(port) is int and _our_simulator(pid, port):
+        _signal_group(pid, signal.SIGTERM)
+        still_running = not _wait_for_end(pid, wait_s)
+        if still_running and _our_simulator(pid, port):
+            _signal_group(pid, signal.SIGKILL)
+            ended = "killed"
+        else:
+            ended = "stopped"
     else:
-        ended = "killed" if _end_process_group(record["pid"]) else "stopped"
+        ended = "exited"
     remove_simulator_record(record)
     return ended

@@ -5,6 +5,8 @@ from __future__ import annotations
 from dataclasses import dataclass
 from typing import Any
 
+from autonomy.decision_cycle.cycle import DecisionCycleResult
+
 
 @dataclass(frozen=True)
 class InspectResult:
@@ -17,3 +19,5 @@ class InspectResult:
     exit_code: int
     error: str | None = None
     report: dict[str, Any] | None = None
+    # Local results stay typed for text rendering; report is the exported JSON.
+    records: tuple[DecisionCycleResult | None, ...] = ()

@@ -1,0 +1,14 @@
+{
+  "visuals": [
+    {"type": "box", "x": 0, "y": 0.71, "z": 0, "width": 1.20, "depth": 0.60, "height": 0.035, "rotationRadians": 0, "material": "desk-white"},
+    {"type": "box", "x": -0.57, "y": 0, "z": 0, "width": 0.03, "depth": 0.54, "height": 0.71, "rotationRadians": 0, "material": "desk-white"},
+    {"type": "box", "x": 0.57, "y": 0, "z": 0, "width": 0.03, "depth": 0.54, "height": 0.71, "rotationRadians": 0, "material": "desk-white"},
+    {"type": "box", "x": 0, "y": 0.18, "z": -0.27, "width": 1.08, "depth": 0.02, "height": 0.42, "rotationRadians": 0, "material": "desk-white"},
+    {"type": "box", "x": -0.22, "y": 0.745, "z": -0.16, "width": 0.46, "depth": 0.03, "height": 0.32, "rotationRadians": 0, "material": "monitor-black"},
+    {"type": "box", "x": -0.22, "y": 0.745, "z": -0.12, "width": 0.12, "depth": 0.08, "height": 0.06, "rotationRadians": 0, "material": "monitor-black"},
+    {"type": "strip", "x": -0.05, "y": 0.745, "z": 0.08, "width": 0.32, "depth": 0.12, "height": 0.015, "rotationRadians": 0, "material": "monitor-black"},
+    {"type": "box", "x": -0.42, "y": 0.745, "z": 0.02, "width": 0.18, "depth": 0.14, "height": 0.045, "rotationRadians": 0.1, "material": "plain-cardboard"},
+    {"type": "box", "x": 0.42, "y": 0.745, "z": 0.06, "width": 0.12, "depth": 0.09, "height": 0.07, "rotationRadians": -0.2, "material": "bag-fabric"}
+  ],
+  "collision": {"type": "box", "width": 1.20, "depth": 0.60}
+}

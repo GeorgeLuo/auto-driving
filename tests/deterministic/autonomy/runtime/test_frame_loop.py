@@ -11,9 +11,14 @@ import numpy as np
 from PIL import Image
 
 from autonomy.decision_cycle.steps import decision_steps
-from autonomy.runtime.frame_loop import encode_jpeg
+from autonomy.runtime.cycle_host import AutonomyCycleHost
+from autonomy.runtime.frame_loop import FrameLoop, FramePublication, encode_jpeg
+from autonomy.runtime.routes import TELEMETRY_SCHEMA
 from autonomy.runtime.session import RunConfiguration
-from tests.deterministic.autonomy.runtime.test_routes import _routes
+from cli.automa_cli.hosts.publications.frame_publication import read_frame_publication
+from cli.automa_cli.hosts.publications.host_telemetry import join_host_telemetry_to_decision
+from implementations.runtime.picar.host_telemetry import HOST_TELEMETRY_LIMITS
+from tests.deterministic.autonomy.runtime.test_routes import _Target, _routes
 
 
 class FrameImageTests(unittest.TestCase):
@@ -130,3 +135,56 @@ class FrameLoopRecoveryTests(unittest.TestCase):
         self.assertEqual(loop.latest_state.frame_id, "new")
         self.assertEqual(loop.host.run_state, "running")
         self.assertEqual(loop.host.run_decisions, 1)
+
+    def test_a_64_character_host_name_publishes_a_frame_the_cli_reads(self):
+        host_name = "h" * 64
+        loop = FrameLoop(
+            host=AutonomyCycleHost(steps=decision_steps(), target=_Target()),
+            host_name=host_name,
+            runtime="chase_sim",
+            run_id="chase-run-long-name",
+        )
+        self.addCleanup(loop.shutdown)
+        loop.submit(np.zeros((4, 4, 3), dtype=np.uint8), frame_id="long-host-frame")
+        loop.wait_for_cycle()
+        report = read_frame_publication(
+            FramePublication.from_dict(loop.publish_latest()), host_name=host_name,
+        )
+        self.assertEqual(report.values.source_id, host_name)
+        completed_at_ms = report.published_at_ms
+        joined = join_host_telemetry_to_decision(
+            {
+                "schema": TELEMETRY_SCHEMA,
+                "status": "healthy",
+                "host_name": report.host_name,
+                "source_id": report.values.source_id,
+                "run_id": report.run_id,
+                "generation_id": report.generation_id,
+                "source_frame": {
+                    "frame_id": report.frame_id,
+                    "frame_index": report.frame_index,
+                    "captured_at_ms": report.timestamp_ms,
+                    "completed_at_ms": completed_at_ms,
+                },
+                "host_tick": {
+                    "sequence": 1,
+                    "observed_at_ms": completed_at_ms,
+                    "published_at_ms": completed_at_ms,
+                    "source_age_ms": 0,
+                    "gap_since_previous_ms": None,
+                    "skipped_since_previous": None,
+                },
+                "mode": "user",
+                "user_input": {"steering": 0.0, "throttle": 0.0},
+                "pilot_output": {"steering": 0.0, "throttle": 0.0},
+                "host_selected_output": {"steering": 0.0, "throttle": 0.0},
+                "application": {
+                    "boundary": "post_drive_mode_pre_drivetrain",
+                    "actuator_feedback": "unavailable",
+                },
+                "limits": dict(HOST_TELEMETRY_LIMITS),
+            },
+            report,
+            now_ms=completed_at_ms,
+        )
+        self.assertEqual(joined["identity"]["source_id"], host_name)

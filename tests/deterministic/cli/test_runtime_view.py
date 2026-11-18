@@ -46,7 +46,7 @@ class RuntimeViewStartupTests(unittest.TestCase):
         self.assertIsNone(server.url)
 
     def test_a_view_feed_whose_cleanup_also_fails_reports_the_start_failure(self):
-        server = mock.Mock(url=None)
+        server = mock.Mock(spec_set=RuntimeViewServer, url=None)
         server.start.side_effect = OSError("record not written")
         server.stop.side_effect = OSError("record not written again")
         with tempfile.TemporaryDirectory() as tmp, \

@@ -1,0 +1,6 @@
+{
+  "visuals": [
+    {"type": "box", "x": 0, "y": 0, "z": 0, "width": 1.05, "depth": 0.55, "height": 0.68, "rotationRadians": 0, "material": "obstacle"}
+  ],
+  "collision": {"type": "box", "width": 1.05, "depth": 0.55}
+}

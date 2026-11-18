@@ -1,0 +1,6 @@
+{
+  "visuals": [
+    {"type": "strip", "x": 0.0, "y": 0.0, "z": 0.0, "width": 1.6, "depth": 0.69, "height": 0.00555, "rotationRadians": 0, "material": "chevron-rug"}
+  ],
+  "collision": null
+}

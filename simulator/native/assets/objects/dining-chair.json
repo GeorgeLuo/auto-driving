@@ -1,0 +1,13 @@
+{
+  "visuals": [
+    {"type": "box", "x": 0, "y": 0.445, "z": 0, "width": 0.46, "depth": 0.43, "height": 0.074, "rotationRadians": 0, "material": "seat-fabric"},
+    {"type": "cylinder", "x": -0.175, "y": 0, "z": -0.158, "width": 0.036, "depth": 0.036, "height": 0.48, "rotationRadians": 0, "material": "walnut"},
+    {"type": "cylinder", "x": -0.175, "y": 0, "z": 0.158, "width": 0.036, "depth": 0.036, "height": 0.48, "rotationRadians": 0, "material": "walnut"},
+    {"type": "cylinder", "x": 0.175, "y": 0, "z": -0.158, "width": 0.036, "depth": 0.036, "height": 0.48, "rotationRadians": 0, "material": "walnut"},
+    {"type": "cylinder", "x": 0.175, "y": 0, "z": 0.158, "width": 0.036, "depth": 0.036, "height": 0.48, "rotationRadians": 0, "material": "walnut"},
+    {"type": "cylinder", "x": -0.177, "y": 0.48, "z": -0.175, "width": 0.033, "depth": 0.033, "height": 0.405, "rotationRadians": 0, "material": "walnut", "pitchRadians": 0.1},
+    {"type": "cylinder", "x": 0.177, "y": 0.48, "z": -0.175, "width": 0.033, "depth": 0.033, "height": 0.405, "rotationRadians": 0, "material": "walnut", "pitchRadians": 0.1},
+    {"type": "box", "x": 0, "y": 0.735, "z": -0.198, "width": 0.41, "depth": 0.044, "height": 0.143, "rotationRadians": 0, "material": "seat-fabric", "pitchRadians": 0.1}
+  ],
+  "collision": {"type": "box", "width": 0.44, "depth": 0.42}
+}

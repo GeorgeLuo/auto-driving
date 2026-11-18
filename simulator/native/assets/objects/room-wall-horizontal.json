@@ -1,0 +1,6 @@
+{
+  "visuals": [
+    {"type": "box", "x": 0, "y": 0, "z": 0, "width": 9.18, "depth": 0.18, "height": 2.4, "rotationRadians": 0, "material": "wall"}
+  ],
+  "collision": null
+}

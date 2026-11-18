@@ -1,0 +1,80 @@
+{
+  "scenarioId": "room-run6",
+  "map": {
+    "columns": 3.6,
+    "rows": 4.2,
+    "obstacles": [
+      {"id": "room-wall-far", "x": 0, "z": -2.1, "width": 3.74, "depth": 0.14, "height": 2.4, "rotationRadians": 0, "boundary": true},
+      {"id": "room-wall-near", "x": 0, "z": 2.1, "width": 3.74, "depth": 0.14, "height": 2.4, "rotationRadians": 0, "boundary": true},
+      {"id": "room-wall-left", "x": -1.8, "z": 0, "width": 0.14, "depth": 4.34, "height": 2.4, "rotationRadians": 0, "boundary": true},
+      {"id": "room-wall-right-bed", "x": 1.8, "z": -1.1847, "width": 0.14, "depth": 1.97061, "height": 2.4, "rotationRadians": 0, "boundary": true},
+      {"id": "room-wall-right-box", "x": 1.8, "z": 1.4153, "width": 0.14, "depth": 1.50939, "height": 2.4, "rotationRadians": 0, "boundary": true}
+    ],
+    "floorMaterial": "shag-carpet",
+    "light": {
+      "ambient": 0.5,
+      "directionals": [
+        {"direction": {"x": 0.2, "y": 1.6, "z": -0.5}, "intensity": 0.28, "shadowStrength": 0.55, "shadowSoftness": 0.09},
+        {"direction": {"x": 0.2, "y": 0.35, "z": 1.0}, "intensity": 0.55, "shadowStrength": 0.2, "shadowSoftness": 0.06}
+      ]
+    },
+    "instances": [
+      {"id": "bed", "asset": "platform-bed", "x": -0.79239, "z": -0.41637, "rotationRadians": 0.18097},
+      {"id": "backpack", "asset": "daypack", "x": 0.33792, "z": -0.63107, "rotationRadians": 0.64284},
+      {"id": "desk", "asset": "cluttered-desk", "x": -0.33, "z": -1.71, "rotationRadians": 0.0},
+      {"id": "chair", "asset": "office-chair", "x": 0.65291, "z": -1.66, "rotationRadians": -1.24282},
+      {"id": "ottoman", "asset": "plinth-ottoman", "x": 1.14714, "z": -0.63733, "rotationRadians": -1.02945},
+      {"id": "rug", "asset": "chevron-rug", "x": 1.10699, "z": -0.79622, "rotationRadians": -1.20176},
+      {"id": "window-left", "asset": "bright-window", "x": -1.715, "z": -0.1, "rotationRadians": 1.5707963267948966},
+      {"id": "window-right", "asset": "bright-window", "x": 0.02, "z": -2.0, "rotationRadians": 0},
+      {"id": "door-frame", "asset": "door-frame", "x": 1.73, "z": 0.23061, "rotationRadians": 0.0},
+      {"id": "door", "asset": "open-door", "x": 1.9291, "z": 0.38645, "rotationRadians": -2.24709},
+      {"id": "hall", "asset": "dark-hall", "x": 1.82, "z": 0.23061, "rotationRadians": 0},
+      {"id": "far-tall-block", "asset": "printed-carton", "x": 1.38068, "z": 1.54553, "rotationRadians": -0.7805},
+      {"id": "cable", "asset": "loose-cable", "x": 1.73377, "z": 1.26586, "rotationRadians": 1.62738},
+      {"id": "base-far-0", "asset": "wall-baseboard", "x": -1.26, "z": -2.005, "rotationRadians": 0},
+      {"id": "base-far-1", "asset": "wall-baseboard", "x": -0.42, "z": -2.005, "rotationRadians": 0},
+      {"id": "base-far-2", "asset": "wall-baseboard", "x": 0.42, "z": -2.005, "rotationRadians": 0},
+      {"id": "base-far-3", "asset": "wall-baseboard", "x": 1.26, "z": -2.005, "rotationRadians": 0},
+      {"id": "base-near-0", "asset": "wall-baseboard", "x": -1.26, "z": 2.005, "rotationRadians": 0},
+      {"id": "base-near-1", "asset": "wall-baseboard", "x": -0.42, "z": 2.005, "rotationRadians": 0},
+      {"id": "base-near-2", "asset": "wall-baseboard", "x": 0.42, "z": 2.005, "rotationRadians": 0},
+      {"id": "base-near-3", "asset": "wall-baseboard", "x": 1.26, "z": 2.005, "rotationRadians": 0},
+      {"id": "base-left-0", "asset": "wall-baseboard", "x": -1.715, "z": -1.68, "rotationRadians": 1.5707963267948966},
+      {"id": "base-left-1", "asset": "wall-baseboard", "x": -1.715, "z": -0.84, "rotationRadians": 1.5707963267948966},
+      {"id": "base-left-2", "asset": "wall-baseboard", "x": -1.715, "z": 0, "rotationRadians": 1.5707963267948966},
+      {"id": "base-left-3", "asset": "wall-baseboard", "x": -1.715, "z": 0.84, "rotationRadians": 1.5707963267948966},
+      {"id": "base-left-4", "asset": "wall-baseboard", "x": -1.715, "z": 1.68, "rotationRadians": 1.5707963267948966},
+      {"id": "base-right-0", "asset": "wall-baseboard", "x": 1.7, "z": -1.68, "rotationRadians": 1.5707963267948966},
+      {"id": "base-right-1", "asset": "wall-baseboard", "x": 1.7, "z": -0.84, "rotationRadians": 1.5707963267948966},
+      {"id": "base-right-2", "asset": "wall-baseboard", "x": 1.7, "z": -0.61939, "rotationRadians": 1.5707963267948966},
+      {"id": "base-right-3", "asset": "wall-baseboard", "x": 1.7, "z": 1.08061, "rotationRadians": 1.5707963267948966},
+      {"id": "base-right-4", "asset": "wall-baseboard", "x": 1.7, "z": 1.92, "rotationRadians": 1.5707963267948966}
+    ]
+  },
+  "spawn": {"x": 0.9878954257094608, "z": 0.24078477697223388, "headingRadians": -2.386559165281377},
+  "tour": {"x": 0.0, "z": 1.0, "headingRadians": 1.5707963267948966, "steering": 1},
+  "vehicle": {
+    "speedUnitsPerFrame": 0.037,
+    "wheelbase": 0.46,
+    "radius": 0.046,
+    "maxSteeringAngleRadians": 0.6457718232379019
+  },
+  "fps": 60,
+  "camera": {
+    "height": 0.09,
+    "pitchDownRadians": 0.18102,
+    "verticalFovDegrees": 82,
+    "near": 0.012,
+    "far": 14,
+    "barrelDistortion": 0.3,
+    "vignette": 0.14
+  },
+  "materials": {
+    "floor": [214, 206, 194],
+    "obstacle": [184, 135, 82],
+    "wall": [248, 245, 238],
+    "seed": 0,
+    "textureScale": 1.25
+  }
+}

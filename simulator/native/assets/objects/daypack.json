@@ -1,0 +1,14 @@
+{
+  "visuals": [
+    {"type": "ellipsoid", "x": 0, "y": 0.02, "z": 0, "width": 0.44, "depth": 0.30, "height": 0.26, "rotationRadians": -0.15, "material": "bag-fabric", "pitchRadians": 0.28, "rollRadians": -0.22},
+    {"type": "ellipsoid", "x": 0.04, "y": 0.05, "z": 0.1, "width": 0.30, "depth": 0.16, "height": 0.15, "rotationRadians": 0.1, "material": "pocket-fabric", "rollRadians": -0.12},
+    {"type": "strip", "x": 0.06, "y": 0.15, "z": 0.16, "width": 0.16, "depth": 0.028, "height": 0.014, "rotationRadians": 0.1, "material": "pack-webbing", "rollRadians": -0.15},
+    {"type": "strip", "x": -0.12, "y": 0.008, "z": 0.08, "width": 0.05, "depth": 0.28, "height": 0.014, "rotationRadians": 0.45, "material": "pack-webbing"},
+    {"type": "strip", "x": 0.14, "y": 0.008, "z": -0.06, "width": 0.046, "depth": 0.24, "height": 0.014, "rotationRadians": -0.4, "material": "pack-webbing"},
+    {"type": "box", "x": -0.2, "y": 0.08, "z": 0.0, "width": 0.04, "depth": 0.24, "height": 0.018, "rotationRadians": 0, "material": "pack-webbing"},
+    {"type": "box", "x": -0.185, "y": 0.13, "z": 0.0, "width": 0.16, "depth": 0.042, "height": 0.016, "rotationRadians": 0, "material": "pack-webbing"},
+    {"type": "box", "x": -0.21, "y": 0.1, "z": 0.02, "width": 0.03, "depth": 0.05, "height": 0.03, "rotationRadians": 0, "material": "buckle"},
+    {"type": "box", "x": 0.06, "y": 0.155, "z": 0.16, "width": 0.045, "depth": 0.022, "height": 0.02, "rotationRadians": 0.1, "material": "buckle"}
+  ],
+  "collision": {"type": "box", "width": 0.46, "depth": 0.32}
+}

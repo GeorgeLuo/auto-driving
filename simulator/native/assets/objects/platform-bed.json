@@ -1,0 +1,24 @@
+{
+  "visuals": [
+    {"type": "cylinder", "x": -0.88, "y": 0, "z": -0.52, "width": 0.04, "depth": 0.04, "height": 0.30, "rotationRadians": 0, "material": "black-metal"},
+    {"type": "cylinder", "x": 0.88, "y": 0, "z": -0.52, "width": 0.04, "depth": 0.04, "height": 0.30, "rotationRadians": 0, "material": "black-metal"},
+    {"type": "cylinder", "x": -0.88, "y": 0, "z": 0.52, "width": 0.04, "depth": 0.04, "height": 0.30, "rotationRadians": 0, "material": "black-metal"},
+    {"type": "cylinder", "x": 0.88, "y": 0, "z": 0.52, "width": 0.04, "depth": 0.04, "height": 0.30, "rotationRadians": 0, "material": "black-metal"},
+    {"type": "box", "x": 0, "y": 0.28, "z": -0.54, "width": 1.80, "depth": 0.03, "height": 0.05, "rotationRadians": 0, "material": "black-metal"},
+    {"type": "box", "x": 0, "y": 0.28, "z": 0.54, "width": 1.80, "depth": 0.03, "height": 0.05, "rotationRadians": 0, "material": "black-metal"},
+    {"type": "box", "x": -0.90, "y": 0.28, "z": 0, "width": 0.03, "depth": 1.10, "height": 0.05, "rotationRadians": 0, "material": "black-metal"},
+    {"type": "box", "x": 0.90, "y": 0.28, "z": 0, "width": 0.03, "depth": 1.10, "height": 0.05, "rotationRadians": 0, "material": "black-metal"},
+    {"type": "box", "x": 0, "y": 0.30, "z": 0, "width": 1.70, "depth": 0.028, "height": 0.028, "rotationRadians": 0, "material": "black-metal"},
+    {"type": "box", "x": -0.60, "y": 0.325, "z": 0, "width": 0.02, "depth": 1.02, "height": 0.018, "rotationRadians": 0, "material": "black-metal"},
+    {"type": "box", "x": -0.30, "y": 0.325, "z": 0, "width": 0.02, "depth": 1.02, "height": 0.018, "rotationRadians": 0, "material": "black-metal"},
+    {"type": "box", "x": 0, "y": 0.325, "z": 0, "width": 0.02, "depth": 1.02, "height": 0.018, "rotationRadians": 0, "material": "black-metal"},
+    {"type": "box", "x": 0.30, "y": 0.325, "z": 0, "width": 0.02, "depth": 1.02, "height": 0.018, "rotationRadians": 0, "material": "black-metal"},
+    {"type": "box", "x": 0.60, "y": 0.325, "z": 0, "width": 0.02, "depth": 1.02, "height": 0.018, "rotationRadians": 0, "material": "black-metal"},
+    {"type": "box", "x": 0, "y": 0.34, "z": 0, "width": 2.00, "depth": 1.40, "height": 0.11, "rotationRadians": 0, "material": "quilt-blue"},
+    {"type": "box", "x": 0, "y": 0.18, "z": -0.71, "width": 1.96, "depth": 0.03, "height": 0.24, "rotationRadians": 0, "material": "quilt-blue"},
+    {"type": "box", "x": 0, "y": 0.18, "z": 0.71, "width": 1.96, "depth": 0.03, "height": 0.24, "rotationRadians": 0, "material": "quilt-blue"},
+    {"type": "box", "x": 1.01, "y": 0.18, "z": 0, "width": 0.03, "depth": 1.40, "height": 0.24, "rotationRadians": 0, "material": "quilt-blue"},
+    {"type": "ellipsoid", "x": -0.62, "y": 0.43, "z": 0.02, "width": 0.46, "depth": 0.30, "height": 0.12, "rotationRadians": 0.08, "material": "quilt-blue"}
+  ],
+  "collision": {"type": "box", "width": 2.00, "depth": 1.40}
+}

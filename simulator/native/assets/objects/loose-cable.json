@@ -1,0 +1,9 @@
+{
+  "visuals": [
+    {"type": "strip", "x": -0.55, "y": 0.01, "z": -0.04, "width": 0.52, "depth": 0.032, "height": 0.02, "rotationRadians": 0.12, "material": "cable-black"},
+    {"type": "strip", "x": -0.04, "y": 0.012, "z": -0.02, "width": 0.52, "depth": 0.032, "height": 0.02, "rotationRadians": -0.18, "material": "cable-black"},
+    {"type": "strip", "x": 0.46, "y": 0.011, "z": -0.08, "width": 0.48, "depth": 0.032, "height": 0.02, "rotationRadians": 0.28, "material": "cable-black"},
+    {"type": "strip", "x": 0.82, "y": 0.014, "z": -0.16, "width": 0.30, "depth": 0.032, "height": 0.02, "rotationRadians": -0.55, "material": "cable-black"}
+  ],
+  "collision": null
+}

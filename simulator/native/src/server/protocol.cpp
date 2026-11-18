@@ -33,10 +33,10 @@ static std::string base64(const std::vector<unsigned char>& bytes) {
 std::vector<unsigned char> render_rgb(const World& world, const Renderer& renderer, int width, int height) {
     if (width < 1 || height < 1 || width > 640 || height > 480)
         throw std::invalid_argument("Invalid render dimensions");
-    auto linear = renderer.render(*world.configuration.map,world.camera_pose(),{width,height});
+    auto linear = renderer.render(world.configuration.map,world.camera_pose(),{width,height});
     if (linear.size.width != width || linear.size.height != height)
         throw std::runtime_error("Renderer returned unexpected image dimensions");
-    return apply_camera(linear,world.configuration.camera_effects);
+    return world.configuration.camera_sampler->apply(linear);
 }
 std::vector<unsigned char> render_jpeg(const World& world, const Renderer& renderer, const ImageRequest& request) {
     return encode_jpeg(render_rgb(world,renderer,request.width,request.height),

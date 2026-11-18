@@ -35,6 +35,14 @@ struct Bounds {
         }
     }
 
+    void pad() {
+        // Allow for rounding at transformed or coplanar bounds.
+        for (int i=0;i<3;++i) {
+            low[i] -= 1e-8;
+            high[i] += 1e-8;
+        }
+    }
+
     bool intersects(const BoundsRay& ray, double near, double far) const {
         for (int i=0;i<3;++i) {
             if (std::isinf(ray.inverse[i])) {
@@ -81,11 +89,7 @@ private:
             total.extend(b);
             centers.extend(Vec3{b.low[0]+b.high[0],b.low[1]+b.high[1],b.low[2]+b.high[2]});
         }
-        // Allow for rounding at transformed or coplanar bounds.
-        for (int i=0;i<3;++i) {
-            total.low[i] -= 1e-8;
-            total.high[i] += 1e-8;
-        }
+        total.pad();
         const size_t index = nodes_.size();
         nodes_.push_back({total,begin,end-begin});
         if (end-begin <= 4) return index;

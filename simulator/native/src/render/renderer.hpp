@@ -1,6 +1,7 @@
 #pragma once
 #include "core/image.hpp"
 #include "scene/map.hpp"
+#include <memory>
 #include <string_view>
 
 namespace sim {
@@ -18,7 +19,8 @@ class Renderer {
 public:
     virtual ~Renderer() = default;
     virtual std::string_view id() const = 0;
-    // Capture and streaming can call this concurrently.
-    virtual LinearRgbImage render(const Map& scene, const CameraPose& camera, ImageSize size) const = 0;
+    // Capture and streaming can call this concurrently with immutable maps.
+    virtual LinearRgbImage render(const std::shared_ptr<const Map>& scene, const CameraPose& camera,
+                                  ImageSize size) const = 0;
 };
 }

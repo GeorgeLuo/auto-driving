@@ -244,14 +244,32 @@ renderer implementation headers from outside their backend.
   box footprint in `asset.extras.collision` using the same fields as a JSON
   object. See `assets/objects/tool-case.gltf`.
 - **Add a renderer backend.** Put its C++ sources in `src/render/NAME/` and
-  implement `render/renderer.hpp`'s `Renderer`. Use the scene's visual parts,
-  meshes, materials, and lights. Return row-major linear RGB
-  with 255 as reference white, and give the backend a stable `id()` for
+  implement `render/renderer.hpp`'s `Renderer`. Each call receives an immutable
+  map with its visual parts, meshes, materials, and lights. Return row-major
+  linear RGB with 255 as reference white, and give the backend a stable `id()` for
   captures. Register the backend's name and factory in
   `src/server/renderers.cpp`. CMake discovers its `.cpp` files. Launch the
   native executable with `--renderer NAME`. The default is `software`.
 
 ## Verification and measurement
+
+The software renderer uses one persistent worker pool per simulator. It defaults
+to the hardware thread count, or one if the platform cannot report it. Set
+`AUTOMA_NATIVE_RENDER_WORKERS` to an integer from 1 to 256 before launching the
+simulator or either measurement tool to override it. One worker renders on the
+calling thread. A capture and a stream can hold independent copies of world state.
+They take turns submitting frames to the pool, so added clients do not multiply
+the number of renderer workers. Lens sampling and JPEG encoding run on the
+calling threads with private output buffers. Rendering holds no world lock.
+
+A successful `load-map`, `reset`, or applied `configure` creates a new immutable
+map and camera sampler. The renderer keys its single shadow-grid cache entry by
+map identity and replaces it on the next render of a different map. A light
+change through map replacement therefore rebuilds the grids,
+even with identical geometry. Playing applies a pending configuration at the
+next physics step. Each sampler caches one image size and owns the lens
+calibration for that configuration. An in-flight capture can finish with its
+original map and calibration. Configurations can share immutable compiled meshes.
 
 The tour drives a fixed circle and writes deterministic JPEGs using the same
 camera pipeline as the server. With the showcase spawn and steering, the
@@ -264,11 +282,20 @@ build/native-sim-tour maps/showcase-boxes.json build/tour/boxes
 
 The default run advances 420 steps and captures every third step at
 640x480. It writes `frame_00000.jpg` through `frame_00139.jpg` in the output
-directory and reports mean renderer time with the software renderer's four
-scanline workers. Optional arguments after the output directory set steps,
-capture interval, steering, width, and height in that order. Use an empty
-output directory if a previous run wrote more frames. Use the boxes-only map
-for byte-for-byte JPEG regression comparisons.
+directory and reports mean renderer time. Optional arguments after the output
+directory set steps, capture interval, steering, width, and height in that order. Use an empty
+output directory if a previous run wrote more frames.
+
+```sh
+cmake --build build --target native-sim-bench
+build/native-sim-bench --full-only --hash
+build/native-sim-bench --map /absolute/path/to/map.json --full-only
+```
+
+The benchmark reports median and p90 times over the tour, including the
+generated stress scene. With no map argument it includes `maps/room-run6.json`
+when present. See the [performance report](docs/rendering-performance.md) for
+the measurement method and the byte-for-byte tour comparisons.
 
 ```sh
 ctest --test-dir simulator/native/build --output-on-failure
@@ -286,7 +313,9 @@ host attachment, both run modes, and process deletion. They skip if the native
 binary has not been built. CTest checks the JavaScript motion reference, four
 pre-refactor RGB hashes and renderer IDs, and 40 pre-refactor trajectory poses.
 It also checks shape and mesh rendering, textures, instance overrides, light
-configuration, clearance along the showcase tour, and the camera pipeline.
+configuration, clearance along the showcase tour, cache invalidation, and the
+camera pipeline. It compares RGB and JPEG output for one and four workers and
+exercises concurrent captures and streams.
 The Native simulator GitHub Actions workflow runs CTest when native files
 change. The Python systems tests run separately.
 To regenerate the JavaScript reference from a Metrics UI checkout:

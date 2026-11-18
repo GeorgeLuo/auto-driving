@@ -10,7 +10,7 @@ struct Configuration {
     std::shared_ptr<const Map> map;
     VehicleSettings vehicle;
     Projection projection;
-    CameraEffects camera_effects;
+    std::shared_ptr<const CameraSampler> camera_sampler;
     double camera_height, fps;
 };
 

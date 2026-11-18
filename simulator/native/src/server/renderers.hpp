@@ -3,5 +3,5 @@
 #include <memory>
 
 namespace sim {
-std::unique_ptr<Renderer> make_renderer(std::string_view name);
+std::unique_ptr<Renderer> make_renderer(std::string_view name, unsigned workers = 0);
 }

@@ -15,7 +15,7 @@ class TimedRenderer final : public sim::Renderer {
 public:
     explicit TimedRenderer(const sim::Renderer& renderer) : renderer_(renderer) {}
     std::string_view id() const override { return renderer_.id(); }
-    sim::LinearRgbImage render(const sim::Map& scene, const sim::CameraPose& camera,
+    sim::LinearRgbImage render(const std::shared_ptr<const sim::Map>& scene, const sim::CameraPose& camera,
                                sim::ImageSize size) const override {
         auto start = sim::monotonic_us();
         auto image = renderer_.render(scene,camera,size);

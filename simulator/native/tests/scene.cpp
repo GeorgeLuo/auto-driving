@@ -1,6 +1,7 @@
 #include "scene/asset_loader.hpp"
 #include "server/protocol.hpp"
 #include "server/renderers.hpp"
+#include <future>
 #include <cmath>
 #include <fstream>
 #include <iostream>
@@ -116,7 +117,7 @@ static void check_new_visuals(const sim::AssetCatalog& catalog, const sim::Rende
     map.light.ambient = 1;
     map.light.directionals.front().intensity = 0;
     sim::CameraPose camera{{0,.21,1.5},{0,-1},{0,55,.04,12}};
-    auto render = [&] { return renderer.render(map,camera,{112,84}).channels; };
+    auto render = [&] { return renderer.render(std::make_shared<const sim::Map>(map),camera,{112,84}).channels; };
 
     auto asset = std::make_shared<sim::Asset>();
     auto part = catalog.objects.at("leather-ottoman")->visuals.front();
@@ -158,7 +159,7 @@ static void check_new_visuals(const sim::AssetCatalog& catalog, const sim::Rende
 static void check_textures_and_lights(const sim::AssetCatalog& catalog, const sim::Renderer& renderer) {
     sim::Map map{8,8,{},catalog.materials,"floor",{}};
     sim::CameraPose camera{{0,.25,1.8},{0,-1},{.45,60,.04,12}};
-    auto render = [&] { return renderer.render(map,camera,{96,72}).channels; };
+    auto render = [&] { return renderer.render(std::make_shared<const sim::Map>(map),camera,{96,72}).channels; };
     for (const char* name : {"room-carpet","walnut","brown-leather","bag-fabric","shipping-cardboard","blue-rug"}) {
         map.floor_material = name;
         auto pixels = render();
@@ -193,10 +194,85 @@ static void check_textures_and_lights(const sim::AssetCatalog& catalog, const si
 class FlatRenderer final : public sim::Renderer {
 public:
     std::string_view id() const override { return "test-flat"; }
-    sim::LinearRgbImage render(const sim::Map&, const sim::CameraPose&, sim::ImageSize size) const override {
+    sim::LinearRgbImage render(const std::shared_ptr<const sim::Map>&, const sim::CameraPose&,
+                               sim::ImageSize size) const override {
         return {size,std::vector<double>(static_cast<size_t>(size.width)*size.height*3,100.75)};
     }
 };
+
+static void check_render_caches(const char* showcase, const char* boxes,
+                                const std::shared_ptr<const sim::AssetCatalog>& assets) {
+    sim::World world(sim::read_json(showcase),assets);
+    const auto serial = sim::make_renderer("software",1);
+    const auto tiled = sim::make_renderer("software",4);
+    const sim::ImageRequest request{193,107,.8};
+    const auto cold_jpeg = [&](const sim::World& source, const sim::ImageRequest& image) {
+        sim::World cold(source.configuration.document,assets);
+        cold.pose = source.pose;
+        return sim::render_jpeg(cold,*serial,image);
+    };
+    const auto original = sim::render_jpeg(world,*tiled,request);
+    check(original == cold_jpeg(world,request),"JPEG bytes match with one and four workers");
+    check(sim::render_rgb(world,*serial,request.width,request.height) ==
+          sim::render_rgb(world,*tiled,request.width,request.height),"RGB bytes match with one and four workers");
+
+    const auto before_configure = world.configuration;
+    sim::command(world,"configure",{{"camera",{{"verticalFovDegrees",72}}}});
+    check(world.configuration.map == before_configure.map &&
+          world.configuration.camera_sampler == before_configure.camera_sampler,
+          "Pending configure leaves the active caches alone");
+    world.step();
+    check(world.configuration.map != before_configure.map &&
+          world.configuration.camera_sampler != before_configure.camera_sampler,
+          "Applying a projection change replaces both cache keys");
+    const auto projected = sim::render_jpeg(world,*tiled,request);
+    check(projected != original && projected == cold_jpeg(world,request),"New projection matches a cold render");
+
+    world.playing = false;
+    const auto before_lens = world.configuration;
+    sim::command(world,"configure",{{"camera",{{"barrelDistortion",.42},{"vignette",.65}}}});
+    check(world.configuration.map != before_lens.map &&
+          world.configuration.camera_sampler != before_lens.camera_sampler,
+          "Applying a lens change replaces both cache keys");
+    const auto warped = sim::render_jpeg(world,*tiled,request);
+    check(warped != projected && warped == cold_jpeg(world,request),"New lens matches a cold render");
+
+    const auto before_reload = world;
+    const auto same_map = world.configuration.document;
+    sim::command(world,"load-map",same_map);
+    check(world.epoch != before_reload.epoch && world.configuration.map != before_reload.configuration.map &&
+          world.configuration.camera_sampler != before_reload.configuration.camera_sampler,
+          "Reloading an identical map replaces both cache keys");
+    const auto unchanged = sim::render_jpeg(world,*tiled,request);
+    check(unchanged == warped,"Reloading the same map reproduces its spawn image");
+
+    auto relit = same_map;
+    auto& direction = relit["map"]["light"]["directionals"][0]["direction"];
+    direction = {{"x",.85},{"y",1},{"z",-.35}};
+    sim::command(world,"load-map",relit);
+    const auto new_light = sim::render_jpeg(world,*tiled,request);
+    check(new_light != unchanged && new_light == cold_jpeg(world,request),
+          "Reloading the same geometry with a new light direction rebuilds the shadow grid");
+
+    sim::command(world,"load-map",sim::read_json(boxes));
+    const auto new_map = sim::render_jpeg(world,*tiled,request);
+    check(new_map != new_light && new_map == cold_jpeg(world,request),"Reloaded geometry matches a cold render");
+
+    const sim::ImageRequest other_size{151,99,.8};
+    const auto check_concurrent = [&](const sim::World& captured) {
+        const auto expected_capture = sim::capture(captured,*serial,request).at("sensor");
+        const auto expected_stream = sim::stream_frame(world,*serial,other_size,"test",0).at("sensor");
+        auto capture = std::async(std::launch::async,[&] {
+            return sim::capture(captured,*tiled,request);
+        });
+        const auto stream = sim::stream_frame(world,*tiled,other_size,"test",0);
+        check(capture.get().at("sensor") == expected_capture && stream.at("sensor") == expected_stream,
+              "Concurrent capture and stream match their own world state and dimensions");
+    };
+    check_concurrent(before_reload);
+    check_concurrent(world);
+    check(sim::render_jpeg(world,*tiled,request) == new_map,"Lens sizes can change and return to a previous size");
+}
 
 int main(int argc, char** argv) {
     try {
@@ -210,6 +286,7 @@ int main(int argc, char** argv) {
         check_showcase(argv[3],argv[4],assets,*software);
         check_new_visuals(*assets,*software);
         check_textures_and_lights(*assets,*software);
+        check_render_caches(argv[3],argv[4],assets);
 
         auto shaded = config;
         shaded["map"]["light"] = {{"shadowStrength",0}};

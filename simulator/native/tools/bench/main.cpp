@@ -154,9 +154,9 @@ void run(std::string_view name, const std::filesystem::path& path, bool stress_s
     for (int i=-options.warmup;i<options.frames;++i) {
         const auto& pose = poses[i < 0 ? (i+options.warmup)%poses.size() : i];
         const auto start = Clock::now();
-        auto linear = renderer->render(scene,pose,size);
+        auto linear = renderer->render(world.configuration.map,pose,size);
         const auto rendered = Clock::now();
-        auto rgb = sim::apply_camera(linear,world.configuration.camera_effects);
+        auto rgb = world.configuration.camera_sampler->apply(linear);
         const auto sampled = Clock::now();
         const auto encoded = sim::encode_jpeg(rgb,size,options.image.quality);
         const auto finish = Clock::now();
@@ -182,12 +182,13 @@ void run(std::string_view name, const std::filesystem::path& path, bool stress_s
     auto unshadowed = scene;
     for (auto& light : unshadowed.light.directionals) light.shadow_strength = 0;
     const auto flat = without_textures(unshadowed);
-    auto render_pass = [&](const sim::Map& variant) {
+    auto render_pass = [&](sim::Map variant) {
+        auto map = std::make_shared<const sim::Map>(std::move(variant));
         std::vector<double> times;
         for (int i=-options.warmup;i<options.frames;++i) {
             const auto& pose = poses[i < 0 ? (i+options.warmup)%poses.size() : i];
             const auto start = Clock::now();
-            const auto image = renderer->render(variant,pose,size);
+            const auto image = renderer->render(map,pose,size);
             if (i >= 0) times.push_back(milliseconds(start,Clock::now()));
         }
         return times;

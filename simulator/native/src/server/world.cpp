@@ -41,7 +41,8 @@ static Configuration load_configuration(const Json& c, const AssetCatalog& asset
                           number(camera,"far",camera.at("near").get<double>()+.001,2000)};
     CameraEffects effects{number(camera,"barrelDistortion",0,.5),number(camera,"vignette",0,1)};
     apply_legacy_materials(map,c.at("materials"));
-    return {c,std::make_shared<const Map>(std::move(map)),vehicle,projection,effects,height,fps};
+    return {c,std::make_shared<const Map>(std::move(map)),vehicle,projection,
+            std::make_shared<const CameraSampler>(effects),height,fps};
 }
 
 World::World(const Json& document, std::shared_ptr<const AssetCatalog> catalog)

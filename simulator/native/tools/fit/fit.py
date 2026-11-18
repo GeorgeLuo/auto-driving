@@ -9,7 +9,7 @@ import cv2
 import numpy as np
 from PIL import Image, ImageDraw
 
-from estimate import Registration, estimate, replay
+from estimate import Registration, estimate, replay, wrapped_delta
 from geometry import BEFORE, NATIVE, Observations, Scene, document, vanishing_fov
 
 FIT = Path(__file__).resolve().parent
@@ -73,7 +73,7 @@ def choose(reg, index, poses, prior, *, weights, scratch):
         image = render(reg.scene.map, pose, scratch)
         reprojection = np.linalg.norm(uv - clicks, axis=1)
         edge = edge_errors(image, clicks, uv)
-        motion = np.linalg.norm((pose - prior[index]) * weights[index])
+        motion = np.linalg.norm(wrapped_delta(pose, prior[index]) * weights[index])
         score = np.mean(.65 * reprojection + .35 * edge) + .10 * motion + reg.outside_errors(trial)[index]
         if best is None or score < best[0]:
             best = score, pose, image
@@ -153,8 +153,8 @@ def summarize(reg, before, poses, gain, fields):
         'Distance is the mean Euclidean pixel residual of the labelled points and edges at 640 × 480. '
         'Off-screen projections retain their pixel coordinates. The paired means require the '
         'feature to be in front of both near planes. All-after includes every annotated mark. '
-        'The raster counts record how many projections fall on the source sensor before edge '
-        'clamping. Occlusion is assessed from the triptychs.', '',
+        'The raster counts include projections within the distorted output image. '
+        'Occlusion is assessed from the triptychs.', '',
         f'Across {sum(paired)} paired marks in the requested frames the mean goes from {old_errors[paired].mean():.1f} to '
         f'{new_errors[paired].mean():.1f} px. Frames 27 and 33 supply settled contact observations.',
         layout_comparison(reg, before, poses, paired), '',
@@ -168,7 +168,7 @@ def summarize(reg, before, poses, gain, fields):
         '|---:|---:|---:|---:|---:|---:|---:|---:|---:|---|', *rows, '',
         'The bed quilt and the soft backpack straps have approximate silhouette correspondences. '
         'The rigid car and fixed camera cannot reproduce pitch changes on carpet or compression '
-        'against the bag. The outer image strips repeat the source border. The padded door trim, '
+        'against the bag. The padded door trim, '
         'rug ripples, loose cable bends and curved carton flap remain approximate. '
         'The baseboard angle near the open door remains shallow. The fixed mount also leaves '
         'a vertical offset at the far baseboard corner in the box-contact frame. '
@@ -181,7 +181,10 @@ def summarize(reg, before, poses, gain, fields):
 def main():
     marks = document(FIT / 'run6-marks.json')
     reg = Registration(Scene(marks), Observations(marks))
-    frames = sorted((NATIVE / 'build/run6/frames').glob('*.jpg'))
+    frames = sorted((NATIVE / 'build/run6/frames').glob('*_front_camera.jpg'))
+    for index, frame_id in zip(reg.obs.ids, reg.obs.frame_ids, strict=True):
+        if index >= len(frames) or frames[index].stem != f'{frame_id}_front_camera':
+            raise ValueError(f'Expected {frame_id}_front_camera.jpg at run 6 frame {index}')
     poses, prior, weights, gain = estimate(reg, frames)
     OUTPUT.mkdir(exist_ok=True)
     with tempfile.TemporaryDirectory(dir=OUTPUT) as folder:

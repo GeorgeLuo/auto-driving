@@ -72,8 +72,9 @@ class Scene:
 
 class Observations:
     def __init__(self, marks):
-        frames = marks['frames']
+        frames = dict(sorted(marks['frames'].items(), key=lambda item: int(item[0])))
         self.ids = [int(i) for i in frames]
+        self.frame_ids = [item['frameId'] for item in frames.values()]
         self.support = [i for i, item in enumerate(frames.values()) if item.get('support')]
         self.seeds = np.array([f['seed'] for f in frames.values()])
         self.contacts = [(i, f['contact']) for i, f in enumerate(frames.values()) if 'contact' in f]
@@ -109,9 +110,10 @@ class Observations:
         ray = self.pixels - CENTER
         target = ray * (1 + barrel * np.sum((ray / HALF_SIZE)**2, axis=1, keepdims=True))
         pinhole = closest_on_edges(xy, target)
+        pixels = distort(pinhole, barrel)
         in_front = depth.max(axis=1) >= near
-        in_raster = in_front & (abs(pinhole) <= CENTER).all(axis=1)
-        return distort(pinhole, barrel), in_raster, in_front
+        in_raster = in_front & (abs(pixels - CENTER) <= CENTER).all(axis=1)
+        return pixels, in_raster, in_front
 
 
 def clip_and_project(xy, depth, near, vertical_fov):

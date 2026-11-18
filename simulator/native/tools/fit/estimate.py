@@ -4,7 +4,7 @@ import subprocess
 
 import numpy as np
 
-from geometry import MAP, NATIVE, document, rotate_xz
+from geometry import MAP, NATIVE, distort, document, rotate_xz
 
 
 def command_intervals(frames, ids, fps):
@@ -14,14 +14,17 @@ def command_intervals(frames, ids, fps):
     intervals = []
     for start, end in zip(ids[:-1], ids[1:], strict=True):
         commands = []
+        previous_tick = 0
         for index in range(start, end):
             record = records[index]
             output = record['cycle']['action']['authority']['authorized_output']
-            elapsed = (records[index + 1]['timestamp_ms'] - record['timestamp_ms']) / 1000
-            if elapsed <= 0:
+            next_time = records[index + 1]['timestamp_ms']
+            if next_time <= record['timestamp_ms']:
                 raise ValueError(f'Non-increasing timestamp at {frames[index].name}')
+            next_tick = round((next_time - records[start]['timestamp_ms']) * fps / 1000)
             commands.append(dict(throttle=output['throttle'], steering=output['steering'],
-                                 steps=round(elapsed * fps)))
+                                 steps=next_tick - previous_tick))
+            previous_tick = next_tick
         intervals.append(commands)
     return intervals
 
@@ -37,7 +40,7 @@ def replay(intervals, starts, gain):
 
 def wrapped_delta(poses, other):
     delta = poses - other
-    delta[:, 2] = np.arctan2(np.sin(delta[:, 2]), np.cos(delta[:, 2]))
+    delta[..., 2] = np.arctan2(np.sin(delta[..., 2]), np.cos(delta[..., 2]))
     return delta
 
 
@@ -97,7 +100,7 @@ class Registration:
         return np.array([x, z]) + rotate_xz(along, sign * half[1], yaw)
 
     def outside_errors(self, poses):
-        """A cropped-out target must clear the pinhole raster, including its repeated edge."""
+        """Measure the distance to the first pixel beyond the distorted right edge."""
         camera = self.scene.map['camera']
         focal = 240 / np.tan(np.deg2rad(camera['verticalFovDegrees']) / 2)
         errors = np.zeros(len(poses))
@@ -105,9 +108,11 @@ class Registration:
             x, y, z = self.points[anchor]
             px, pz, yaw = poses[index]
             ahead, side = rotate_xz(x - px, z - pz, yaw)
-            depth, _ = rotate_xz(ahead, y - camera['height'], -camera['pitchDownRadians'])
+            depth, up = rotate_xz(ahead, y - camera['height'], -camera['pitchDownRadians'])
             if depth > camera['near']:
-                errors[index] += max(0., 321 - focal * side / depth)
+                pinhole = np.array([[side, -up]]) * (focal / depth)
+                pixel_x = distort(pinhole, camera['barrelDistortion'])[0, 0]
+                errors[index] += max(0., 640 - pixel_x)
         return errors
 
     def constraints(self, poses):

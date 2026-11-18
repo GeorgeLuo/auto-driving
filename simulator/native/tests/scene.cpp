@@ -274,9 +274,20 @@ static void check_render_caches(const char* showcase, const char* boxes,
     check(sim::render_jpeg(world,*tiled,request) == new_map,"Lens sizes can change and return to a previous size");
 }
 
+static void check_room(const char* path, const std::shared_ptr<const sim::AssetCatalog>& catalog,
+                       const sim::Renderer& renderer) {
+    sim::World room(sim::read_json(path), catalog);
+    check(room.configuration.document.at("scenarioId") == "room-run6", "Room map keeps its scenario id");
+    bool target = false;
+    for (const auto& object : room.configuration.map->objects)
+        if (object.id == "far-tall-block") target = true;
+    check(target, "Room map names the chase target like chaser-depth-obstacles");
+    check(!sim::render_jpeg(room, renderer, {96, 72, .8}).empty(), "Room map renders");
+}
+
 int main(int argc, char** argv) {
     try {
-        check(argc==5,"Expected map, asset, and showcase paths");
+        check(argc==6,"Expected map, asset, showcase, and room paths");
         auto config = sim::read_json(argv[1]);
         check_invalid_gltf(std::filesystem::path(argv[2])/"objects/tool-case.gltf");
         auto assets = std::make_shared<const sim::AssetCatalog>(
@@ -287,6 +298,7 @@ int main(int argc, char** argv) {
         check_new_visuals(*assets,*software);
         check_textures_and_lights(*assets,*software);
         check_render_caches(argv[3],argv[4],assets);
+        check_room(argv[5],assets,*software);
 
         auto shaded = config;
         shaded["map"]["light"] = {{"shadowStrength",0}};

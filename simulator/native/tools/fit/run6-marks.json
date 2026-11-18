@@ -1,0 +1,305 @@
+{
+  "vanishing_lines": {
+    "0": [[[204, 69], [48, 159]], [[169, 221], [59, 213]], [[204, 69], [355, 128]], [[169, 221], [275, 207]]],
+    "8": [[[175, 0], [32, 151]], [[117, 252], [44, 222]], [[175, 0], [403, 117]], [[117, 252], [296, 217]]]
+  },
+  "anchors": {
+    "bed_near": ["bed", 3, 0, 0, 0],
+    "bed_left": ["bed", 2, 0, 0, 0],
+    "quilt_near": ["bed", 14, 0.5, 1, 0.5],
+    "quilt_left": ["bed", 14, -0.5, 1, 0.5],
+    "quilt_right": ["bed", 14, 0.5, 1, -0.5],
+    "pack_crown": ["backpack", 0, 0, 1, 0],
+    "pad_base": ["backpack", 1, 0, 0.04, 0.2],
+    "strap_root": ["backpack", 4, 0, 0.5, -0.5],
+    "strap_tip": ["backpack", 4, 0, 0.5, 0.5],
+    "web_tip": ["backpack", 3, 0.47, 0.5, 0.5],
+    "bed_end_post": ["bed", 1, 0, 1, 0],
+    "ott_left": ["ottoman", 2, -0.5, 0, 0.5],
+    "ott_left_seam": ["ottoman", 5, -0.5, 0, 0.5],
+    "ott_left_top": ["ottoman", 5, -0.5, 1, 0.5],
+    "ott_right": ["ottoman", 3, 0.5, 0, 0.5],
+    "ott_right_seam": ["ottoman", 5, 0.5, 0, 0.5],
+    "ott_right_top": ["ottoman", 5, 0.5, 1, 0.5],
+    "rug_left": ["rug", 0, -0.5, 1, 0.5],
+    "rug_right": ["rug", 0, 0.5, 1, 0.5],
+    "jamb_left": ["door-frame", 0, 0, 0, 0.5],
+    "door_hinge": ["door", 0, 0.5, 0, 0.5],
+    "box_left": ["far-tall-block", 0, 0.5, 0, -0.5],
+    "box_left_rim": ["far-tall-block", 0, 0.5, 1, -0.5],
+    "box_left_flap": ["far-tall-block", 2, 0.5, 0.5, -0.5],
+    "box_right": ["far-tall-block", 0, -0.5, 0, -0.5],
+    "box_right_rim": ["far-tall-block", 0, -0.5, 1, -0.5],
+    "box_right_flap": ["far-tall-block", 2, -0.5, 0.5, -0.5],
+    "corner": ["base-near-3", 0, 0.5, 0, -0.5],
+    "trim_start": ["base-right-3", 0, 0.5, 0, -0.5],
+    "corner_top": ["base-near-3", 0, 0.5, 1, -0.5],
+    "trim_start_top": ["base-right-3", 0, 0.5, 1, -0.5],
+    "cable_1_south": ["cable", 1, -0.5, 1, 0],
+    "cable_1_north": ["cable", 1, 0.5, 1, 0],
+    "cable_2_south": ["cable", 2, -0.5, 1, 0],
+    "cable_2_north": ["cable", 2, 0.5, 1, 0],
+    "pack_buckle": ["backpack", 8, 0, 1, 0],
+    "door_free": ["door", 0, -0.5, 0, 0.5],
+    "chair_arm": ["chair", 21, 0, 1, 0],
+    "chair_hub": ["chair", 10, 0, 1, 0]
+  },
+  "segments": {
+    "ott_seam": ["ott_left_seam", "ott_right_seam"],
+    "ott_outline": ["ott_left_seam", "ott_left_top"],
+    "rug_edge": ["rug_left", "rug_right"],
+    "trim": ["trim_start", "corner"],
+    "trim_top": ["trim_start_top", "corner_top"],
+    "trim_top_right": ["trim_start_top", "corner_top"],
+    "trim_right": ["trim_start", "corner"],
+    "wire1": ["cable_1_south", "cable_1_north"],
+    "wire2": ["cable_2_south", "cable_2_north"],
+    "rug_edge_1": ["rug_left", "rug_right"],
+    "rug_edge_2": ["rug_left", "rug_right"]
+  },
+  "frames": {
+    "0": {
+      "seed": [0.9, 0.3, -2.3],
+      "marks": {
+        "bed_near": [169, 221],
+        "bed_left": [59, 214],
+        "bed_end_post": [340, 149],
+        "quilt_near": [202, 69],
+        "quilt_left": [49, 160],
+        "quilt_right": [354, 128],
+        "pack_crown": [378, 137],
+        "pad_base": [376, 208],
+        "strap_tip": [423, 212],
+        "ott_left": [502, 222],
+        "ott_left_seam": [499, 196],
+        "ott_right": [590, 262],
+        "ott_right_seam": [595, 214],
+        "ott_right_top": [588, 82],
+        "ott_left_top": [503, 108],
+        "rug_edge": [590, 296],
+        "rug_edge_1": [537, 251],
+        "rug_edge_2": [620, 336]
+      }
+    },
+    "8": {
+      "seed": [0.6, 0.1, -2.3],
+      "marks": {
+        "bed_near": [118, 251],
+        "bed_left": [44, 222],
+        "bed_end_post": [388, 138],
+        "quilt_near": [174, 3],
+        "quilt_left": [32, 149],
+        "quilt_right": [405, 117],
+        "pack_crown": [450, 125],
+        "pad_base": [452, 231],
+        "strap_tip": [525, 242],
+        "chair_arm": [594, 92],
+        "chair_hub": [588, 218]
+      }
+    },
+    "9": {
+      "seed": [0.5, -0.1, -2.2],
+      "marks": {
+        "bed_end_post": [339, 129],
+        "quilt_right": [360, 108],
+        "pack_crown": [410, 111],
+        "pad_base": [432, 235],
+        "strap_root": [493, 216],
+        "strap_tip": [532, 250],
+        "web_tip": [483, 242],
+        "chair_arm": [573, 77],
+        "chair_hub": [558, 202]
+      }
+    },
+    "12": {
+      "seed": [0.5, -0.4, -1.9],
+      "marks": {
+        "pack_crown": [234, 53],
+        "pad_base": [213, 346],
+        "strap_root": [430, 255],
+        "strap_tip": [543, 357],
+        "web_tip": [466, 382],
+        "chair_arm": [483, 45],
+        "chair_hub": [452, 207]
+      }
+    },
+    "27": {
+      "support": true,
+      "seed": [0.4, -0.5, -1.8],
+      "marks": {
+        "pack_crown": [190, 57],
+        "strap_root": [458, 382],
+        "pack_buckle": [413, 310],
+        "chair_arm": [470, 47],
+        "chair_hub": [430, 208]
+      },
+      "contact": {"object": "backpack", "zFace": 1}
+    },
+    "28": {
+      "seed": [0.5, -0.4, -1.7],
+      "marks": {
+        "pack_crown": [157, 62],
+        "pad_base": [129, 342],
+        "strap_root": [329, 257],
+        "strap_tip": [451, 344],
+        "web_tip": [342, 390],
+        "ott_outline": [619, 133],
+        "chair_arm": [410, 40],
+        "chair_hub": [370, 195]
+      }
+    },
+    "29": {
+      "seed": [0.5, -0.3, -1.4],
+      "marks": {
+        "pack_crown": [108, 96],
+        "pad_base": [121, 265],
+        "strap_root": [209, 231],
+        "strap_tip": [269, 258],
+        "web_tip": [210, 261],
+        "ott_left": [427, 245],
+        "ott_left_seam": [425, 191],
+        "ott_left_top": [435, 51],
+        "rug_edge": [588, 278],
+        "chair_arm": [309, 57],
+        "chair_hub": [282, 194]
+      }
+    },
+    "31": {
+      "seed": [0.7, -0.6, -1.0],
+      "marks": {
+        "ott_left": [314, 324],
+        "ott_left_seam": [310, 201],
+        "ott_outline": [304, 103],
+        "ott_seam": [573, 221],
+        "rug_edge": [421, 365],
+        "chair_arm": [178, 29],
+        "chair_hub": [155, 197],
+        "rug_edge_1": [171, 269],
+        "rug_edge_2": [541, 394]
+      }
+    },
+    "33": {
+      "support": true,
+      "seed": [0.76, -0.64, -0.99],
+      "marks": {
+        "ott_left_seam": [272, 272],
+        "ott_outline": [251, 142],
+        "ott_seam": [497, 303],
+        "chair_arm": [155, 19],
+        "chair_hub": [132, 202]
+      },
+      "contact": {"object": "ottoman", "zFace": 1}
+    },
+    "42": {
+      "seed": [0.7, -0.3, -0.6],
+      "marks": {
+        "ott_left": [117, 261],
+        "ott_right": [463, 251],
+        "ott_left_seam": [110, 200],
+        "ott_right_seam": [473, 194],
+        "ott_left_top": [125, 33],
+        "ott_right_top": [464, 29],
+        "rug_edge": [325, 269],
+        "jamb_left": [554, 211],
+        "chair_arm": [16, 63],
+        "rug_edge_1": [122, 264],
+        "rug_edge_2": [547, 271]
+      }
+    },
+    "49": {
+      "seed": [0.8, -0.3, -0.6],
+      "marks": {
+        "ott_right": [497, 292],
+        "ott_right_seam": [522, 209],
+        "ott_left_seam": [3, 228],
+        "rug_edge": [279, 352],
+        "jamb_left": [555, 218],
+        "rug_edge_1": [147, 349],
+        "rug_edge_2": [515, 340]
+      }
+    },
+    "50": {
+      "seed": [0.7, -0.1, -0.4],
+      "marks": {
+        "ott_right": [303, 235],
+        "ott_right_seam": [305, 187],
+        "ott_right_top": [300, 58],
+        "ott_left": [8, 283],
+        "rug_edge": [140, 259],
+        "jamb_left": [416, 194],
+        "door_free": [493, 199],
+        "rug_edge_1": [72, 269],
+        "rug_edge_2": [291, 243]
+      }
+    },
+    "52": {
+      "seed": [0.6, 0.0, -0.1],
+      "marks": {
+        "ott_right": [189, 225],
+        "ott_right_seam": [193, 188],
+        "ott_right_top": [186, 95],
+        "rug_right": [381, 204],
+        "rug_edge": [112, 243],
+        "jamb_left": [296, 188],
+        "door_free": [362, 195],
+        "door_hinge": [520, 215],
+        "rug_edge_1": [74, 249],
+        "rug_edge_2": [267, 222]
+      }
+    },
+    "54": {
+      "outsideRight": ["box_left"],
+      "seed": [1.2, 0.6, 0.4],
+      "marks": {
+        "door_free": [27, 239],
+        "door_hinge": [236, 240],
+        "trim_top": [390, 206],
+        "trim": [390, 232],
+        "trim_top_right": [610, 228],
+        "trim_right": [610, 242]
+      }
+    },
+    "56": {
+      "seed": [1.5, 0.8, 0.8],
+      "marks": {
+        "box_left": [540, 242],
+        "box_right": [620, 272],
+        "box_left_rim": [539, 180],
+        "box_right_rim": [626, 199],
+        "box_left_flap": [530, 132],
+        "box_right_flap": [623, 127],
+        "trim_top": [245, 251],
+        "trim": [245, 312],
+        "wire2": [218, 350]
+      }
+    },
+    "58": {
+      "seed": [1.6, 1.2, 1.4],
+      "marks": {
+        "box_left": [380, 261],
+        "box_right": [592, 319],
+        "box_left_rim": [382, 157],
+        "box_right_rim": [616, 182],
+        "box_left_flap": [368, 51],
+        "box_right_flap": [595, 41],
+        "corner": [346, 205],
+        "corner_top": [346, 190],
+        "trim_top": [161, 300],
+        "wire1": [244, 335]
+      }
+    },
+    "61": {
+      "seed": [1.6, 1.4, 1.5],
+      "marks": {
+        "box_left": [327, 460],
+        "box_left_rim": [336, 76],
+        "corner": [267, 216],
+        "corner_top": [267, 196],
+        "trim_top": [104, 296],
+        "trim": [126, 391],
+        "wire1": [219, 348]
+      },
+      "contact": {"object": "far-tall-block", "zFace": -1}
+    }
+  }
+}

@@ -24,8 +24,8 @@ A box has one material, so a printed face is a second thin part rather than a pe
 
 ## Grazing carpet (frames 0, 9, 58)
 
-The carpet shader samples one texel. At the camera's height that cell noise becomes large blocks across the foreground. Mipmaps or anisotropic filtering would keep the shag fine at a grazing angle.
+The carpet shader evaluates procedural mottling and cell noise once per primary ray. Close views expose the cell pattern, and distant oblique views can undersample it. Filtering the procedural pattern over each pixel's footprint would reduce aliasing.
 
 ## Hinges (frames 52, 58)
 
-A part rotates around its own center. The open door and the carton flaps therefore cannot pivot on an edge, so the hinge line sits in the middle of the slab. A pivot on the part's edge would seat them in the frame and on the box rim.
+A part rotates around its local base center. A static door or flap can meet its hinge by offsetting the part after rotation. Changing the angle requires recomputing that offset because the asset format has no hinge pivot.

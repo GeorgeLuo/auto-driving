@@ -173,6 +173,7 @@ simulator/native/
     textures/
   maps/
     chaser-depth-obstacles.json
+    room-run6.json
     showcase.json
     showcase-boxes.json
   src/
@@ -275,7 +276,7 @@ next physics step. Each sampler caches one image size and owns the lens
 calibration for that configuration. An in-flight capture can finish with its
 original map and calibration. Configurations can share immutable compiled meshes.
 
-The tour drives a fixed circle and writes deterministic JPEGs using the same
+The tour drives forward with constant steering and writes deterministic JPEGs using the same
 camera pipeline as the server. By default it starts at `spawn` with steering
 0.57. To give a map its own circuit, add a top-level `tour` alongside `spawn`.
 This example follows the showcase's 1.2 m circle.
@@ -311,7 +312,11 @@ build/native-sim-bench --map /absolute/path/to/map.json --full-only
 The benchmark reports median and p90 times over the tour, including the
 generated stress scene. With no map argument it includes `maps/room-run6.json`
 when present. See the [performance report](docs/rendering-performance.md) for
-the measurement method and the byte-for-byte tour comparisons.
+the measurement method and the byte-for-byte tour comparisons. The
+[room fit](docs/room-run6-fit.md) describes calibration against run 6 and
+the [renderer gaps](docs/room-run6-gaps.md) describe the remaining visual differences.
+
+Run the following checks from the repository root.
 
 ```sh
 ctest --test-dir simulator/native/build --output-on-failure

@@ -77,8 +77,8 @@ For both complete JPEG tours, `cmp` matched each frame against PR #592.
 | showcase-boxes | 140 | `9a5e12dbd5e2215cfa763a78ae63138adc626f7ea1e8efd996f8fc097c8a9cb8` |
 | showcase | 140 | `2850631072f769ba314cd273c4e70711888a6df8b529a52c8fc904b0356c30ff` |
 
-Run 6 is absent from this branch. The benchmark accepts a map file through
-`--map` and includes `maps/room-run6.json` in the default run when present.
+These four-map measurements predate the run 6 merge. The default benchmark
+now also runs `maps/room-run6.json`. Use `--map` to select one map.
 
 ## Reproduce the consolidated comparison
 

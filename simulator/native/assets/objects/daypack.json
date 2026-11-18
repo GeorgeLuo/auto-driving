@@ -1,14 +1,14 @@
 {
   "visuals": [
-    {"type": "ellipsoid", "x": 0, "y": 0.02, "z": 0, "width": 0.44, "depth": 0.30, "height": 0.26, "rotationRadians": -0.15, "material": "bag-fabric", "pitchRadians": 0.28, "rollRadians": -0.22},
-    {"type": "ellipsoid", "x": 0.04, "y": 0.05, "z": 0.1, "width": 0.30, "depth": 0.16, "height": 0.15, "rotationRadians": 0.1, "material": "pocket-fabric", "rollRadians": -0.12},
-    {"type": "strip", "x": 0.06, "y": 0.15, "z": 0.16, "width": 0.16, "depth": 0.028, "height": 0.014, "rotationRadians": 0.1, "material": "pack-webbing", "rollRadians": -0.15},
-    {"type": "strip", "x": -0.12, "y": 0.008, "z": 0.08, "width": 0.05, "depth": 0.28, "height": 0.014, "rotationRadians": 0.45, "material": "pack-webbing"},
-    {"type": "strip", "x": 0.14, "y": 0.008, "z": -0.06, "width": 0.046, "depth": 0.24, "height": 0.014, "rotationRadians": -0.4, "material": "pack-webbing"},
-    {"type": "box", "x": -0.2, "y": 0.08, "z": 0.0, "width": 0.04, "depth": 0.24, "height": 0.018, "rotationRadians": 0, "material": "pack-webbing"},
-    {"type": "box", "x": -0.185, "y": 0.13, "z": 0.0, "width": 0.16, "depth": 0.042, "height": 0.016, "rotationRadians": 0, "material": "pack-webbing"},
-    {"type": "box", "x": -0.21, "y": 0.1, "z": 0.02, "width": 0.03, "depth": 0.05, "height": 0.03, "rotationRadians": 0, "material": "buckle"},
-    {"type": "box", "x": 0.06, "y": 0.155, "z": 0.16, "width": 0.045, "depth": 0.022, "height": 0.02, "rotationRadians": 0.1, "material": "buckle"}
+    {"type": "ellipsoid", "x": 0.0, "y": 0.01395, "z": -0.02262, "width": 0.30331, "depth": 0.17123, "height": 0.20671, "rotationRadians": -0.15, "material": "bag-fabric", "pitchRadians": -0.12, "rollRadians": -0.06},
+    {"type": "ellipsoid", "x": 0.0, "y": 0.00906, "z": 0.07324, "width": 0.26195, "depth": 0.12277, "height": 0.16044, "rotationRadians": 0, "material": "pocket-fabric", "rollRadians": 0, "pitchRadians": -0.27},
+    {"type": "strip", "x": 0.091, "y": 0.052, "z": 0.129, "width": 0.042, "depth": 0.016, "height": 0.155, "rotationRadians": 0, "material": "pack-webbing", "rollRadians": 0.43, "pitchRadians": -0.4},
+    {"type": "strip", "x": 0.01517, "y": 0.00465, "z": 0.10976, "width": 0.12, "depth": 0.093, "height": 0.0093, "rotationRadians": -0.05, "material": "pack-webbing"},
+    {"type": "strip", "x": 0.118, "y": 0.02771, "z": 0.14044, "width": 0.033, "depth": 0.08826, "height": 0.008, "rotationRadians": 1.16265, "material": "pack-webbing", "pitchRadians": 0.62183},
+    {"type": "ellipsoid", "x": -0.12546, "y": 0.0031, "z": 0.01615, "width": 0.11167, "depth": 0.21969, "height": 0.10851, "rotationRadians": -0.24, "material": "bag-fabric"},
+    {"type": "box", "x": -0.091, "y": 0.052, "z": 0.129, "width": 0.042, "depth": 0.016, "height": 0.155, "rotationRadians": 0, "material": "pack-webbing", "rollRadians": -0.43, "pitchRadians": -0.4},
+    {"type": "box", "x": -0.085, "y": 0.066, "z": 0.114, "width": 0.037, "depth": 0.018, "height": 0.019, "rotationRadians": 0, "material": "buckle"},
+    {"type": "box", "x": 0.085, "y": 0.066, "z": 0.114, "width": 0.037, "depth": 0.018, "height": 0.019, "rotationRadians": 0.1, "material": "buckle"}
   ],
-  "collision": {"type": "box", "width": 0.46, "depth": 0.32}
+  "collision": {"type": "box", "width": 0.31709, "depth": 0.218}
 }

@@ -1,9 +1,10 @@
 {
   "visuals": [
-    {"type": "box", "x": 0.42, "y": 0, "z": 0, "width": 0.08, "depth": 1.40, "height": 2.30, "rotationRadians": 0, "material": "hallway-dark"},
-    {"type": "box", "x": 0.16, "y": 0, "z": 0.68, "width": 0.58, "depth": 0.06, "height": 2.30, "rotationRadians": 0, "material": "hallway-dark"},
-    {"type": "box", "x": 0.16, "y": 0, "z": -0.68, "width": 0.58, "depth": 0.06, "height": 2.30, "rotationRadians": 0, "material": "hallway-dark"},
-    {"type": "ellipsoid", "x": 0.12, "y": 0.35, "z": 0.08, "width": 0.38, "depth": 0.26, "height": 1.15, "rotationRadians": 0.2, "material": "bag-fabric"}
+    {"type": "box", "x": 0.75, "y": 0, "z": 0, "width": 0.08, "depth": 1.4, "height": 2.3, "rotationRadians": 0, "material": "hallway-dark"},
+    {"type": "box", "x": 0.34, "y": 0, "z": 0.68, "width": 0.86, "depth": 0.06, "height": 2.3, "rotationRadians": 0, "material": "hallway-dark"},
+    {"type": "box", "x": 0.34, "y": 0, "z": -0.68, "width": 0.86, "depth": 0.06, "height": 2.3, "rotationRadians": 0, "material": "hallway-dark"},
+    {"type": "ellipsoid", "x": 0.45, "y": 0.35, "z": -0.29, "width": 0.38, "depth": 0.26, "height": 1.15, "rotationRadians": 0.2, "material": "bag-fabric"},
+    {"type": "strip", "x": 0.37, "y": 0, "z": 0, "width": 0.78, "depth": 1.3, "height": 0.001, "rotationRadians": 0, "material": "shag-carpet"}
   ],
   "collision": null
 }

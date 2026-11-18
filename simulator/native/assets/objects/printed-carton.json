@@ -1,11 +1,11 @@
 {
   "visuals": [
-    {"type": "box", "x": 0, "y": 0, "z": 0, "width": 0.45, "depth": 0.35, "height": 0.30, "rotationRadians": 0, "material": "plain-cardboard"},
-    {"type": "box", "x": 0, "y": 0.004, "z": -0.176, "width": 0.44, "depth": 0.004, "height": 0.292, "rotationRadians": 0, "material": "carton-print"},
-    {"type": "box", "x": 0, "y": 0.30, "z": -0.09, "width": 0.44, "depth": 0.16, "height": 0.008, "rotationRadians": 0, "material": "plain-cardboard", "pitchRadians": -0.9},
-    {"type": "box", "x": 0, "y": 0.30, "z": 0.09, "width": 0.44, "depth": 0.16, "height": 0.008, "rotationRadians": 0, "material": "plain-cardboard", "pitchRadians": 0.75},
-    {"type": "box", "x": -0.11, "y": 0.30, "z": 0, "width": 0.16, "depth": 0.32, "height": 0.008, "rotationRadians": 0, "material": "plain-cardboard", "rollRadians": 0.55},
-    {"type": "box", "x": 0.11, "y": 0.30, "z": 0, "width": 0.16, "depth": 0.32, "height": 0.008, "rotationRadians": 0, "material": "plain-cardboard", "rollRadians": -0.4}
+    {"type": "box", "x": 0.0, "y": 0.0, "z": 0.0, "width": 0.21164, "depth": 0.35273, "height": 0.11528, "rotationRadians": 0, "material": "plain-cardboard"},
+    {"type": "box", "x": 0.0, "y": 0.00273, "z": -0.17737, "width": 0.20693, "depth": 0.00403, "height": 0.11257, "rotationRadians": 0, "material": "carton-print"},
+    {"type": "box", "x": 0.0, "y": 0.1647, "z": -0.1822, "width": 0.20693, "depth": 0.10086, "height": 0.00546, "rotationRadians": 0, "material": "plain-cardboard", "pitchRadians": 1.48, "rollRadians": -0.00947},
+    {"type": "box", "x": 0.0, "y": 0.15873, "z": 0.108, "width": 0.20693, "depth": 0.16125, "height": 0.00546, "rotationRadians": 0, "material": "plain-cardboard", "pitchRadians": -0.57},
+    {"type": "box", "x": -0.07359, "y": 0.13863, "z": 0.0, "width": 0.07525, "depth": 0.3225, "height": 0.00546, "rotationRadians": 0, "material": "plain-cardboard", "rollRadians": 0.52},
+    {"type": "box", "x": 0.07199, "y": 0.13443, "z": 0.0, "width": 0.07525, "depth": 0.3225, "height": 0.00546, "rotationRadians": 0, "material": "plain-cardboard", "rollRadians": -0.42}
   ],
-  "collision": {"type": "box", "width": 0.45, "depth": 0.35}
+  "collision": {"type": "box", "width": 0.21164, "depth": 0.35273}
 }

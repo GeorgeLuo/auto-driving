@@ -1,6 +1,6 @@
 {
   "visuals": [
-    {"type": "strip", "x": 0, "y": 0, "z": 0, "width": 0.84, "depth": 0.022, "height": 0.10, "rotationRadians": 0, "material": "trim-wood"}
+    {"type": "strip", "x": 0, "y": 0, "z": 0, "width": 0.84, "depth": 0.022, "height": 0.046, "rotationRadians": 0, "material": "trim-wood"}
   ],
   "collision": null
 }

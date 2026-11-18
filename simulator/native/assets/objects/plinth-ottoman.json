@@ -1,12 +1,12 @@
 {
   "visuals": [
-    {"type": "box", "x": -0.32, "y": 0, "z": -0.20, "width": 0.07, "depth": 0.07, "height": 0.07, "rotationRadians": 0, "material": "black-wood"},
-    {"type": "box", "x": 0.32, "y": 0, "z": -0.20, "width": 0.07, "depth": 0.07, "height": 0.07, "rotationRadians": 0, "material": "black-wood"},
-    {"type": "box", "x": -0.32, "y": 0, "z": 0.20, "width": 0.07, "depth": 0.07, "height": 0.07, "rotationRadians": 0, "material": "black-wood"},
-    {"type": "box", "x": 0.32, "y": 0, "z": 0.20, "width": 0.07, "depth": 0.07, "height": 0.07, "rotationRadians": 0, "material": "black-wood"},
-    {"type": "box", "x": 0, "y": 0.06, "z": 0, "width": 0.78, "depth": 0.50, "height": 0.10, "rotationRadians": 0, "material": "black-wood"},
-    {"type": "box", "x": 0, "y": 0.15, "z": 0, "width": 0.88, "depth": 0.58, "height": 0.14, "rotationRadians": 0, "material": "caramel-leather"},
-    {"type": "ellipsoid", "x": 0, "y": 0.20, "z": 0, "width": 0.90, "depth": 0.60, "height": 0.22, "rotationRadians": 0, "material": "caramel-leather"}
+    {"type": "box", "x": -0.21047, "y": 0.0, "z": -0.24242, "width": 0.0514, "depth": 0.08214, "height": 0.0476, "rotationRadians": 0, "material": "black-wood"},
+    {"type": "box", "x": 0.21047, "y": 0.0, "z": -0.24242, "width": 0.0514, "depth": 0.08214, "height": 0.0476, "rotationRadians": 0, "material": "black-wood"},
+    {"type": "box", "x": -0.21047, "y": 0.0, "z": 0.24242, "width": 0.0514, "depth": 0.08214, "height": 0.0476, "rotationRadians": 0, "material": "black-wood"},
+    {"type": "box", "x": 0.21047, "y": 0.0, "z": 0.24242, "width": 0.0514, "depth": 0.08214, "height": 0.0476, "rotationRadians": 0, "material": "black-wood"},
+    {"type": "box", "x": 0.0, "y": 0.04291, "z": 0.0, "width": 0.47179, "depth": 0.57098, "height": 0.032, "rotationRadians": 0, "material": "black-wood"},
+    {"type": "box", "x": 0.0, "y": 0.0749, "z": 0.0, "width": 0.47612, "depth": 0.58099, "height": 0.194, "rotationRadians": 0, "material": "caramel-leather"},
+    {"type": "ellipsoid", "x": 0.0, "y": 0.213, "z": 0.0, "width": 0.47882, "depth": 0.585, "height": 0.105, "rotationRadians": 0, "material": "caramel-leather"}
   ],
-  "collision": {"type": "box", "width": 0.90, "depth": 0.60}
+  "collision": {"type": "box", "width": 0.48694, "depth": 0.60103}
 }

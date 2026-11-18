@@ -18,7 +18,7 @@ from cli.automa_cli.frontend.server import (
     RuntimeViewServer,
 )
 from cli.automa_cli.frontend.workbench_view import WORKBENCH_CONTENT_SECURITY_POLICY
-from cli.automa_cli.hosts.views import view_feed
+from cli.automa_cli.hosts.views import runtime_view, view_feed
 from cli.automa_cli.hosts.views.runtime_view import runtime_view_server
 from implementations.vehicle.chase_sim.defaults import CHASE_UI_WS_URL_ENV
 from implementations.vehicle.chase_sim.metrics_ws import MetricsUiWsClient
@@ -303,6 +303,15 @@ class OpenViewerCommandTests(unittest.TestCase):
             self.assertEqual(app.main([]), 130)
         serve_viewer.assert_called_once()
         self.assertTrue(callable(serve_viewer.call_args.kwargs["emit"]))
+
+    def test_the_viewer_opens_the_v2_page(self) -> None:
+        server = mock.Mock(url="http://127.0.0.1:8473/")
+        with (mock.patch.object(runtime_view, "runtime_view_server", return_value=mock.Mock(start=lambda: server)),
+              mock.patch.object(runtime_view, "launch_browser") as launch,
+              mock.patch.object(runtime_view.time, "sleep", side_effect=KeyboardInterrupt)):
+            self.assertEqual(runtime_view.serve_viewer(), 130)
+        launch.assert_called_once_with("http://127.0.0.1:8473/v2/")
+        server.stop.assert_called_once_with()
 
     def test_the_viewer_answers_the_vehicles_simulators_hosts_and_plugins_commands(self) -> None:
         with mock.patch.object(app, "serve_viewer", return_value=130) as serve_viewer:

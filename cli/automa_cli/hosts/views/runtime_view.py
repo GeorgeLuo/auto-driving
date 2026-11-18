@@ -5,8 +5,10 @@ from __future__ import annotations
 import time
 from collections.abc import Callable
 from typing import Mapping
+from urllib.parse import urljoin
 
 from ...frontend.server import VIEWER_PORT, Read, RuntimeViewServer, Write
+from ...frontend.v2_page import V2_PAGE_PATH
 from ...shared.browser_result import BrowserOpenResult
 from ...shared.open_view import launch_browser
 from ...workbench.runner import ImageReplayRunner
@@ -42,7 +44,8 @@ def serve_viewer(
         reads=reads,
         writes=writes,
     ).start()
-    browser = launch_browser(server.url or "")
+    # The browser opens the v2 page; the v1 pages stay served beside it.
+    browser = launch_browser(urljoin(server.url or "", V2_PAGE_PATH))
     if emit is not None:
         emit(browser)
     try:

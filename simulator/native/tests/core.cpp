@@ -16,6 +16,43 @@ template<class F> static void rejects(F operation) {
     try { operation(); } catch (const std::exception&) { return; }
     throw std::runtime_error("Expected rejected operation");
 }
+
+static void check_tour(sim::Json config, const std::shared_ptr<const sim::AssetCatalog>& assets) {
+    sim::World plain(config,assets);
+    const sim::Json start = {{"x",-2},{"z",1},{"headingRadians",0},{"steering",-.4}};
+    config["tour"] = start;
+    sim::World world(config,assets);
+    for (auto* w : {&plain,&world}) {
+        w->input.forward = true;
+        w->step();
+    }
+    check(plain.native_state().at("pose")==world.native_state().at("pose") &&
+          world.input.steering==0,"Chase uses spawn and its own steering");
+    world.start_tour();
+    close(world.pose.position.x,-2,"Tour x");
+    close(world.pose.position.z,1,"Tour z");
+    close(world.pose.direction.x,1,"Tour heading");
+    close(world.input.steering,-.4,"Tour steering");
+    world.start_tour({{"z",2},{"headingRadians",sim::pi/2},{"steering",0}});
+    close(world.pose.position.x,-2,"Overrides preserve map x");
+    close(world.pose.position.z,2,"Override z");
+    close(world.pose.direction.z,1,"Override heading");
+    close(world.input.steering,0,"Override steering");
+    for (const auto& field : {"x","z","headingRadians","steering"}) {
+        config["tour"] = start;
+        config["tour"].erase(field);
+        rejects([&]{sim::World invalid(config,assets);});
+    }
+    for (const auto& patch : {sim::Json{{"unknown",0}},sim::Json{{"x","2"}},sim::Json{{"z",100}},
+                             sim::Json{{"headingRadians",7}},sim::Json{{"steering",1.1}}}) {
+        config["tour"] = start;
+        config["tour"].update(patch);
+        rejects([&]{sim::World invalid(config,assets);});
+    }
+    config["tour"] = nullptr;
+    rejects([&]{sim::World invalid(config,assets);});
+}
+
 int main(int argc, char** argv) {
     try {
         check(argc==4,"Expected reference, map, and asset paths");
@@ -23,6 +60,7 @@ int main(int argc, char** argv) {
             sim::load_asset_catalog(argv[3]));
         auto renderer = sim::make_renderer("software");
         auto config = sim::read_json(argv[2]);
+        check_tour(config,assets);
         std::ifstream file(argv[1]); sim::Json reference; file>>reference;
         size_t frames = 0;
         for (const auto& test : reference.at("cases")) {

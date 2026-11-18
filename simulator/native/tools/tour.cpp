@@ -2,7 +2,6 @@
 #include "scene/asset_loader.hpp"
 #include "server/protocol.hpp"
 #include "server/renderers.hpp"
-#include <cmath>
 #include <cstdio>
 #include <filesystem>
 #include <fstream>
@@ -11,6 +10,13 @@
 #include <stdexcept>
 
 namespace {
+double tour_number(const std::string& value) {
+    size_t end = 0;
+    double result = std::stod(value,&end);
+    if (end != value.size()) throw std::invalid_argument("Invalid tour value: " + value);
+    return result;
+}
+
 class TimedRenderer final : public sim::Renderer {
 public:
     explicit TimedRenderer(const sim::Renderer& renderer) : renderer_(renderer) {}
@@ -31,30 +37,41 @@ private:
 }
 
 int main(int argc, char** argv) {
-    if (argc < 3 || argc > 8) {
-        std::cerr << "usage: native-sim-tour <map.json> <out_dir> [frames] [every] [steering] [width] [height]\n";
+    if (argc < 3) {
+        std::cerr << "usage: native-sim-tour <map.json> <out_dir> [frames] [every] [steering] [width] [height]"
+                     " [--x X] [--z Z] [--heading-radians A] [--steering S]\n";
         return 2;
     }
     try {
-        int frames = argc > 3 ? std::stoi(argv[3]) : 420;
-        int every = argc > 4 ? std::stoi(argv[4]) : 3;
-        double steering = argc > 5 ? std::stod(argv[5]) : .57;
+        int first_option = 3;
+        while (first_option < argc && std::string_view(argv[first_option]).substr(0,2) != "--") ++first_option;
+        if (first_option > 8) throw std::invalid_argument("Too many positional tour arguments");
+        int frames = first_option > 3 ? std::stoi(argv[3]) : 420;
+        int every = first_option > 4 ? std::stoi(argv[4]) : 3;
+        sim::Json overrides = sim::Json::object();
+        if (first_option > 5) overrides["steering"] = tour_number(argv[5]);
         sim::ImageRequest request;
-        request.width = argc > 6 ? std::stoi(argv[6]) : 640;
-        request.height = argc > 7 ? std::stoi(argv[7]) : 480;
-        if (frames < 1 || every < 1 || !std::isfinite(steering) || std::abs(steering) > 1)
-            throw std::invalid_argument("Frames and interval must be positive and steering must be in [-1,1]");
+        request.width = first_option > 6 ? std::stoi(argv[6]) : 640;
+        request.height = first_option > 7 ? std::stoi(argv[7]) : 480;
+        if (frames < 1 || every < 1) throw std::invalid_argument("Frames and interval must be positive");
         if (request.width < 1 || request.width > 640 || request.height < 1 || request.height > 480)
             throw std::invalid_argument("Camera size must be between 1x1 and 640x480");
+        for (int i=first_option;i<argc;++i) {
+            std::string flag = argv[i];
+            if (flag != "--x" && flag != "--z" && flag != "--heading-radians" && flag != "--steering")
+                throw std::invalid_argument("Unknown tour option: " + flag);
+            if (++i == argc) throw std::invalid_argument("Missing value for " + flag);
+            overrides[flag == "--heading-radians" ? "headingRadians" : flag.substr(2)] = tour_number(argv[i]);
+        }
 
         auto assets = std::make_shared<const sim::AssetCatalog>(sim::load_asset_catalog(SIM_ASSETS));
         sim::World world(sim::read_json(argv[1]),std::move(assets));
+        world.start_tour(overrides);
         auto software = sim::make_renderer("software");
         TimedRenderer renderer(*software);
         auto out = std::filesystem::absolute(argv[2]);
         std::filesystem::create_directories(out);
 
-        world.input = {true,false,steering,1};
         int written = 0;
         for (int i=0;i<frames;++i) {
             world.step();

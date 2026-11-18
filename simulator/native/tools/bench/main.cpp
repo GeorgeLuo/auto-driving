@@ -61,7 +61,6 @@ Options parse(int argc, char** argv) {
 }
 
 std::vector<sim::CameraPose> tour_poses(sim::World world, int count) {
-    world.input = {true,false,.57,1};
     const int captures = std::max(count,tour_frames);
     std::vector<sim::CameraPose> poses;
     poses.reserve(count);
@@ -119,11 +118,11 @@ void hash_bytes(uint64_t& hash, const std::vector<unsigned char>& bytes) {
 void run(std::string_view name, const std::filesystem::path& path, bool stress_scene, const Options& options,
          const std::shared_ptr<const sim::AssetCatalog>& assets) {
     sim::World world(sim::read_json(path),assets);
+    world.start_tour();
     if (stress_scene) {
         auto stress = std::make_shared<const sim::Map>(bench::stress_map(world));
         sim::validate_vehicle_pose(world.pose.position,world.configuration.vehicle.radius,*stress);
         auto original = world;
-        original.input = world.input = {true,false,.57,1};
         world.configuration.map = stress;
         auto candidate = world;
         for (int step=0;step<std::max(tour_frames,options.frames)*capture_interval;++step) {

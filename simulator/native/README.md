@@ -276,8 +276,18 @@ calibration for that configuration. An in-flight capture can finish with its
 original map and calibration. Configurations can share immutable compiled meshes.
 
 The tour drives a fixed circle and writes deterministic JPEGs using the same
-camera pipeline as the server. With the showcase spawn and steering, the
-circle radius is about 1.2 m. From `simulator/native/`:
+camera pipeline as the server. By default it starts at `spawn` with steering
+0.57. To give a map its own circuit, add a top-level `tour` alongside `spawn`.
+This example follows the showcase's 1.2 m circle.
+
+```json
+{ "tour": { "x": 1.2, "z": 0, "headingRadians": -1.5707963267948966, "steering": 0.57 } }
+```
+
+All four fields are required numbers. Position, clearance, and heading use
+the spawn rules, and steering ranges from −1 to 1. The benchmark follows the
+same circuit. Chase scenarios always start at `spawn` with their own input.
+Run the tour from `simulator/native/`.
 
 ```sh
 build/native-sim-tour maps/showcase.json build/tour/showcase
@@ -287,8 +297,10 @@ build/native-sim-tour maps/showcase-boxes.json build/tour/boxes
 The default run advances 420 steps and captures every third step at
 640x480. It writes `frame_00000.jpg` through `frame_00139.jpg` in the output
 directory and reports mean renderer time. Optional arguments after the output
-directory set steps, capture interval, steering, width, and height in that order. Use an empty
-output directory if a previous run wrote more frames.
+directory set steps, capture interval, steering, width, and height in that order.
+Append `--x`, `--z`, `--heading-radians`, or `--steering` with a value to
+override individual map fields. Named steering also overrides positional
+steering. Use an empty output directory if a previous run wrote more frames.
 
 ```sh
 cmake --build build --target native-sim-bench

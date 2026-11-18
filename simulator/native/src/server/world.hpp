@@ -25,6 +25,8 @@ struct World {
     std::shared_ptr<const AssetCatalog> assets;
 
     World(const Json& document, std::shared_ptr<const AssetCatalog> catalog);
+    // Used by the offline tour and its benchmark.
+    void start_tour(const Json& overrides = Json::object());
     double next_step_interval() const;
     void step();
     Json configure(const Json& patch);

@@ -4,6 +4,7 @@
 #include <chrono>
 #include <cmath>
 #include <stdexcept>
+#include <utility>
 
 namespace sim {
 uint64_t monotonic_us() {
@@ -15,16 +16,11 @@ std::string new_epoch() {
     return "native-" + std::to_string(monotonic_us()) + "-" + std::to_string(++sequence);
 }
 static Configuration load_configuration(const Json& c, const AssetCatalog& assets) {
-    require_keys(c, {"scenarioId", "map", "spawn", "vehicle", "camera", "materials", "fps"});
+    require_keys(c, {"scenarioId", "map", "spawn", "tour", "vehicle", "camera", "materials", "fps"});
     if (!c.at("scenarioId").is_string() || c.at("scenarioId").get<std::string>().empty())
         throw std::invalid_argument("scenarioId must be nonempty");
     double fps = number(c,"fps",1,1000);
     auto map = load_map(c.at("map"),assets);
-
-    const auto& spawn = c.at("spawn");
-    require_keys(spawn,{"x","z","headingRadians"});
-    number(spawn,"x",-1000,1000); number(spawn,"z",-1000,1000);
-    number(spawn,"headingRadians",-2*pi,2*pi);
 
     const auto& v = c.at("vehicle");
     require_keys(v,{"speedUnitsPerFrame","wheelbase","radius","maxSteeringAngleRadians"});
@@ -46,13 +42,34 @@ static Configuration load_configuration(const Json& c, const AssetCatalog& asset
             std::make_shared<const CameraSampler>(effects),height,fps};
 }
 
+static VehiclePose read_start_pose(const Json& start, const Configuration& configuration) {
+    Vec position{number(start,"x",-1000,1000),number(start,"z",-1000,1000)};
+    double angle = number(start,"headingRadians",-2*pi,2*pi);
+    validate_vehicle_pose(position,configuration.vehicle.radius,*configuration.map);
+    return {position,{std::cos(angle),std::sin(angle)}};
+}
+
+static std::pair<VehiclePose,double> read_tour_start(const Json& start, const Configuration& configuration) {
+    require_keys(start,{"x","z","headingRadians","steering"});
+    return {read_start_pose(start,configuration),number(start,"steering",-1,1)};
+}
+
 World::World(const Json& document, std::shared_ptr<const AssetCatalog> catalog)
     : epoch(new_epoch()), configuration(load_configuration(document,*catalog)), assets(std::move(catalog)) {
-    const auto& spawn = document["spawn"];
-    pose.position = {spawn["x"],spawn["z"]};
-    validate_vehicle_pose(pose.position,configuration.vehicle.radius,*configuration.map);
-    double angle = spawn["headingRadians"];
-    pose.direction = {std::cos(angle),std::sin(angle)};
+    const auto& spawn = document.at("spawn");
+    require_keys(spawn,{"x","z","headingRadians"});
+    pose = read_start_pose(spawn,configuration);
+    if (document.contains("tour")) read_tour_start(document.at("tour"),configuration);
+}
+
+void World::start_tour(const Json& overrides) {
+    const auto& document = configuration.document;
+    auto start = document.value("tour",document.at("spawn"));
+    if (!start.contains("steering")) start["steering"] = .57;
+    start.update(overrides);
+    const auto [tour_pose,steering] = read_tour_start(start,configuration);
+    pose = tour_pose;
+    input = {true,false,steering,1};
 }
 
 double World::next_step_interval() const {

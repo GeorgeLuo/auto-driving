@@ -19,12 +19,12 @@
     </nav>
     <nav aria-label="Commands">
       <button type="button" class="nav" data-recall="vehiclesFrame">Vehicles <small id="vehiclesReadout"></small></button>
-      <button type="button" class="nav" data-recall="hostsFrame">Hosts <small id="hostsReadout" data-gap="noNotify"></small></button>
+      <button type="button" class="nav" data-recall="hostsFrame">Hosts <small id="hostsReadout"></small></button>
       <button type="button" class="nav" data-recall="pluginsFrame">Plugins <small id="pluginsReadout"></small></button>
       <button type="button" class="nav" data-recall="simulatorsFrame">Simulators <small id="simulatorsReadout"></small></button>
     </nav>
     <nav aria-label="Workbench">
-      <a class="nav" href="/workbench/" id="workbenchLink" data-gap="recordings" title="Opens /workbench/, the replay page, in its own layout">Workbench</a>
+      <a class="nav" href="/workbench/" id="workbenchLink" title="Opens /workbench/, the replay page, in its own layout">Workbench</a>
     </nav>
   </main>
 
@@ -88,7 +88,7 @@
           <div class="pane-form" data-form="create" hidden>
             <label class="field"><span class="field-label">name</span>
               <input class="field-input" data-field="name" type="text" autocomplete="off" placeholder="host name"></label>
-            <label class="field" data-gap="fixedVehicle"><span class="field-label">vehicle</span>
+            <label class="field"><span class="field-label">vehicle</span>
               <select class="field-select" data-field="vehicle"></select></label>
           </div>
           <div class="pane-form" data-form="run" hidden>
@@ -197,15 +197,10 @@
       </div>
     </article>
 
-    <!-- Mock only: what the CLI cannot back yet, numbered where the page needs it. -->
-    <article class="float-frame" id="gapsFrame" data-title="Gaps" data-frame-start="closed" hidden>
-      <div class="float-frame-body" data-frame-body id="gapList"></div>
-    </article>
   </div>
 
   <!-- Mock only: bottom centre, under the column, where no window opens. -->
   <div id="mockControls">
-    <button type="button" class="text-action" id="gapsToggle" aria-pressed="false">gaps</button>
     <button type="button" class="text-action" id="endProcess" title="Mock only: the selected simulator's process dies" disabled>end process</button>
   </div>
 

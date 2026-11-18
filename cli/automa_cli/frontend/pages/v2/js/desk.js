@@ -2,11 +2,11 @@
 // paintWindow writes that into slots made once and refilled, so nothing churns as state
 // changes. A view returns:
 //   mode     the title bar's text after the window's name
-//   verbs    the list's top line: [{label, action, disabled, gap}]
+//   verbs    the list's top line: [{label, action, disabled}]
 //   rows     the list: [{name, action, disabled, selected, marked, exited, child}]
 //   form     the data-form shown at the pane's top, or none
 //   status   the pane's text, scrolled to its end as it changes (a command's output); keepScroll
-//            holds its scroll instead, fromTop shows its top (a listing); statusGap marks it
+//            holds its scroll instead, fromTop shows its top (a listing)
 //   keys     the pane's bottom-right keys, like verbs
 //   feed     true when the pane shows a frame instead of text (Stream)
 "use strict";
@@ -59,7 +59,6 @@ function paintKey(button, key) {
   setText(button, key.label);
   button.dataset.tone = REMOVING.has(key.label) ? "remove" : "";
   button.disabled = !!key.disabled || !key.action;
-  markGap(button, key.gap);
 }
 function paintRow(button, row) {
   setText(button, row.name);
@@ -94,7 +93,6 @@ function paintWindow(w) {
   if (w.verbs) fillSlots(w.verbs, v.verbs || [], paintKey);
   if (w.rows) fillSlots(w.rows, v.rows || [], paintRow);
   fillSlots(w.keys, v.keys || [], paintKey);
-  if ("statusGap" in v) markGap(w.text.parentElement, v.statusGap);
   // An open form fills the pane's top; an error it answers prints under it.
   const open = w.forms.find((form) => !form.hidden);
   w.text.hidden = !!v.feed || (!!open && !v.status);
@@ -152,9 +150,4 @@ async function readFor(W, route) {
   W.reading = true; W.log = []; W.ask = null; render();
   await api.read(route);
   if (n === W.reads) { W.reading = false; render(); }
-}
-
-// Mock only: mock.js numbers what the CLI cannot back yet; without it this does nothing.
-function markGap(el, gap) {
-  if (typeof mock !== "undefined") mock.markGap(el, gap);
 }

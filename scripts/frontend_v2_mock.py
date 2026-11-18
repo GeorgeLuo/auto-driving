@@ -97,7 +97,7 @@ def clear_of_column(page):
     for open_frame in page.locator(".float-frame:not([hidden])").all():
         box = open_frame.bounding_box()
         overlaps = box["x"] < right and box["x"] + box["width"] > left and box["y"] < end and box["y"] + box["height"] > top
-        assert not overlaps or open_frame.get_attribute("id") == "gapsFrame", (open_frame.get_attribute("id"), box)
+        assert not overlaps, (open_frame.get_attribute("id"), box)
 
 
 with sync_playwright() as p:
@@ -143,7 +143,7 @@ with sync_playwright() as p:
     for selector in ["#hostsFrame .float-frame-status", ".float-frame", "#pluginsFrame .float-frame-status", "#hostsFrame .field-select"]:
         assert radius(selector) == "0px", (selector, radius(selector))
     assert radius("#hostsFrame [data-verbs] .key") == "0px"  # highlighted text, not a button
-    for selector in ["main button.nav", "#gapsToggle"]:
+    for selector in ["main button.nav", "#endProcess"]:
         assert radius(selector) != "0px", (selector, radius(selector))
     for name in ["Vehicles", "Hosts", "Plugins"]:
         button(page, name).click()
@@ -483,9 +483,7 @@ with sync_playwright() as p:
     for step in ("memory", "perception", "proposal"):  # every step's line, in name order, as plugins disarm --all prints them
         expect(status(page, "pluginsFrame")).to_contain_text(f"Applied {step}: (none)\n")
     clear_of_column(page)
-    page.locator("#gapsToggle").click()
-    shot("5-plugins-gaps")
-    page.locator("#gapsToggle").click()
+    shot("5-plugins")
 
     # Learning: upload chase-413 (its learning plugins arm on memory), then chart what they learn.
     verb(page, "pluginsFrame", "UPLD").click()

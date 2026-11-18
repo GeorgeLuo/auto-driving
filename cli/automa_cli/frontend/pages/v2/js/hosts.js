@@ -113,7 +113,7 @@ const Hosts = (() => {
     else if (W.mode === "create") keys = [{ label: "NEW", action: create, disabled: !Vehicles.usable().length || !field("create", "name").value.trim() },
                                           { label: "CANCEL", action: back }];
     else if (W.mode === "run" || W.mode === "restart") keys = [
-      { label: W.mode === "run" ? "RUN" : "RSTRT", action: () => start(`/api/hosts/${W.mode}`, runBody(h.host_name)), gap: "runProgress" },
+      { label: W.mode === "run" ? "RUN" : "RSTRT", action: () => start(`/api/hosts/${W.mode}`, runBody(h.host_name)) },
       { label: "CANCEL", action: back }];
     else if (h) keys = [
       ...(h.state === "running"
@@ -130,7 +130,6 @@ const Hosts = (() => {
       form: { create: "create", run: "run", restart: "run" }[W.mode] || null,
       // An open form shows only the error it answers.
       status: W.ask === "delete" ? "Delete?" : W.log.length ? W.log.join("\n") : W.mode !== "rows" ? "" : W.reading ? "..." : h ? lines(h).join("\n") : "",
-      statusGap: "noStream",
       keys,
     };
   }

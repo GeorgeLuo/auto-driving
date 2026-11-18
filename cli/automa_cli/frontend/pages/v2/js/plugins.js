@@ -179,7 +179,7 @@ const Plugins = (() => {
     const streaming = !!W.streaming;
     const streamKeys = step && step !== "observation" ? [
       { label: streaming ? "STOP" : "STRM", action: () => { Object.assign(W, { streaming: streaming ? null : step, log: [] }); render(); }, disabled: !host },
-      { label: "VIEW", action: () => Stream.open({ host, step }), disabled: !host, gap: step === "proposal" || step === "plan" ? "stepViews" : null },
+      { label: "VIEW", action: () => Stream.open({ host, step }), disabled: !host },
     ] : [];
     const askDisarm = () => { Object.assign(W, { ask: "disarm", log: [], streaming: null }); render(); };
     const uploadReady = field("source").value === "manifest" ? field("manifest").value.trim()

@@ -1,5 +1,5 @@
 // The page: every window's paint, the column's readouts, and the reads that keep them current.
-// Nothing tells the page what changed (gap noNotify), so it reads every list again after each
+// The page reads every list again after each
 // command and polls: what each stream shows (a host's latest frame, or a step's probe) every tick,
 // hosts status every HOSTS_EVERY ticks. Learning reads its host's history on its own, once a second.
 "use strict";
@@ -51,7 +51,6 @@ async function poll() {
   const right = Math.min(Math.max(8, innerWidth - w - 8), column.right + gap);
   const layout = {
     simulatorsFrame: [left, 0], vehiclesFrame: [left, h], hostsFrame: [left, 2 * h], pluginsFrame: [right, 0],
-    gapsFrame: [Math.max(8, (innerWidth - w) / 2), innerHeight - h - 44],  // above the mock controls
     learningFrame: [right, h, 2 * h],  // below Plugins, twice as tall: its charts stack
   };
   for (const [id, [x, y, height = h]] of Object.entries(layout)) {

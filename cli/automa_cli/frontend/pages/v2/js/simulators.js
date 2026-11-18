@@ -49,7 +49,7 @@ const Simulators = (() => {
     const s = listing().find((x) => x.url === W.selected);
     const keys = W.busy || W.reading ? []
       : W.ask ? [{ label: "YES", action: () => remove(s) }, { label: "NO", action: () => { W.ask = null; render(); } }]
-      : W.mode === "create" ? [{ label: "NEW", action: create, gap: "simProgress" }, { label: "CANCEL", action: back }]
+      : W.mode === "create" ? [{ label: "NEW", action: create }, { label: "CANCEL", action: back }]
       : s ? [
           // An exited simulator is no vehicle: there is nothing to show or discover.
           ...(s.state === "exited" ? [] : [{ label: "VEC", action: () => Vehicles.show(s), disabled: Vehicles.state.busy }]),

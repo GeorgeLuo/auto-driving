@@ -1,8 +1,7 @@
 // Mock only. The viewer's routes, answered from an in-page store on timers, so the page runs
 // with nothing behind it. A read answers the document its command's --json prints; a write does
 // what its command does to the store and answers what it prints, line by line. ROUTES marks the
-// routes the viewer has (viewer_commands.py); the rest are the ones the page needs next, and
-// GAPS says what the CLI lacks for them.
+// routes the viewer has (viewer_commands.py); the rest are the ones the page needs next.
 // Opened from disk, the mock answers every route. Served by the viewer (at /v2/), it answers
 // only the routes the viewer lacks; every route the page reads and writes is the viewer's now.
 // A new route: add it here, its answers shaped as the command's, then mark it viewer once the
@@ -19,19 +18,6 @@ const mock = (() => {
   const hex = (n) => Array.from({ length: n }, () => "0123456789abcdef"[Math.floor(Math.random() * 16)]).join("");
   const same = (a, b) => a.length === b.length && a.every((x, i) => x === b[i]);
   const CAPTURE = window.CAPTURE || [];  // a recorded chase-sim run stands in for each host's publications
-
-  const GAPS = {
-    simProgress: "simulators create prints nothing until its simulator is ready (up to 45 s).",
-    noNotify: "No change notification: every list read probes each host and vehicle under a 5 s deadline, so the page reads everything again after each command and polls hosts.",
-    runProgress: "hosts run starts the run in the background and answers after its startup wait; startup progress (RunEvent) reaches only a foreground monitor.",
-    noStream: "The viewer's writes answer once, when the command ends: hosts create, update and delete print their progress as they go, and the page shows it all at the end.",
-    noCancel: "Nothing cancels simulators create or a host deploy once started.",
-    recordings: "No command lists recorded runs, so the workbench cannot offer a host's recordings as sources.",
-    stepViews: "Proposal and plan have no runtime view of their own; the Action view carries them as candidates and selection.",
-    vehicleUrl: "vehicles status has no --url: showing one vehicle reads the whole list, probing every listed vehicle under one deadline.",
-    fixedVehicle: "A host's vehicle is fixed at hosts create: hosts update has no --url, so moving a host is delete + create.",
-  };
-  const GAP_KEYS = Object.keys(GAPS);
 
   // The collection an uploaded manifest names, its plugins in manifest order with their source files.
   const MANIFEST = { name: "chase-413", plugins: [
@@ -657,27 +643,7 @@ const mock = (() => {
     }
   }, ms(250) || 25);
 
-  // ---- The page's mock-only parts: gap marks, the gaps window, end process. ----
-  function markGap(el, gap) {
-    if (gap) {
-      el.dataset.gap = gap;
-      el.dataset.gapN = String(GAP_KEYS.indexOf(gap) + 1);
-      el.title = GAPS[gap];
-    } else if (el.dataset.gap) {
-      delete el.dataset.gap;
-      delete el.dataset.gapN;
-      el.removeAttribute("title");
-    }
-  }
-  document.querySelectorAll("[data-gap]").forEach((el) => markGap(el, el.dataset.gap));
-  $("gapList").innerHTML = GAP_KEYS.map((key, i) => `<p class="gap-item"><b>${i + 1}</b><span>${GAPS[key]}</span></p>`).join("");
-  $("gapsFrame").querySelector("[data-mode]").textContent = "CLI signals this page lacks";
-  $("gapsToggle").addEventListener("click", () => {
-    const on = !document.body.classList.contains("show-gaps");
-    document.body.classList.toggle("show-gaps", on);
-    $("gapsToggle").setAttribute("aria-pressed", String(on));
-    if (on) floatingFrames.gapsFrame.restore(); else floatingFrames.gapsFrame.close();
-  });
+  // ---- The page's mock-only controls. ----
   // Opened from disk there is no workbench to open; served, the link opens the viewer's.
   if (!SERVED) $("workbenchLink").addEventListener("click", (event) => event.preventDefault());
   // Served, the simulators are real: the store has none to end.
@@ -699,5 +665,5 @@ const mock = (() => {
     $("endProcess").disabled = !s || s.state === "exited" || W.busy || W.reading;
   }
 
-  return { ms, store, answers, answer, markGap, paint };
+  return { ms, store, answers, answer, paint };
 })();

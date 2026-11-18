@@ -66,7 +66,6 @@ const Vehicles = (() => {
       rows: listing().map((x) => ({ name: new URL(x.url).host, selected: W.selected === x.url, disabled: W.busy, action: () => select(x.url) })),
       form: W.mode === "discover" ? "discover" : null,
       status: W.ask ? "Untrack?" : W.log.length ? W.log.join("\n") : W.reading ? "..." : v ? lines(v).join("\n") : "",
-      statusGap: "vehicleUrl",
       keys,
     };
   }

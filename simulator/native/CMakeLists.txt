@@ -49,6 +49,12 @@ add_executable(native-sim-tour tools/tour.cpp)
 target_link_libraries(native-sim-tour PRIVATE sim_protocol)
 target_compile_definitions(native-sim-tour PRIVATE SIM_ASSETS="${asset_directory}")
 
+add_executable(native-sim-bench EXCLUDE_FROM_ALL tools/bench/main.cpp tools/bench/stress.cpp)
+target_link_libraries(native-sim-bench PRIVATE sim_protocol)
+target_compile_definitions(native-sim-bench PRIVATE
+  SIM_ASSETS="${asset_directory}" SIM_MAPS="${CMAKE_CURRENT_SOURCE_DIR}/maps")
+target_compile_options(native-sim-bench PRIVATE -Wall -Wextra -Wpedantic)
+
 foreach(target sim_core sim_scene sim_physics sim_render sim_sensor sim_protocol)
   target_compile_options(${target} PRIVATE -Wall -Wextra -Wpedantic)
 endforeach()

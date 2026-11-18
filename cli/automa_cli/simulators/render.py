@@ -2,7 +2,6 @@
 from __future__ import annotations
 
 import json
-from typing import Any
 
 from ..providers.metadata import CHASE_SIM
 from ..providers.urls import chase_operator_url
@@ -10,7 +9,7 @@ from ..shared.text import format_log_tail, indented
 from .models import SimulatorResult
 
 
-def simulator_lines(vehicle: dict[str, Any]) -> list[str]:
+def simulator_lines(vehicle: dict[str, object]) -> list[str]:
     """The heading, frontend, error, and pid lines a simulator block prints.
 
     ``vehicles status`` uses these for a simulator. Lines that only one command
@@ -37,7 +36,7 @@ def host_lines(hosts: list[str]) -> list[str]:
     return [f"  used by host {hosts[0]}" if len(hosts) == 1 else f"  used by hosts {', '.join(hosts)}"]
 
 
-def render_simulators_status(status: dict[str, Any], *, json_output: bool, long: bool) -> str:
+def render_simulators_status(status: dict[str, object], *, json_output: bool, long: bool) -> str:
     """Text for a terminal, or ``automa_simulators_status`` JSON."""
 
     if json_output:
@@ -48,10 +47,12 @@ def render_simulators_status(status: dict[str, Any], *, json_output: bool, long:
     return "\n\n".join(_status_block(simulator, long=long) for simulator in simulators)
 
 
-def _status_block(simulator: dict[str, Any], *, long: bool) -> str:
+def _status_block(simulator: dict[str, object], *, long: bool) -> str:
     lines = [*simulator_lines(simulator), *host_lines(simulator["hosts"])]
     if long and simulator["state"] != "not found":
-        lines.append(f"  Metrics UI checkout {simulator['metrics_ui_dir']}, config {simulator['config']}")
+        source = (f"Native executable {simulator.get('executable')}" if simulator.get("backend") == "native"
+                  else f"Metrics UI checkout {simulator['metrics_ui_dir']}")
+        lines.append(f"  {source}, config {simulator['config']}")
         lines.append(f"  log {simulator['log']}")
     if simulator["state"] == "exited":
         lines += indented(format_log_tail("Simulator", simulator["log"], simulator["log_tail"]))

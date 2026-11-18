@@ -24,6 +24,7 @@ from cli.automa_cli.hosts.runs.models import WORKER_MODULE
 from cli.automa_cli.shared.io.processes import command_tokens, command_option_matches
 from cli.automa_cli.hosts.staging import automation_dir
 from cli.automa_cli.simulators.process import simulator_command_matches, stop_simulator
+from cli.automa_cli.simulators.native import NATIVE_SIM_BINARY
 from cli.automa_cli.simulators.store import SIMULATOR_SCHEMA, simulator_dir, write_simulator_record
 from implementations.runtime.chase_sim.service import HOST_RECORD_SCHEMA
 from tests.support.fake_headless_sim import fake_headless_sim_command
@@ -133,6 +134,12 @@ class RecordedProcessStopTests(unittest.TestCase):
             "base_url": "http://127.0.0.1:9",
         }), encoding="utf-8")
         return path
+
+    def test_native_simulator_matches_only_its_executable_and_exact_port(self) -> None:
+        command = shlex.join([str(NATIVE_SIM_BINARY), "--port", str(PORT)])
+        self.assertTrue(simulator_command_matches(command, PORT))
+        self.assertFalse(simulator_command_matches(command, PORT + 1))
+        self.assertFalse(simulator_command_matches(f"/other/automa-native-sim --port {PORT}", PORT))
 
     def _patch_host(
         self,

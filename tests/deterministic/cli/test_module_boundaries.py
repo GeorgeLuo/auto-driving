@@ -162,6 +162,7 @@ _MODULE_ROLES = {
     "shared.step_hosting": "pure",
     "shared.text": "pure",
     "shared.timestamps": "pure",
+    "simulators.native": "pure",
     "simulators.process": "operation",
     "simulators.status": "operation",
     "vehicles.discovery": "operation",

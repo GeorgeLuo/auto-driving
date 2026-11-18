@@ -28,11 +28,21 @@ def register_simulators(subcommands: argparse._SubParsersAction) -> None:
         "create",
         help="Start a headless Chase simulator that vehicles status lists.",
         description=(
-            "Start a headless Chase simulator with Metrics UI's default headless configuration, "
-            "from the Metrics UI checkout at AUTOMA_METRICS_UI_DIR, on the first free port from 5051. "
+            "Start a headless Chase simulator on the first free port from 5051. "
+            "The default backend uses the Metrics UI checkout at AUTOMA_METRICS_UI_DIR; "
+            "--backend native uses the built C++ prototype under simulator/native/build. "
             "It runs until simulators delete. Exits 2 when it is not ready within 45 s."
         ),
     )
+    simulators_create.add_argument(
+        "--backend", choices=("metrics-ui", "native"), default="metrics-ui",
+        help=(
+            "Use Metrics UI (default) or native (experimental environment). "
+            "Equivalence with Metrics UI covers motion and protocol only. "
+            "Camera and perception equivalence are unverified."
+        ),
+    )
+    simulators_create.add_argument("--config", help="Configuration file for the selected simulator backend.")
     simulators_create.set_defaults(handler=_handle_simulators_create)
 
     simulators_delete = simulator_commands.add_parser(
@@ -78,7 +88,7 @@ def register_simulators(subcommands: argparse._SubParsersAction) -> None:
     simulators_status_command.set_defaults(handler=_handle_simulators_status)
 
 
-def _handle_simulators_help(args: argparse.Namespace) -> int:
+def _handle_simulators_help(_args: argparse.Namespace) -> int:
     print(
         "\n".join(
             [
@@ -98,7 +108,7 @@ def _handle_simulators_help(args: argparse.Namespace) -> int:
 
 
 def _handle_simulators_create(args: argparse.Namespace) -> int:
-    result = create_simulator()
+    result = create_simulator(backend=args.backend, config=args.config)
     print(render_simulator_result(result))
     return result.exit_code
 

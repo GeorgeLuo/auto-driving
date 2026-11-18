@@ -1,0 +1,6 @@
+{
+  "visuals": [
+    {"type": "cylinder", "x": 0, "y": 0, "z": 0, "width": 0.135, "depth": 0.135, "height": 0.92, "rotationRadians": 0, "material": "walnut"}
+  ],
+  "collision": {"type": "box", "width": 0.135, "depth": 0.135}
+}

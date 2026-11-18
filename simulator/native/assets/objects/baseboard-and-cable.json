@@ -1,0 +1,8 @@
+{
+  "visuals": [
+    {"type": "strip", "x": 0, "y": 0.004, "z": 0.015, "width": 3.78, "depth": 0.019, "height": 0.097, "rotationRadians": 0, "material": "baseboard"},
+    {"type": "strip", "x": -0.15, "y": 0.017, "z": -0.002, "width": 3.33, "depth": 0.012, "height": 0.012, "rotationRadians": 0, "material": "strap"},
+    {"type": "strip", "x": 1.52, "y": 0.019, "z": -0.021, "width": 0.011, "depth": 0.045, "height": 0.011, "rotationRadians": -0.3, "material": "strap"}
+  ],
+  "collision": null
+}

@@ -1,0 +1,11 @@
+{
+  "asset": {"version": "2.0", "extras": {"collision": {"type": "box", "width": 0.52, "depth": 0.39}}},
+  "scene": 0,
+  "scenes": [{"nodes": [0]}],
+  "nodes": [{"translation": [0, 0.012, 0], "children": [1]}, {"mesh": 0, "scale": [1, 1, 0.96]}],
+  "meshes": [{"primitives": [{"attributes": {"POSITION": 0, "TEXCOORD_0": 1}, "indices": 2, "material": 0}]}],
+  "materials": [{"name": "Printed label", "extras": {"nativeMaterial": "case-label"}}],
+  "buffers": [{"byteLength": 552, "uri": "data:application/octet-stream;base64,mpmZvgAAAACuR2G+mpmZvgAAAACuR2E+mpmZPgAAAACuR2E+mpmZPgAAAACuR2G+mpmZPgAAAACuR2G+mpmZPgAAAACuR2E+AACAPjMzsz59PzU+SOF6Pkjhej59PzW+mpmZPgAAAACuR2E+mpmZvgAAAACuR2E+PQpXvoXr0T59PzU+AACAPjMzsz59PzU+mpmZvgAAAACuR2E+mpmZvgAAAACuR2G+j8J1vuF6lD59PzW+PQpXvoXr0T59PzU+mpmZvgAAAACuR2G+mpmZPgAAAACuR2G+SOF6Pkjhej59PzW+j8J1vuF6lD59PzW+j8J1vuF6lD59PzW+SOF6Pkjhej59PzW+AACAPjMzsz59PzU+PQpXvoXr0T59PzU+AAAAAAAAgD8AAIA/AACAPwAAgD8AAAAAAAAAAAAAAAAAAAAAAACAPwAAgD8AAIA/AACAPwAAAAAAAAAAAAAAAAAAAAAAAIA/AACAPwAAgD8AAIA/AAAAAAAAAAAAAAAAAAAAAAAAgD8AAIA/AACAPwAAgD8AAAAAAAAAAAAAAAAAAAAAAACAPwAAgD8AAIA/AACAPwAAAAAAAAAAAAAAAAAAAAAAAIA/AACAPwAAgD8AAIA/AAAAAAAAAAAAAAAAAAACAAEAAAADAAIABAAGAAUABAAHAAYACAAKAAkACAALAAoADAAOAA0ADAAPAA4AEAASABEAEAATABIAFAAWABUAFAAXABYA"}],
+  "bufferViews": [{"buffer": 0, "byteOffset": 0, "byteLength": 288, "target": 34962}, {"buffer": 0, "byteOffset": 288, "byteLength": 192, "target": 34962}, {"buffer": 0, "byteOffset": 480, "byteLength": 72, "target": 34963}],
+  "accessors": [{"bufferView": 0, "componentType": 5126, "count": 24, "type": "VEC3", "min": [-0.3, 0, -0.22], "max": [0.3, 0.41, 0.22]}, {"bufferView": 1, "componentType": 5126, "count": 24, "type": "VEC2"}, {"bufferView": 2, "componentType": 5123, "count": 36, "type": "SCALAR"}]
+}

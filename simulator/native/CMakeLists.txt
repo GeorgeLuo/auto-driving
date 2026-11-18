@@ -69,3 +69,8 @@ add_test(NAME native_sim_scene COMMAND native_sim_scene ${default_map} ${asset_d
   ${CMAKE_CURRENT_SOURCE_DIR}/maps/room-run6.json)
 add_test(NAME native_sim_include_graph COMMAND ${CMAKE_COMMAND}
   -Dsource_dir=${CMAKE_CURRENT_SOURCE_DIR}/src -P ${CMAKE_CURRENT_SOURCE_DIR}/tests/include-graph.cmake)
+
+# Offline motion priors for the run 6 photo registration tool.
+add_executable(native-fit-motion EXCLUDE_FROM_ALL tools/fit/motion.cpp)
+target_link_libraries(native-fit-motion PRIVATE sim_protocol)
+target_compile_definitions(native-fit-motion PRIVATE SIM_ASSETS="${asset_directory}")

@@ -120,7 +120,7 @@ class InspectionRecordingTests(unittest.TestCase):
         self.assertTrue(memory[2].startswith("Source: "), memory)
         self.assertTrue(perception[3].startswith("Steps: perception=frame,"), perception)
         self.assertEqual(memory[3], perception[3])
-        self.assertEqual(recorded.parent, self.root / "perception")
+        self.assertEqual(recorded.parent.resolve(), (self.root / "perception").resolve())
         report = json.loads((recorded / "report.json").read_text(encoding="utf-8"))
         self.assertEqual(report["schema"], "perception_inspect")
         self.assertEqual(sorted(path.name for path in recorded.glob("*.json")), ["manifest.json", "report.json"])

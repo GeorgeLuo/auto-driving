@@ -25,6 +25,7 @@ struct World {
     std::shared_ptr<const AssetCatalog> assets;
 
     World(const Json& document, std::shared_ptr<const AssetCatalog> catalog);
+    double next_step_interval() const;
     void step();
     Json configure(const Json& patch);
     CameraPose camera_pose() const;
@@ -38,7 +39,6 @@ private:
     std::optional<Configuration> pending_;
 };
 
-Json read_config(const std::string& path);
 uint64_t monotonic_us();
 std::string new_epoch();
 }

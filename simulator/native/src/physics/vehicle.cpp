@@ -58,7 +58,8 @@ static Vec collide(Vec end, Vec start, double radius, const Map& map) {
     return {start.x+(end.x-start.x)*fraction, start.z+(end.z-start.z)*fraction};
 }
 void validate_vehicle_pose(Vec position, double radius, const Map& map) {
-    if (std::abs(position.x) > map.columns/2-radius || std::abs(position.z) > map.rows/2-radius)
+    // Swept contact can land a rounding unit past the exact boundary.
+    if (std::abs(position.x) > map.columns/2-radius+1e-12 || std::abs(position.z) > map.rows/2-radius+1e-12)
         throw std::invalid_argument("Vehicle pose is outside the map");
     for (const auto& object : map.objects) {
         const auto& shape = object.asset->collision;

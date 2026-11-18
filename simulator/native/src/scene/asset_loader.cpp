@@ -1,17 +1,10 @@
 #include "scene/asset_loader.hpp"
 #include "scene/asset_json.hpp"
 #include "scene/material.hpp"
-#include <fstream>
 #include <stdexcept>
 
 namespace sim {
 namespace {
-Json read_asset_json(const std::filesystem::path& source) {
-    std::ifstream input(source);
-    if (!input) throw std::invalid_argument("Cannot open asset: " + source.string());
-    Json result; input >> result; return result;
-}
-
 VisualPart read_part(const Json& json) {
     require_keys(json,{"type","x","y","z","width","depth","height","rotationRadians",
                        "pitchRadians","rollRadians","material"});
@@ -48,7 +41,7 @@ bool JsonAssetLoader::supports(const std::filesystem::path& source) const {
 }
 
 Asset JsonAssetLoader::load(const std::filesystem::path& source) const {
-    const auto json = read_asset_json(source);
+    const auto json = read_json(source);
     require_keys(json,{"visuals","collision"});
     if (!json.at("visuals").is_array()) throw std::invalid_argument("Expected an array of visual parts");
     Asset asset;
@@ -57,11 +50,12 @@ Asset JsonAssetLoader::load(const std::filesystem::path& source) const {
     return asset;
 }
 
-namespace {
-AssetCatalog load_catalog(const std::filesystem::path& directory,
-                          std::initializer_list<const AssetLoader*> loaders) {
+AssetCatalog load_asset_catalog(const std::filesystem::path& directory) {
+    const JsonAssetLoader json_loader;
+    const GltfAssetLoader gltf_loader;
+    const std::array<const AssetLoader*,2> loaders{&json_loader,&gltf_loader};
     AssetCatalog catalog;
-    const auto materials = read_asset_json(directory/"materials.json");
+    const auto materials = read_json(directory/"materials.json");
     if (!materials.is_object()) throw std::invalid_argument("Expected named materials");
     for (const auto& [name,json] : materials.items()) {
         require_keys(json,{"baseColor","texture"});
@@ -92,16 +86,5 @@ AssetCatalog load_catalog(const std::filesystem::path& directory,
         }
     }
     return catalog;
-}
-}
-
-AssetCatalog load_asset_catalog(const std::filesystem::path& directory) {
-    JsonAssetLoader json;
-    GltfAssetLoader gltf;
-    return load_catalog(directory,{&json,&gltf});
-}
-
-AssetCatalog load_asset_catalog(const std::filesystem::path& directory, const AssetLoader& loader) {
-    return load_catalog(directory,{&loader});
 }
 }

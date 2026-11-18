@@ -1,0 +1,31 @@
+name: Native simulator
+
+on:
+  pull_request:
+    paths:
+      - "simulator/native/**"
+      - ".github/workflows/native-simulator.yml"
+  push:
+    branches:
+      - main
+    paths:
+      - "simulator/native/**"
+      - ".github/workflows/native-simulator.yml"
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  native:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v7
+      - run: sudo apt-get update && sudo apt-get install -y libjpeg-dev
+      - run: cmake -S simulator/native -B simulator/native/build -DCMAKE_BUILD_TYPE=Release
+      - run: cmake --build simulator/native/build --parallel 2
+      - run: ctest --test-dir simulator/native/build --output-on-failure

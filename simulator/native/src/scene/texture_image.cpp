@@ -1,5 +1,6 @@
 #include "scene/material.hpp"
 #define STB_IMAGE_IMPLEMENTATION
+#define STBI_NO_LINEAR
 #define STBI_MAX_DIMENSIONS 8192
 #include <stb_image.h>
 #include <limits>

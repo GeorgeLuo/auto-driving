@@ -42,8 +42,8 @@ class NativeSimulatorTests(unittest.TestCase):
         self.car = ChaseSimCar(ws_url=self.url, timeout_s=5)
 
     def cli(self, *args: str, check: bool = True):
-        return run_automa(*args, runtime_root=self.root, check=check,
-                          extra_env={"AUTOMA_METRICS_UI_DIR": ""})
+        return invoke_automa(*args, runtime_root=self.root, check=check,
+                             extra_env={"AUTOMA_METRICS_UI_DIR": ""})
 
     def native(self):
         return self.client.play_game_query("native-state")
@@ -86,14 +86,17 @@ class NativeSimulatorTests(unittest.TestCase):
                 return None
             if state.get("status") in {"failed", "error"}:
                 self.fail(json.dumps(state, indent=2))
-            if state.get("status") != "completed" or state.get("started_at_ms", 0) <= previous_start:
+            if state.get("status") != "completed":
+                return None
+            if state.get("started_at_ms", 0) <= previous_start:
                 return None
             return state
 
         for mode in (("--observe-only",), ()):
             previous = completed()
             previous_start = previous["started_at_ms"] if previous else -1
-            self.cli("hosts", "run", "--name", "native", "--num-decisions", "6", "--timeout-s", "10", *mode)
+            run_automa("hosts", "run", "--name", "native", "--num-decisions", "6", "--timeout-s", "10", *mode,
+                       runtime_root=self.root, extra_env={"AUTOMA_METRICS_UI_DIR": ""})
             try:
                 state = wait_until(lambda: completed(previous_start), timeout_s=15)
             except AssertionError:
@@ -138,6 +141,10 @@ class NativeSimulatorTests(unittest.TestCase):
         with MetricsUiConnection(self.url, timeout_s=5) as wire:
             wire.send_json({"type": "register", "role": "agent"})
             self.client.wait_for_registration(wire, time.monotonic() + 5)
+            wire.send_json({"type": "play_camera_stream_unsubscribe", "subscriptionId": ""})
+            error = wire.recv_json()
+            self.assertEqual(error["type"], "error")
+            self.assertEqual(error["payload"]["code"], "invalid_request")
             wire.send_json({"type": "play_camera_stream_subscribe", "width": 160, "height": 120,
                             "maxRateHz": 30, "imageFormat": "image/jpeg", "dropPolicy": "latest-frame"})
             first = wire.recv_json()["payload"]

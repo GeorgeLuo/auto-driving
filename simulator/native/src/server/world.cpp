@@ -3,7 +3,6 @@
 #include <atomic>
 #include <chrono>
 #include <cmath>
-#include <fstream>
 #include <stdexcept>
 
 namespace sim {
@@ -45,12 +44,6 @@ static Configuration load_configuration(const Json& c, const AssetCatalog& asset
     return {c,std::make_shared<const Map>(std::move(map)),vehicle,projection,effects,height,fps};
 }
 
-Json read_config(const std::string& path) {
-    std::ifstream input(path);
-    if (!input) throw std::invalid_argument("Cannot open config: " + path);
-    Json result; input >> result; return result;
-}
-
 World::World(const Json& document, std::shared_ptr<const AssetCatalog> catalog)
     : epoch(new_epoch()), configuration(load_configuration(document,*catalog)), assets(std::move(catalog)) {
     const auto& spawn = document["spawn"];
@@ -60,7 +53,12 @@ World::World(const Json& document, std::shared_ptr<const AssetCatalog> catalog)
     pose.direction = {std::cos(angle),std::sin(angle)};
 }
 
+double World::next_step_interval() const {
+    return 1/(pending_ ? pending_->fps : configuration.fps);
+}
+
 void World::step() {
+    const double interval = next_step_interval();
     if (pending_) {
         configuration = std::move(*pending_);
         pending_.reset();
@@ -69,7 +67,7 @@ void World::step() {
     pose = step_vehicle(pose,input,configuration.vehicle,*configuration.map);
     ++frame;
     applied_command_sequence = command_sequence;
-    simulation_time += 1/configuration.fps;
+    simulation_time += interval;
 }
 
 Json World::configure(const Json& patch) {

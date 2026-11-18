@@ -20,9 +20,9 @@ int main(int argc, char** argv) {
     try {
         check(argc==4,"Expected reference, map, and asset paths");
         auto assets = std::make_shared<const sim::AssetCatalog>(
-            sim::load_asset_catalog(argv[3],sim::JsonAssetLoader{}));
+            sim::load_asset_catalog(argv[3]));
         auto renderer = sim::make_renderer("software");
-        auto config = sim::read_config(argv[2]);
+        auto config = sim::read_json(argv[2]);
         std::ifstream file(argv[1]); sim::Json reference; file>>reference;
         size_t frames = 0;
         for (const auto& test : reference.at("cases")) {
@@ -45,6 +45,11 @@ int main(int argc, char** argv) {
         world.step();
         close(world.configuration.document["vehicle"]["speedUnitsPerFrame"],.08,"configuration applied");
         check(world.revision==1,"configuration revision");
+        double before_fps_change = world.simulation_time;
+        world.configure({{"fps",4}});
+        close(world.next_step_interval(),.25,"scheduler uses the pending FPS");
+        world.step();
+        close(world.simulation_time-before_fps_change,.25,"simulation uses the same interval");
         world.configure({{"vehicle",{{"speedUnitsPerFrame",.09}}}});
         world.playing = false;
         world.configure({{"vehicle",{{"speedUnitsPerFrame",.10}}}});
@@ -57,6 +62,16 @@ int main(int argc, char** argv) {
         rejects([&]{sim::command(world,"set-chaser-input",{{"steering",2}});});
         rejects([&]{auto invalid=config; invalid["spawn"]["x"]=100; sim::command(world,"load-map",invalid);});
         check(world.native_state()==before,"rejected updates must be atomic");
+        auto boundary_config = config;
+        boundary_config["map"]["columns"] = 1;
+        boundary_config["map"]["obstacles"] = sim::Json::array();
+        boundary_config["spawn"] = {{"x",.3},{"z",0},{"headingRadians",0}};
+        boundary_config["vehicle"]["radius"] = .2;
+        sim::World boundary(boundary_config,assets);
+        boundary.pose.position.x = std::nextafter(.3,1.);
+        boundary.configure({{"fps",20}});
+        boundary.pose.position.x += 1e-8;
+        rejects([&]{boundary.configure({{"fps",20}});});
         auto image = sim::capture(world,*renderer,{160,120,.8});
         check(world.native_state()==before,"capture must not advance or mutate state");
         check(image["passiveObservation"]["preservation"]["before"]==world.fingerprint(),"capture receipt");

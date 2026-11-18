@@ -18,8 +18,8 @@ from ..hosts.local import log_tail
 from ..hosts.runs.process import process_command
 from ..shared.io.processes import command_tokens, command_option_matches, pid_alive, reap_on_exit
 from ..shared.timestamps import timestamp_ms
-from .store import SIMULATOR_SCHEMA, remove_simulator_record, simulator_dir, write_simulator_record
 from .native import NATIVE_SIM_BINARY
+from .store import SIMULATOR_SCHEMA, remove_simulator_record, simulator_dir, write_simulator_record
 
 
 # Beside the simulator's record, in its ``simulator_dir``.
@@ -144,6 +144,12 @@ def simulator_command_matches(command: str, port: int) -> bool:
     override. ``--port`` matches exactly. For interpreted launchers, ignore the
     interpreter because ``ps`` may show its resolved path.
     """
+
+    # ps can show unquoted paths containing spaces. The native launcher always
+    # puts its port first, so match that prefix before splitting shell tokens.
+    native_prefix = f"{NATIVE_SIM_BINARY} --port {port}"
+    if command == native_prefix or command.startswith(native_prefix + " "):
+        return True
 
     tokens = command_tokens(command)
     if tokens is None or not command_option_matches(tokens, "--port", str(port)):

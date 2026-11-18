@@ -48,7 +48,7 @@ int main(int argc, char** argv) {
             throw std::invalid_argument("Camera size must be between 1x1 and 640x480");
 
         auto assets = std::make_shared<const sim::AssetCatalog>(sim::load_asset_catalog(SIM_ASSETS));
-        sim::World world(sim::read_config(argv[1]),std::move(assets));
+        sim::World world(sim::read_json(argv[1]),std::move(assets));
         auto software = sim::make_renderer("software");
         TimedRenderer renderer(*software);
         auto out = std::filesystem::absolute(argv[2]);

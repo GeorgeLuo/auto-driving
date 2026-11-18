@@ -15,6 +15,28 @@ void check(cgltf_result result, const char* operation) {
         throw std::invalid_argument(std::string(operation) + " failed (cgltf error " + std::to_string(result) + ")");
 }
 
+// Check ranges before cgltf_validate inspects the contents of index buffers.
+void validate_buffer_ranges(const cgltf_data& data) {
+    for (size_t i=0;i<data.buffer_views_count;++i) {
+        const auto& view = data.buffer_views[i];
+        if (view.has_meshopt_compression)
+            throw std::invalid_argument("Compressed glTF buffer views are unsupported");
+        if (!view.buffer || !view.buffer->data || view.offset > view.buffer->size ||
+            view.size > view.buffer->size-view.offset)
+            throw std::invalid_argument("Invalid glTF buffer view range");
+    }
+    for (size_t i=0;i<data.accessors_count;++i) {
+        const auto& accessor = data.accessors[i];
+        if (accessor.is_sparse) throw std::invalid_argument("Sparse glTF accessors are unsupported");
+        if (!accessor.buffer_view) continue;
+        const auto size = accessor.buffer_view->size;
+        const auto element = cgltf_calc_size(accessor.type,accessor.component_type);
+        if (!accessor.count || !element || accessor.stride < element || accessor.offset > size ||
+            element > size-accessor.offset || accessor.count-1 > (size-accessor.offset-element)/accessor.stride)
+            throw std::invalid_argument("Invalid glTF accessor range");
+    }
+}
+
 std::shared_ptr<const TextureImage> read_gltf_image(const cgltf_image& image,
                                                     const std::filesystem::path& directory) {
     if (image.buffer_view) {
@@ -42,8 +64,8 @@ std::shared_ptr<const TextureImage> read_gltf_image(const cgltf_image& image,
 }
 
 std::vector<float> read_attribute(const cgltf_accessor* accessor, cgltf_type type, const char* name) {
-    if (!accessor || accessor->type != type || !accessor->count || accessor->is_sparse)
-        throw std::invalid_argument(std::string("Expected a non-sparse glTF ") + name + " accessor");
+    if (!accessor || accessor->type != type || !accessor->buffer_view)
+        throw std::invalid_argument(std::string("Expected a buffer-backed glTF ") + name + " accessor");
     std::vector<float> values(accessor->count*cgltf_num_components(type));
     if (cgltf_accessor_unpack_floats(accessor,values.data(),values.size()) != values.size() ||
         std::any_of(values.begin(),values.end(),[](float value) {
@@ -77,6 +99,8 @@ struct Import {
     void read_material(VisualPart& part, const cgltf_material* material) {
         part.embedded_material = Material{{255,255,255},{}};
         if (!material) return;
+        if (material->alpha_mode != cgltf_alpha_mode_opaque)
+            throw std::invalid_argument("Expected an opaque glTF material");
         if (material->extras.data) {
             auto extras = Json::parse(material->extras.data);
             if (extras.contains("nativeMaterial")) {
@@ -111,8 +135,7 @@ struct Import {
     VisualPart read_primitive(const cgltf_primitive& primitive, const float* transform) {
         auto* indices = primitive.indices;
         if (primitive.type != cgltf_primitive_type_triangles || primitive.has_draco_mesh_compression ||
-            primitive.targets_count || (indices && (indices->is_sparse || !indices->buffer_view ||
-                                                    !cgltf_buffer_view_data(indices->buffer_view))))
+            primitive.targets_count || (indices && !indices->buffer_view))
             throw std::invalid_argument("Expected an uncompressed, rigid glTF triangle list");
 
         const auto* accessor = find_attribute(primitive,cgltf_attribute_type_position);
@@ -173,10 +196,8 @@ Asset GltfAssetLoader::load(const std::filesystem::path& source) const {
     std::unique_ptr<cgltf_data,decltype(&cgltf_free)> data(parsed,cgltf_free);
     if (data->extensions_required_count) throw std::invalid_argument("Required glTF extensions are unsupported");
     check(cgltf_load_buffers(&options,data.get(),source.string().c_str()),"Loading glTF buffers");
+    validate_buffer_ranges(*data);
     check(cgltf_validate(data.get()),"Validating glTF");
-    for (size_t i=0;i<data->buffer_views_count;++i)
-        if (data->buffer_views[i].has_meshopt_compression)
-            throw std::invalid_argument("Compressed glTF buffer views are unsupported");
 
     Asset asset;
     if (data->asset.extras.data) {

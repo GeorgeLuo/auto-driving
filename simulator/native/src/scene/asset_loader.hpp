@@ -23,5 +23,4 @@ public:
 };
 
 AssetCatalog load_asset_catalog(const std::filesystem::path& directory);
-AssetCatalog load_asset_catalog(const std::filesystem::path& directory, const AssetLoader& loader);
 }

@@ -104,6 +104,8 @@ Every image carries its configuration revision. Changes preserve pose and
 epoch, and invalid patches leave the current and pending configurations intact.
 Camera captures render an immutable copy of state; observation never advances
 the simulation. Simulation continues independently of camera encoding.
+While paused, use an atomic capture to see revised camera images at the
+current frame index. The stream publishes when the frame index advances.
 
 For map replacement or reproducible stepping:
 
@@ -184,8 +186,8 @@ simulator/native/
 ```
 
 The source includes follow this dependency direction. CTest checks every local
-include against these edges and keeps renderer implementations behind the
-interface.
+include against these edges. Only the server's renderer registry may import
+renderer implementation headers from outside their backend.
 
 | Directory | May include |
 | --- | --- |
@@ -237,7 +239,8 @@ interface.
   named simulator material with `"extras":{"nativeMaterial":"NAME"}` on
   the glTF material. Image overrides work best with authored UVs. Meshes
   without UVs use a local X/Y projection. The loader is for static, opaque
-  geometry with geometric normals and base-color shading. Set an optional
+  geometry with buffer-backed, non-sparse positions and UVs, geometric
+  normals, and base-color shading. Set an optional
   box footprint in `asset.extras.collision` using the same fields as a JSON
   object. See `assets/objects/tool-case.gltf`.
 - **Add a renderer backend.** Put its C++ sources in `src/render/NAME/` and
@@ -264,8 +267,8 @@ The default run advances 420 steps and captures every third step at
 directory and reports mean renderer time with the software renderer's four
 scanline workers. Optional arguments after the output directory set steps,
 capture interval, steering, width, and height in that order. Use an empty
-output directory if a previous run wrote more frames. The box-only map is a
-byte-for-byte copy of the original tour input for regression comparisons.
+output directory if a previous run wrote more frames. Use the boxes-only map
+for byte-for-byte JPEG regression comparisons.
 
 ```sh
 ctest --test-dir simulator/native/build --output-on-failure
@@ -284,6 +287,8 @@ binary has not been built. CTest checks the JavaScript motion reference, four
 pre-refactor RGB hashes and renderer IDs, and 40 pre-refactor trajectory poses.
 It also checks shape and mesh rendering, textures, instance overrides, light
 configuration, clearance along the showcase tour, and the camera pipeline.
+The Native simulator GitHub Actions workflow runs CTest when native files
+change. The Python systems tests run separately.
 To regenerate the JavaScript reference from a Metrics UI checkout:
 
 ```sh

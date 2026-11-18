@@ -79,9 +79,9 @@ static Json trajectory(const Json& config, const std::shared_ptr<const sim::Asse
 int main(int argc, char** argv) {
     try {
         check(argc==4,"Expected map, native baseline, and asset paths");
-        auto config = sim::read_config(argv[1]);
+        auto config = sim::read_json(argv[1]);
         auto assets = std::make_shared<const sim::AssetCatalog>(
-            sim::load_asset_catalog(argv[3],sim::JsonAssetLoader{}));
+            sim::load_asset_catalog(argv[3]));
         auto actual_images = images(config,assets);
         auto actual_trajectory = trajectory(config,assets);
         std::ifstream input(argv[2]);

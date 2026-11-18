@@ -27,7 +27,7 @@ int main(int argc, char** argv) {
             else if (flag == "--render") render = argv[++i];
             else throw std::invalid_argument("Unknown option: " + flag);
         }
-        auto settings = sim::read_config(config);
+        auto settings = sim::read_json(config);
         auto assets = std::make_shared<const sim::AssetCatalog>(
             sim::load_asset_catalog(DEFAULT_ASSETS));
         sim::World world(settings,std::move(assets));

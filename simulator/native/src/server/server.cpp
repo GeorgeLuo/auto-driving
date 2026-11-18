@@ -133,7 +133,8 @@ void Server::handle(const std::shared_ptr<Client>& client, ix::WebSocket& socket
         send(socket,message("ack",request,mutate(request)));
     else if (type == "play_camera_stream_subscribe") subscribe(*client,socket,request);
     else if (type == "play_camera_stream_unsubscribe") {
-        if (request.at("subscriptionId") != client->subscription) throw std::invalid_argument("Unknown subscription");
+        if (client->subscription.empty() || request.at("subscriptionId") != client->subscription)
+            throw std::invalid_argument("Unknown subscription");
         auto id = client->subscription; client->subscription.clear();
         send(socket,message("play_camera_stream_result",request,{{"event","ended"},{"subscriptionId",id},
             {"reason",{{"code","unsubscribed"},{"message","Unsubscribed"}}}}));
@@ -156,12 +157,12 @@ void Server::simulate() {
         accumulated += double(now-previous)/1000000; previous = now;
         std::lock_guard<std::mutex> guard(world_mutex_);
         if (!world_.playing) { accumulated = 0; continue; }
-        double dt = 1/world_.configuration.fps;
+        double dt = world_.next_step_interval();
         // Bounded catchup matches the browser loop's eight-step limit.
         accumulated = std::min(accumulated,8*dt);
         for (int i=0;i<8 && accumulated >= dt;++i) {
             world_.step(); accumulated -= dt;
-            dt = 1/world_.configuration.fps;
+            dt = world_.next_step_interval();
         }
     }
 }

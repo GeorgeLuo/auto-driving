@@ -61,7 +61,7 @@ def register_simulators(subcommands: argparse._SubParsersAction) -> None:
         help="Show each simulator simulators create started.",
         description=(
             "Show each simulator simulators create started, whether it answers, its frontend, "
-            "and the hosts created at it; --long adds its Metrics UI checkout, configuration and log. "
+            "and the hosts created at it. --long adds the launcher location, configuration and log. "
             "Exits 1 when the --url simulator is missing, exited, or unreachable."
         ),
     )

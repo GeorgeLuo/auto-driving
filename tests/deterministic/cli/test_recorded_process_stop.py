@@ -140,6 +140,11 @@ class RecordedProcessStopTests(unittest.TestCase):
         self.assertTrue(simulator_command_matches(command, PORT))
         self.assertFalse(simulator_command_matches(command, PORT + 1))
         self.assertFalse(simulator_command_matches(f"/other/automa-native-sim --port {PORT}", PORT))
+        with patch("cli.automa_cli.simulators.process.NATIVE_SIM_BINARY",
+                   Path("/path with spaces/automa-native-sim")):
+            unquoted = f"/path with spaces/automa-native-sim --port {PORT} --config /some map.json"
+            self.assertTrue(simulator_command_matches(unquoted, PORT))
+            self.assertFalse(simulator_command_matches(unquoted, PORT + 1))
 
     def _patch_host(
         self,

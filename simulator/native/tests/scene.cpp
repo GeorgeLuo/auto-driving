@@ -2,6 +2,7 @@
 #include "server/protocol.hpp"
 #include "server/renderers.hpp"
 #include <cmath>
+#include <fstream>
 #include <iostream>
 #include <stdexcept>
 
@@ -9,6 +10,40 @@ using sim::Json;
 
 static void check(bool condition, const char* message) {
     if (!condition) throw std::runtime_error(message);
+}
+
+static void check_invalid_gltf(const std::filesystem::path& source) {
+    const auto original = sim::read_json(source);
+    const auto fixture = std::filesystem::current_path()/
+        ("invalid-asset-"+std::to_string(sim::monotonic_us())+".gltf");
+    auto reject = [&](const Json& document, std::string_view expected) {
+        std::ofstream output(fixture);
+        output << document;
+        output.close();
+        check(bool(output),"Wrote the glTF test asset");
+        try {
+            sim::GltfAssetLoader{}.load(fixture);
+        } catch (const std::invalid_argument& error) {
+            std::filesystem::remove(fixture);
+            check(std::string_view(error.what()).find(expected) != std::string_view::npos,
+                  "glTF was rejected for the expected reason");
+            return;
+        }
+        std::filesystem::remove(fixture);
+        throw std::runtime_error("Invalid glTF was accepted");
+    };
+    auto wrapped_view = original;
+    wrapped_view["bufferViews"][2]["byteOffset"] = UINT64_MAX-31;
+    reject(wrapped_view,"buffer view range");
+    auto wrapped_accessor = original;
+    wrapped_accessor["accessors"][2]["count"] = UINT64_MAX/2+1;
+    reject(wrapped_accessor,"accessor range");
+    auto missing_positions = original;
+    missing_positions["accessors"][0].erase("bufferView");
+    reject(missing_positions,"buffer-backed glTF POSITION");
+    auto transparent = original;
+    transparent["materials"][0]["alphaMode"] = "BLEND";
+    reject(transparent,"opaque glTF material");
 }
 
 static Json named_map(Json config) {
@@ -62,7 +97,7 @@ static void check_assets(const Json& config, const std::shared_ptr<const sim::As
 static void check_showcase(const char* extended, const char* original,
                            const std::shared_ptr<const sim::AssetCatalog>& catalog,
                            const sim::Renderer& renderer) {
-    sim::World showcase(sim::read_config(extended),catalog), boxes(sim::read_config(original),catalog);
+    sim::World showcase(sim::read_json(extended),catalog), boxes(sim::read_json(original),catalog);
     showcase.input = boxes.input = {true,false,.57,1};
     check(sim::render_jpeg(showcase,renderer,{160,120,.8}) != sim::render_jpeg(boxes,renderer,{160,120,.8}),
           "Showcase changes the camera image");
@@ -166,7 +201,8 @@ public:
 int main(int argc, char** argv) {
     try {
         check(argc==5,"Expected map, asset, and showcase paths");
-        auto config = sim::read_config(argv[1]);
+        auto config = sim::read_json(argv[1]);
+        check_invalid_gltf(std::filesystem::path(argv[2])/"objects/tool-case.gltf");
         auto assets = std::make_shared<const sim::AssetCatalog>(
             sim::load_asset_catalog(argv[2]));
         auto software = sim::make_renderer("software");

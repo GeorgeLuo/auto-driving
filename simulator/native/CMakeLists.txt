@@ -45,6 +45,10 @@ target_link_libraries(automa-native-sim PRIVATE sim_protocol ixwebsocket Threads
 target_compile_definitions(automa-native-sim PRIVATE
   DEFAULT_CONFIG="${default_map}" DEFAULT_ASSETS="${asset_directory}")
 
+add_executable(native-sim-tour tools/tour.cpp)
+target_link_libraries(native-sim-tour PRIVATE sim_protocol)
+target_compile_definitions(native-sim-tour PRIVATE SIM_ASSETS="${asset_directory}")
+
 foreach(target sim_core sim_scene sim_physics sim_render sim_sensor sim_protocol)
   target_compile_options(${target} PRIVATE -Wall -Wextra -Wpedantic)
 endforeach()
@@ -58,5 +62,9 @@ add_executable(native_sim_regression tests/regression.cpp)
 target_link_libraries(native_sim_regression PRIVATE sim_protocol)
 add_test(NAME native_sim_regression COMMAND native_sim_regression
   ${default_map} ${CMAKE_CURRENT_SOURCE_DIR}/tests/native-baseline.json ${asset_directory})
+add_executable(native_sim_scene tests/scene.cpp)
+target_link_libraries(native_sim_scene PRIVATE sim_protocol)
+add_test(NAME native_sim_scene COMMAND native_sim_scene ${default_map} ${asset_directory}
+  ${CMAKE_CURRENT_SOURCE_DIR}/maps/showcase.json ${CMAKE_CURRENT_SOURCE_DIR}/maps/showcase-boxes.json)
 add_test(NAME native_sim_include_graph COMMAND ${CMAKE_COMMAND}
   -Dsource_dir=${CMAKE_CURRENT_SOURCE_DIR}/src -P ${CMAKE_CURRENT_SOURCE_DIR}/tests/include-graph.cmake)

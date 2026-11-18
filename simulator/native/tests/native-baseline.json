@@ -1,5 +1,9 @@
 {
   "images": {
+    "coplanar-mesh": {
+      "rendererId": "native-software-v2",
+      "rgbFNV1a64": "f921091be4163e9e"
+    },
     "default-corner": {
       "rendererId": "native-software-v2",
       "rgbFNV1a64": "e459c49e3ab431e8"

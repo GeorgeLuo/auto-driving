@@ -326,7 +326,7 @@ The native systems tests use ephemeral ports and disposable runtime roots.
 They exercise real JPEG decoding, passive preservation, steering through the
 unchanged adapter, live updates, epoch termination, map replacement, discovery,
 host attachment, both run modes, and process deletion. They skip if the native
-binary has not been built. CTest checks the JavaScript motion reference, four
+binary has not been built. CTest checks the JavaScript motion reference, five
 RGB hashes and renderer IDs, and 40 pre-refactor trajectory poses.
 It also checks shape and mesh rendering, textures, instance overrides, light
 configuration, clearance along the showcase tour, cache invalidation, and the

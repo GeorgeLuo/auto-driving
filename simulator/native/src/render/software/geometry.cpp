@@ -159,7 +159,7 @@ MeshBvh::MeshBvh(const TriangleMesh& mesh) : bvh_([&] {
 }()) {}
 
 bool MeshBvh::intersect(const TriangleMesh& mesh, const Ray& ray, double near, double far, Surface* surface) const {
-    bool found = false;
+    size_t closest_index = mesh.triangles.size();
     auto visit = [&](size_t index) {
         const auto& triangle = triangles_[index];
         auto p = cross(ray.direction,triangle.edge2);
@@ -173,8 +173,8 @@ bool MeshBvh::intersect(const TriangleMesh& mesh, const Ray& ray, double near, d
         double c = dot(ray.direction,q)*inverse;
         if (c < 0 || b+c > 1) return false;
         double distance = dot(triangle.edge2,q)*inverse;
-        if (distance < near || distance > far) return false;
-        found = true;
+        if (distance < near || distance > far || (distance == far && index >= closest_index)) return false;
+        closest_index = index;
         if (!surface) return true;
         auto point = ray.at(distance);
         UV uv{point.x,point.y};
@@ -190,7 +190,7 @@ bool MeshBvh::intersect(const TriangleMesh& mesh, const Ray& ray, double near, d
         return false;
     };
     bvh_.intersect(BoundsRay(ray.origin,ray.direction),near,far,visit);
-    return found;
+    return closest_index != mesh.triangles.size();
 }
 
 Bounds RenderPart::bounds() const {

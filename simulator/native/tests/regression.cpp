@@ -24,6 +24,32 @@ static std::string image_hash(const std::vector<unsigned char>& rgb) {
     return hex.str();
 }
 
+// The two triangles cover the same ray but select different texels. The first
+// triangle in the asset owns the tie, regardless of the BVH partition order.
+static World coplanar_mesh(Json config, const std::shared_ptr<const sim::AssetCatalog>& assets) {
+    auto mesh = std::make_shared<sim::TriangleMesh>();
+    mesh->positions = {{1,-1,-1},{1,2,0},{1,-1,1},{1,-1,-1},{1,2,0},{1,-1,1}};
+    mesh->triangles = {{0,1,2},{3,4,5}};
+    mesh->uv = {{.25,0},{.25,0},{.25,0},{.75,0},{.75,0},{.75,0}};
+    sim::Texture texture;
+    texture.kind = sim::TextureKind::image;
+    texture.image = std::make_shared<const sim::TextureImage>(sim::TextureImage{2,1,{255,0,0,0,0,255}});
+    sim::VisualPart part;
+    part.shape = sim::Shape::mesh;
+    part.mesh = mesh;
+    part.embedded_material = sim::Material{{255,255,255},texture};
+    auto asset = std::make_shared<sim::Asset>();
+    asset->visuals.push_back(part);
+    auto catalog = std::make_shared<sim::AssetCatalog>(*assets);
+    catalog->objects.emplace("overlap",asset);
+    config["map"].erase("obstacles");
+    config["map"]["instances"] = {{{"id","overlap"},{"asset","overlap"},{"x",0},{"z",0},{"rotationRadians",0}}};
+    config["map"]["light"] = {{"ambient",1},{"directionals", {{{"intensity",0}}}}};
+    config["spawn"] = {{"x",0},{"z",0},{"headingRadians",0}};
+    config["camera"]["pitchDownRadians"] = 0;
+    return World(config,catalog);
+}
+
 static Json images(const Json& config, const std::shared_ptr<const sim::AssetCatalog>& assets) {
     const auto renderer = sim::make_renderer("software");
     Json result;
@@ -35,6 +61,7 @@ static Json images(const Json& config, const std::shared_ptr<const sim::AssetCat
         };
     };
     record("default-spawn",World(config,assets),640,480);
+    record("coplanar-mesh",coplanar_mesh(config,assets),1,1);
 
     auto corner = config;
     corner["spawn"] = {{"x",2.25},{"z",-1.1},{"headingRadians",2.4}};

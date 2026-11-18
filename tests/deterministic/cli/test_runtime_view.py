@@ -276,7 +276,9 @@ class ViewerWorkbenchTests(unittest.TestCase):
             self.assertEqual(response.headers["Content-Security-Policy"], WORKBENCH_CONTENT_SECURITY_POLICY)
             page = response.read().decode("utf-8")
         self.assertIn("no source selected", page)
-        self.assertIn('<a class="automa-home" href="/"', page)
+        home = re.search(r'<a class="automa-home" href="([^"]+)"', page).group(1)
+        with urlopen(urljoin(self.base, home), timeout=1.0) as response:
+            self.assertIn('id="workbenchLink"', response.read().decode("utf-8"))  # the v2 page, which links back
         for route in ("workbench", "workbench/api/health", "workbench/static/missing.js"):
             with self.subTest(route=route):
                 with self.assertRaises(HTTPError) as caught:

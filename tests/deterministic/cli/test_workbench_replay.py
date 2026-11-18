@@ -76,7 +76,7 @@ class WorkbenchTests(unittest.TestCase):
                 opened.append(url)
                 self.assertTrue(url.endswith("/workbench/"))
                 with urlopen(url, timeout=2) as response:
-                    self.assertIn('<a class="automa-home" href="/"', response.read().decode())
+                    self.assertIn('<a class="automa-home" href="/v2/"', response.read().decode())
                 with urlopen(url + "api/state", timeout=2) as response:
                     state = json.load(response)
                 self.assertEqual(state["source"]["source_path"], str(root.resolve()))

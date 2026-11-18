@@ -54,13 +54,17 @@ static std::pair<VehiclePose,double> read_tour_start(const Json& start, const Co
     return {read_start_pose(start,configuration),number(start,"steering",-1,1)};
 }
 
-World::World(const Json& document, std::shared_ptr<const AssetCatalog> catalog)
-    : epoch(new_epoch()), configuration(load_configuration(document,*catalog)), assets(std::move(catalog)) {
+static VehiclePose validate_start_poses(const Configuration& configuration) {
+    const auto& document = configuration.document;
     const auto& spawn = document.at("spawn");
     require_keys(spawn,{"x","z","headingRadians"});
-    pose = read_start_pose(spawn,configuration);
     if (document.contains("tour")) read_tour_start(document.at("tour"),configuration);
+    return read_start_pose(spawn,configuration);
 }
+
+World::World(const Json& document, std::shared_ptr<const AssetCatalog> catalog)
+    : epoch(new_epoch()), configuration(load_configuration(document,*catalog)),
+      pose(validate_start_poses(configuration)), assets(std::move(catalog)) {}
 
 void World::start_tour(const Json& overrides) {
     const auto& document = configuration.document;
@@ -94,6 +98,7 @@ Json World::configure(const Json& patch) {
     Json next = pending_ ? pending_->document : configuration.document;
     next.merge_patch(patch);
     auto candidate = load_configuration(next,*assets);
+    if (candidate.vehicle.radius > configuration.vehicle.radius) validate_start_poses(candidate);
     validate_vehicle_pose(pose.position,candidate.vehicle.radius,*candidate.map);
     if (playing) pending_ = std::move(candidate);
     else {

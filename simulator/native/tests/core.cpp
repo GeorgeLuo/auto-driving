@@ -1,6 +1,7 @@
 #include "server/protocol.hpp"
 #include "server/renderers.hpp"
 #include "scene/asset_loader.hpp"
+#include "core/overscan.hpp"
 #include <cmath>
 #include <fstream>
 #include <iostream>
@@ -51,6 +52,35 @@ static void check_tour(sim::Json config, const std::shared_ptr<const sim::AssetC
     }
     config["tour"] = nullptr;
     rejects([&]{sim::World invalid(config,assets);});
+
+    config["map"]["obstacles"] = sim::Json::array();
+    for (const auto* field : {"spawn","tour"}) {
+        auto settings = config;
+        settings["tour"] = start;
+        settings[field]["x"] = settings["map"]["columns"].get<double>()/2-.3;
+        sim::World resized(settings,assets);
+        resized.pose.position = {0,0};
+        for (bool playing : {false,true}) {
+            resized.playing = playing;
+            auto before = resized.native_state();
+            rejects([&]{resized.configure({{"vehicle",{{"radius",.4}}}});});
+            check(resized.native_state()==before,"Radius update preserves spawn and tour clearance");
+        }
+    }
+}
+
+static void check_overscan() {
+    for (int length : {1,2,65,640}) for (int other : {1,107,480}) {
+        for (double distortion : {0.,.5}) {
+            sim::OverscanAxis axis(length,other,distortion);
+            double x = 1.-1./length, y = 1.-1./other;
+            double extension = (length-1)*.5*distortion*(x*x+y*y);
+            close(axis.ray_position(0),-extension,"Left corner ray");
+            close(axis.ray_position(length-1),length-1+extension,"Right corner ray");
+            for (int pixel=0;pixel<length;++pixel)
+                close(axis.sample_position(axis.ray_position(pixel)),pixel,"Overscan inverse");
+        }
+    }
 }
 
 int main(int argc, char** argv) {
@@ -61,6 +91,7 @@ int main(int argc, char** argv) {
         auto renderer = sim::make_renderer("software");
         auto config = sim::read_json(argv[2]);
         check_tour(config,assets);
+        check_overscan();
         std::ifstream file(argv[1]); sim::Json reference; file>>reference;
         size_t frames = 0;
         for (const auto& test : reference.at("cases")) {

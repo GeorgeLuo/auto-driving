@@ -2,15 +2,15 @@
   "images": {
     "default-corner": {
       "rendererId": "native-software-v2",
-      "rgbFNV1a64": "27675874111f3ecb"
+      "rgbFNV1a64": "e459c49e3ab431e8"
     },
     "default-spawn": {
       "rendererId": "native-software-v2",
-      "rgbFNV1a64": "5278a4ff7064be49"
+      "rgbFNV1a64": "186abb66d9f04151"
     },
     "distortion-and-vignette": {
       "rendererId": "native-software-v2",
-      "rgbFNV1a64": "edfd58cdf429d685"
+      "rgbFNV1a64": "f33829e0813ccd3b"
     },
     "offscreen-shadow": {
       "rendererId": "native-software-v2",

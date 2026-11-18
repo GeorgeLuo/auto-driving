@@ -1,4 +1,5 @@
 #include "render/software/renderer.hpp"
+#include "core/overscan.hpp"
 #include "render/software/geometry.hpp"
 #include "render/software/shadow_grid.hpp"
 #include "render/software/textures.hpp"
@@ -138,11 +139,21 @@ LinearRgbImage SoftwareRenderer::render(const std::shared_ptr<const Map>& map, c
         shadows_ = std::make_unique<const ShadowCache>(map,bounds);
     const auto& lights = shadows_->lights;
 
+    const OverscanAxis horizontal(width,height,projection.barrel_distortion);
+    const OverscanAxis vertical(height,width,projection.barrel_distortion);
+    std::vector<double> column_x(width), row_y(height);
+    for (int x=0;x<width;++x) {
+        const double nx = 2*(horizontal.ray_position(x)+.5)/width-1;
+        column_x[x] = nx*aspect*tan_fov;
+    }
+    for (int y=0;y<height;++y) {
+        const double ny = 1-2*(vertical.ray_position(y)+.5)/height;
+        row_y[y] = ny*tan_fov;
+    }
     LinearRgbImage image{size,std::vector<double>(size_t(width)*height*3)};
     auto tile = [&](int x0, int y0, int x1, int y1) {
         for (int y=y0;y<y1;++y) for (int x=x0;x<x1;++x) {
-            double nx = 2*(x+.5)/width-1, ny = 1-2*(y+.5)/height;
-            double px = nx*aspect*tan_fov, py = ny*tan_fov;
+            double px = column_x[x], py = row_y[y];
             Ray ray{origin,{d.x*(cp+py*sp)-d.z*px,-sp+py*cp,d.z*(cp+py*sp)+d.x*px}};
             Surface surface{};
             double closest = far;

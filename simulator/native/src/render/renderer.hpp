@@ -7,6 +7,8 @@
 namespace sim {
 struct Projection {
     double pitch_down, vertical_fov_degrees, near, far;
+    // Backends render the core/overscan.hpp lattice for the sensor's radial filter.
+    double barrel_distortion = 0;
 };
 
 struct CameraPose {

@@ -1,6 +1,33 @@
 # Native simulator rendering performance
 
-## Consolidated measurements
+## Lens overscan
+
+The lens now samples scene content across the full distorted frame. Each
+axis keeps its original pitch in the middle two thirds and spreads its outer
+samples up to the corner ray required by `1 + barrelDistortion * radiusSquared`.
+This keeps the centre projection and bilinear filter and still traces one
+primary ray per output pixel. A uniform, native-pitch overscan at the bundled
+distortion of 0.12 would trace about 54% more rays per frame. Across all 140
+legacy and showcase poses, every pre-JPEG RGB byte matched the previous
+renderer in the central 384×288 pixels of each 640×480 frame.
+
+The current 140-frame checksums below use `native-sim-bench --full-only --hash`.
+The last two columns give whole-frame median / p90 milliseconds on the same
+toolchain and poses, before (`d86c1f91`) and after the lens fix.
+
+| Map | RGB FNV-1a | JPEG FNV-1a | Before (ms) | After (ms) |
+| --- | --- | --- | ---: | ---: |
+| chaser-depth-obstacles | `94563b7e631b441c` | `ab83fb261b0bb4c5` | 16.85 / 18.07 | 16.25 / 17.13 |
+| showcase-boxes | `64e0861e166eadaf` | `e6e27482efa1b349` | 17.89 / 19.37 | 17.92 / 19.71 |
+| showcase | `ed3620d7cb95affb` | `200c346636e39e8b` | 24.23 / 28.37 | 24.56 / 29.19 |
+| stress | `600406374178b2ec` | `8fca7f5f7348050e` | 28.88 / 33.10 | 29.22 / 33.72 |
+
+| Tour | SHA-256 of 140 JPEGs concatenated in frame order |
+| --- | --- |
+| showcase-boxes | `fd45a0869755bb4451f4792f36f06b0ad69a5d20d68c713d5298c8f3d9afc2e9` |
+| showcase | `6ca0b1ba0b77a7251272f596f08f8f4473385daec8115ea67b019194300df431` |
+
+## Historical consolidated measurements
 
 The paired measurements use an arm64 Release build with Apple Clang
 21.0.0 and libjpeg-turbo 3.1.1 on an eight-core Apple M1. Each invocation
@@ -60,7 +87,7 @@ The consolidated reference is `9b08eda7` (PR #592). Benchmark commit
 came from `0a5c3134` and its measurements are preserved below.
 
 Build `native-sim-bench` and `native-sim-tour` in Release for the benchmark
-commit and the current revision, using the same compiler and JPEG library.
+commit and the consolidated revision (`d86c1f91`), using the same compiler and JPEG library.
 For offline CMake configuration, use the `FETCHCONTENT_SOURCE_DIR_*` paths
 in the [native README](../README.md). Point `JPEG_INCLUDE_DIR` and
 `JPEG_LIBRARY_RELEASE` to the same libjpeg installation if CMake finds

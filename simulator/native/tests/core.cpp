@@ -104,6 +104,22 @@ int main(int argc, char** argv) {
         check(vignette_rgb[0] == std::round(lit_rgb[0]*.9),"vignette reaches configured strength at corners");
         sensor.configure({{"camera",{{"barrelDistortion",.12}}}});
         check(sim::render_rgb(sensor,*renderer,160,120) != vignette_rgb,"radial distortion resamples the image");
+        // This box lies wholly outside the pinhole view, but covers the
+        // distorted ray at the right edge of the centre scanline.
+        auto edge_config = shadow_config;
+        edge_config["spawn"] = {{"x",0},{"z",0},{"headingRadians",0}};
+        edge_config["camera"].update({{"pitchDownRadians",0},{"verticalFovDegrees",60}});
+        edge_config["map"]["obstacles"].push_back({
+            {"id","edge-marker"},{"x",2},{"z",1.6},{"width",.2},{"depth",.25},
+            {"height",1},{"rotationRadians",0},{"boundary",false}});
+        sim::World edge(edge_config,assets);
+        edge.playing = false;
+        const auto pinhole = sim::render_rgb(edge,*renderer,65,65);
+        edge.configure({{"camera",{{"barrelDistortion",.42}}}});
+        const auto distorted = sim::render_rgb(edge,*renderer,65,65);
+        const size_t middle = (32*65+32)*3, right = (32*65+64)*3;
+        check(pinhole[right]==pinhole[middle] && distorted[middle]==pinhole[middle] &&
+              distorted[right]!=pinhole[right],"Distortion sees geometry beyond the pinhole edge");
         auto epoch = world.epoch;
         sim::command(world,"load-map",config);
         check(world.epoch!=epoch && world.frame==0 && !world.playing,"map load changes epoch and stays paused");

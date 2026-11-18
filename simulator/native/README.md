@@ -142,9 +142,12 @@ rotated obstacles, boundary contact, reverse motion, and idle input.
 The default geometry and RC-indoor camera mount/projection parameters match
 that source. The software renderer ray-casts visual parts and meshes through
 bounding volume hierarchies. It shades surfaces using material textures and
-the map's lights, with a four-ray soft-shadow approximation. The camera model clamps and truncates linear RGB to
-the original native code values, then applies clamped bilinear resampling, the
-smoothstep vignette, and JPEG encoding. The source GPU uses a linear render
+the map's lights, with a four-ray soft-shadow approximation. To cover the barrel
+distortion, the renderer spreads the outer sixth of each axis over a wider
+field while keeping the centre's original ray spacing. The camera model clamps
+and truncates linear RGB to the original native code values, bilinearly samples
+this grid at the distorted coordinates, then applies the smoothstep vignette
+and JPEG encoding. The source GPU uses a linear render
 target with tone mapping and color conversion after sampling. Camera/perception equivalence
 has **not** been established. This is a motion/protocol prototype, not a
 drop-in visual replacement for existing experiment baselines.
@@ -245,7 +248,8 @@ renderer implementation headers from outside their backend.
   object. See `assets/objects/tool-case.gltf`.
 - **Add a renderer backend.** Put its C++ sources in `src/render/NAME/` and
   implement `render/renderer.hpp`'s `Renderer`. Each call receives an immutable
-  map with its visual parts, meshes, materials, and lights. Return row-major
+  map with its visual parts, meshes, materials, and lights. Use
+  `core/overscan.hpp` for the projection's sampling grid. Return row-major
   linear RGB with 255 as reference white, and give the backend a stable `id()` for
   captures. Register the backend's name and factory in
   `src/server/renderers.cpp`. CMake discovers its `.cpp` files. Launch the
@@ -311,7 +315,7 @@ They exercise real JPEG decoding, passive preservation, steering through the
 unchanged adapter, live updates, epoch termination, map replacement, discovery,
 host attachment, both run modes, and process deletion. They skip if the native
 binary has not been built. CTest checks the JavaScript motion reference, four
-pre-refactor RGB hashes and renderer IDs, and 40 pre-refactor trajectory poses.
+RGB hashes and renderer IDs, and 40 pre-refactor trajectory poses.
 It also checks shape and mesh rendering, textures, instance overrides, light
 configuration, clearance along the showcase tour, cache invalidation, and the
 camera pipeline. It compares RGB and JPEG output for one and four workers and

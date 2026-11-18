@@ -1,4 +1,5 @@
 #include "sensor/camera.hpp"
+#include "core/overscan.hpp"
 #include <algorithm>
 #include <cmath>
 #include <stdexcept>
@@ -15,13 +16,14 @@ struct CameraSampler::SamplingMap {
     SamplingMap(ImageSize size, const CameraEffects& effects)
         : size(size), pixels(size_t(size.width)*size.height) {
         const int width = size.width, height = size.height;
-        // Metrics UI rendering/sensor.ts: radial resampling with clamp-to-edge
-        // linear filtering, followed by smoothstep(0.18, 1.0, radiusSquared).
+        const OverscanAxis horizontal(width,height,effects.barrel_distortion);
+        const OverscanAxis vertical(height,width,effects.barrel_distortion);
         for (int y=0;y<height;++y) for (int x=0;x<width;++x) {
             double nx=2*(x+.5)/width-1, ny=2*(y+.5)/height-1;
             double r2=nx*nx+ny*ny, factor=1+effects.barrel_distortion*r2;
-            double sx=std::clamp((.5+.5*nx*factor)*width-.5,0.0,double(width-1));
-            double sy=std::clamp((.5+.5*ny*factor)*height-.5,0.0,double(height-1));
+            // The overscan covers these rays. Clamp only corner roundoff.
+            double sx=std::clamp(horizontal.sample_position((.5+.5*nx*factor)*width-.5),0.0,double(width-1));
+            double sy=std::clamp(vertical.sample_position((.5+.5*ny*factor)*height-.5),0.0,double(height-1));
             int x0=int(sx), y0=int(sy), y1=std::min(y0+1,height-1);
             double fx=sx-x0, fy=sy-y0;
             double t=std::clamp((r2-.18)/.82,0.0,1.0);

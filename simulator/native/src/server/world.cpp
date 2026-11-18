@@ -38,8 +38,9 @@ static Configuration load_configuration(const Json& c, const AssetCatalog& asset
     double height = number(camera,"height",.001,10);
     Projection projection{number(camera,"pitchDownRadians",-pi/2+.01,pi/2-.01),
                           number(camera,"verticalFovDegrees",10,150),number(camera,"near",.001,10),
-                          number(camera,"far",camera.at("near").get<double>()+.001,2000)};
-    CameraEffects effects{number(camera,"barrelDistortion",0,.5),number(camera,"vignette",0,1)};
+                          number(camera,"far",camera.at("near").get<double>()+.001,2000),
+                          number(camera,"barrelDistortion",0,.5)};
+    CameraEffects effects{projection.barrel_distortion,number(camera,"vignette",0,1)};
     apply_legacy_materials(map,c.at("materials"));
     return {c,std::make_shared<const Map>(std::move(map)),vehicle,projection,
             std::make_shared<const CameraSampler>(effects),height,fps};

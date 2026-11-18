@@ -1,10 +1,10 @@
 #include "stress.hpp"
+#include "server/arguments.hpp"
 #include "scene/asset_loader.hpp"
 #include "sensor/jpeg.hpp"
 #include "server/protocol.hpp"
 #include "server/renderers.hpp"
 #include <algorithm>
-#include <charconv>
 #include <chrono>
 #include <cmath>
 #include <cstdlib>
@@ -26,14 +26,6 @@ struct Options {
     bool full_only = false, hash = false;
 };
 
-int integer(std::string_view value, int low, int high) {
-    int result;
-    const auto parsed = std::from_chars(value.data(),value.data()+value.size(),result);
-    if (parsed.ec != std::errc{} || parsed.ptr != value.data()+value.size() || result < low || result > high)
-        throw std::invalid_argument("Integer out of range: " + std::string(value));
-    return result;
-}
-
 Options parse(int argc, char** argv) {
     Options options;
     for (int i=1;i<argc;++i) {
@@ -49,10 +41,10 @@ Options parse(int argc, char** argv) {
             std::exit(0);
         }
         if (flag == "--map") options.map = value();
-        else if (flag == "--frames") options.frames = integer(value(),1,100000);
-        else if (flag == "--warmup") options.warmup = integer(value(),0,100000);
-        else if (flag == "--width") options.image.width = integer(value(),1,640);
-        else if (flag == "--height") options.image.height = integer(value(),1,480);
+        else if (flag == "--frames") options.frames = sim::integer_argument(value(),1,100000);
+        else if (flag == "--warmup") options.warmup = sim::integer_argument(value(),0,100000);
+        else if (flag == "--width") options.image.width = sim::integer_argument(value(),1,640);
+        else if (flag == "--height") options.image.height = sim::integer_argument(value(),1,480);
         else if (flag == "--full-only") options.full_only = true;
         else if (flag == "--hash") options.hash = true;
         else throw std::invalid_argument("Unknown argument: " + std::string(flag));

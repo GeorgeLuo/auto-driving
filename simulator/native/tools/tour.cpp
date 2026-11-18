@@ -1,5 +1,6 @@
 // Drive a fixed circle and encode camera frames with the simulator's camera pipeline.
 #include "scene/asset_loader.hpp"
+#include "server/arguments.hpp"
 #include "server/protocol.hpp"
 #include "server/renderers.hpp"
 #include <cstdio>
@@ -7,6 +8,7 @@
 #include <fstream>
 #include <iomanip>
 #include <iostream>
+#include <limits>
 #include <stdexcept>
 
 namespace {
@@ -46,16 +48,13 @@ int main(int argc, char** argv) {
         int first_option = 3;
         while (first_option < argc && std::string_view(argv[first_option]).substr(0,2) != "--") ++first_option;
         if (first_option > 8) throw std::invalid_argument("Too many positional tour arguments");
-        int frames = first_option > 3 ? std::stoi(argv[3]) : 420;
-        int every = first_option > 4 ? std::stoi(argv[4]) : 3;
+        int frames = first_option > 3 ? sim::integer_argument(argv[3],1,std::numeric_limits<int>::max()) : 420;
+        int every = first_option > 4 ? sim::integer_argument(argv[4],1,std::numeric_limits<int>::max()) : 3;
         sim::Json overrides = sim::Json::object();
         if (first_option > 5) overrides["steering"] = tour_number(argv[5]);
         sim::ImageRequest request;
-        request.width = first_option > 6 ? std::stoi(argv[6]) : 640;
-        request.height = first_option > 7 ? std::stoi(argv[7]) : 480;
-        if (frames < 1 || every < 1) throw std::invalid_argument("Frames and interval must be positive");
-        if (request.width < 1 || request.width > 640 || request.height < 1 || request.height > 480)
-            throw std::invalid_argument("Camera size must be between 1x1 and 640x480");
+        request.width = first_option > 6 ? sim::integer_argument(argv[6],1,640) : 640;
+        request.height = first_option > 7 ? sim::integer_argument(argv[7],1,480) : 480;
         for (int i=first_option;i<argc;++i) {
             std::string flag = argv[i];
             if (flag != "--x" && flag != "--z" && flag != "--heading-radians" && flag != "--steering")

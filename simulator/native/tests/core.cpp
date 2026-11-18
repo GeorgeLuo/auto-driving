@@ -2,6 +2,7 @@
 #include "server/renderers.hpp"
 #include "scene/asset_loader.hpp"
 #include "core/overscan.hpp"
+#include "server/arguments.hpp"
 #include <cmath>
 #include <fstream>
 #include <iostream>
@@ -92,6 +93,9 @@ int main(int argc, char** argv) {
         auto config = sim::read_json(argv[2]);
         check_tour(config,assets);
         check_overscan();
+        check(sim::integer_argument("65535",1,65535)==65535,"Port upper bound");
+        for (const auto* text : {"","1x","2.5","65536","999999999999"})
+            rejects([&]{sim::integer_argument(text,1,65535);});
         std::ifstream file(argv[1]); sim::Json reference; file>>reference;
         size_t frames = 0;
         for (const auto& test : reference.at("cases")) {

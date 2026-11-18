@@ -1,4 +1,5 @@
 #include "server/server.hpp"
+#include "server/arguments.hpp"
 #include "server/renderers.hpp"
 #include "scene/asset_loader.hpp"
 #include <csignal>
@@ -21,7 +22,7 @@ int main(int argc, char** argv) {
                 std::cout << "automa-native-sim [--port N] [--config FILE] [--renderer NAME] [--render FILE.jpg] [--benchmark]\n"; return 0;
             }
             if (i+1 >= argc) throw std::invalid_argument("Missing value for " + flag);
-            if (flag == "--port") port = std::stoi(argv[++i]);
+            if (flag == "--port") port = sim::integer_argument(argv[++i],1,65535);
             else if (flag == "--config") config = argv[++i];
             else if (flag == "--renderer") renderer_name = argv[++i];
             else if (flag == "--render") render = argv[++i];
@@ -36,6 +37,7 @@ int main(int argc, char** argv) {
             auto bytes = sim::render_jpeg(world,*renderer,{});
             std::ofstream output(render,std::ios::binary);
             output.write(reinterpret_cast<const char*>(bytes.data()),bytes.size());
+            output.close();
             if (!output) throw std::runtime_error("Cannot write image");
             return 0;
         }
@@ -54,7 +56,6 @@ int main(int argc, char** argv) {
                 {"cameraFrames",30},{"renderAndJpegMs",double(sim::monotonic_us()-start)/1000},
                 {"jpegBytes",bytes}}).dump(2) << '\n'; return 0;
         }
-        if (port < 1 || port > 65535) throw std::invalid_argument("Invalid port");
         std::signal(SIGINT,stop); std::signal(SIGTERM,stop);
         sim::Server server(port,std::move(world),std::move(renderer)); server.start();
         std::cout << "CHASE_UI_WS_URL=ws://127.0.0.1:" << port << "/ws/control" << std::endl;

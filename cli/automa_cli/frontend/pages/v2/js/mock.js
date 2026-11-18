@@ -112,8 +112,9 @@ const mock = (() => {
       url: s.url, port: s.port, pid: s.pid, state: s.state,
       frontend: s.state === "running" ? "connected" : null, game: s.state === "running" ? "chase" : null, error: null,
       hosts: store.hosts.filter((h) => h.vehicleUrl === s.url).map((h) => h.name),
-      started_at_ms: s.startedAt, metrics_ui_dir: "~/Projects/metrics-ui", config: "default",
+      started_at_ms: s.startedAt, metrics_ui_dir: s.backend === "native" ? null : "~/Projects/metrics-ui", config: s.config || "default",
       log: `runtime/simulators/${s.port}/simulator.log`, log_tail: s.state === "exited" ? s.logTail : null,
+      ...(s.backend === "native" ? { backend: "native", executable: "~/Projects/auto-driving/simulator/native/build/automa-native-sim" } : {}),
     })) };
   }
   // hosts status --json.
@@ -267,15 +268,19 @@ const mock = (() => {
     await after(150);
     return { ok: true, kind: "removed", text: `Removed ${heading(discovered ? discovered.provider : "chase-sim", url)}` };
   }
-  // simulators create: prints nothing until Metrics UI's headless launcher answers (up to 45 s).
-  async function createSimulator() {
+  // simulators create: prints nothing until its launcher answers (up to 45 s). Only a configuration
+  // file that exists starts, so a path the page cannot see refuses as a missing one does.
+  async function createSimulator({ backend = "metrics-ui", config = null } = {}) {
+    if (config && !config.endsWith(".json")) {
+      return { ok: false, kind: "create_error", text: `Cannot create a simulator: Configuration file not found: ${config}` };
+    }
     const used = new Set([...store.simulators, ...store.vehicles].map((v) => Number(new URL(v.url).port)));
     let port = 5051;
     while (used.has(port)) port += 1;
     const url = `http://127.0.0.1:${port}/`;
     await after(1800);
     store.simulators.push({ url, port, pid: 48000 + Math.floor(Math.random() * 999), state: "running", listed: true,
-                            startedAt: Date.now(), logTail: null });
+                            startedAt: Date.now(), logTail: null, backend, config });
     return { ok: true, kind: "created", text: `Created ${heading("chase-sim", url)}` };
   }
   // simulators delete: refused while a host was created at it; a running one is stopped first.
@@ -673,7 +678,8 @@ const mock = (() => {
     $("gapsToggle").setAttribute("aria-pressed", String(on));
     if (on) floatingFrames.gapsFrame.restore(); else floatingFrames.gapsFrame.close();
   });
-  $("workbenchLink").addEventListener("click", (event) => event.preventDefault());
+  // Opened from disk there is no workbench to open; served, the link opens the viewer's.
+  if (!SERVED) $("workbenchLink").addEventListener("click", (event) => event.preventDefault());
   // Served, the simulators are real: the store has none to end.
   $("endProcess").hidden = SERVED;
   // The selected simulator's process dies, to show an exited record.

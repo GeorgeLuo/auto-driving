@@ -26,6 +26,8 @@ HEADLESS_SIM_SCRIPT = "scripts/play-chase-headless.mjs"
 # 5050 is Metrics UI's own port, which ChaseSimCar() reaches without a URL.
 SIMULATOR_PORTS = range(5051, 5100)
 SIMULATOR_START_TIMEOUT_S = 45.0
+# The launchers simulators create can start; the first is its default.
+SIMULATOR_BACKENDS = ("metrics-ui", "native")
 
 
 def create_simulator(*, timeout_s: float = SIMULATOR_START_TIMEOUT_S,

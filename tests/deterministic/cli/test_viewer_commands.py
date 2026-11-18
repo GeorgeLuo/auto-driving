@@ -24,6 +24,7 @@ from cli.automa_cli.hosts.deployment.models import CreateResult, UpdateResult
 from cli.automa_cli.hosts.errors import RuntimeHostError
 from cli.automa_cli.hosts.views import frames, learning
 from cli.automa_cli.providers.urls import chase_operator_url
+from cli.automa_cli.simulators.models import SimulatorResult
 from cli.automa_cli.viewer_commands import VIEWER_READS, VIEWER_WRITES
 from tests.shared.cli.workbench_fixtures import ImageReplayRunner
 from tests.support.fake_metrics_ui import fake_metrics_ui
@@ -136,6 +137,21 @@ class ViewerCommandTests(unittest.TestCase):
         self.assertEqual((uncreated[0], uncreated[1]["kind"]), (400, "create_error"))
         self.assertTrue(uncreated[1]["text"].startswith("Cannot create a simulator: AUTOMA_METRICS_UI_DIR"), uncreated[1])
         self.assertEqual(self.get("/api/simulators"), {"schema": "automa_simulators_status", "simulators": []})
+
+    def test_simulator_creation_forwards_the_backend_and_configuration(self) -> None:
+        created = SimulatorResult(0, "created", url="http://127.0.0.1:5051/")
+        with mock.patch("cli.automa_cli.viewer_commands.create_simulator", return_value=created) as create:
+            self.post("/api/simulators/create", {})
+            self.post("/api/simulators/create", {"backend": "native", "config": "maps/room.json"})
+            self.post("/api/simulators/create", {"backend": None, "config": ""})
+            refused = self.post("/api/simulators/create", {"backend": "unity"})
+
+        self.assertEqual([call.kwargs for call in create.call_args_list], [
+            {"backend": "metrics-ui", "config": None},
+            {"backend": "native", "config": "maps/room.json"},
+            {"backend": "metrics-ui", "config": None},
+        ])
+        self.assertEqual(refused, (400, {"ok": False, "error": "backend must be one of metrics-ui, native"}))
 
     def test_a_malformed_request_is_refused_before_the_command_runs(self) -> None:
         self.assertEqual(self.post("/api/vehicles/discover", {"provider": "boat", "url": "x"}),

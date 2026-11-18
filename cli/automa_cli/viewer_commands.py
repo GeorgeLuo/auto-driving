@@ -44,7 +44,7 @@ from .plugins.stream.render import render_stream
 from .plugins.stream.service import STREAM_STEPS, stream_host
 from .providers.registry import PROVIDERS
 from .simulators.render import render_simulator_result
-from .simulators.service import create_simulator, delete_simulator
+from .simulators.service import SIMULATOR_BACKENDS, create_simulator, delete_simulator
 from .simulators.status import simulators_status
 from .vehicles.discovery import discover_vehicle, remove_vehicle
 from .vehicles.render import render_vehicle_result
@@ -135,8 +135,19 @@ def _remove(body: dict[str, object]) -> dict[str, object]:
     return _answer(result, render_vehicle_result(result))
 
 
-def _create(_body: dict[str, object]) -> dict[str, object]:
-    result = create_simulator()
+def _backend(body: dict[str, object]) -> str:
+    """simulators create's --backend; absent or null starts its default."""
+
+    backend = body.get("backend")
+    if backend is None:
+        return SIMULATOR_BACKENDS[0]
+    if not isinstance(backend, str) or backend not in SIMULATOR_BACKENDS:
+        raise ValueError(f"backend must be one of {', '.join(SIMULATOR_BACKENDS)}")
+    return backend
+
+
+def _create(body: dict[str, object]) -> dict[str, object]:
+    result = create_simulator(backend=_backend(body), config=_optional_text(body, "config"))
     return _answer(result, render_simulator_result(result))
 
 
@@ -339,7 +350,7 @@ VIEWER_WRITES = {
     for route, command, fields in [
         ("/api/vehicles/discover", _discover, ("provider", "url", "force")),
         ("/api/vehicles/remove", _remove, ("url",)),
-        ("/api/simulators/create", _create, ()),
+        ("/api/simulators/create", _create, ("backend", "config")),
         ("/api/simulators/delete", _delete, ("url",)),
         ("/api/hosts/create", _create_host,
          ("name", "provider", "url", "ssh_target", "pi_home", "drive_args", "dry_run", "verbose")),

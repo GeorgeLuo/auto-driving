@@ -24,7 +24,7 @@
       <button type="button" class="nav" data-recall="simulatorsFrame">Simulators <small id="simulatorsReadout"></small></button>
     </nav>
     <nav aria-label="Workbench">
-      <a class="nav" href="#" id="workbenchLink" data-gap="recordings" title="Opens /workbench/, the replay page, in its own layout">Workbench</a>
+      <a class="nav" href="/workbench/" id="workbenchLink" data-gap="recordings" title="Opens /workbench/, the replay page, in its own layout">Workbench</a>
     </nav>
   </main>
 
@@ -67,6 +67,13 @@
       <div class="float-frame-body split" data-frame-body>
         <div class="list"><div class="list-verbs" data-verbs></div><div class="list-rows" data-rows></div></div>
         <section class="float-frame-status">
+          <!-- simulators create's flags. -->
+          <div class="pane-form" data-form="create" hidden>
+            <label class="field"><span class="field-label">backend</span>
+              <select class="field-select" data-field="backend"><option value="metrics-ui">Metrics UI</option><option value="native">native (experimental)</option></select></label>
+            <label class="field"><span class="field-label">config</span>
+              <input class="field-input" data-field="config" type="text" autocomplete="off" placeholder="default; a path, e.g. simulator/native/maps/room-run6.json"></label>
+          </div>
           <p class="float-frame-status-text" role="status"></p>
           <div class="pane-keys" data-keys></div>
         </section>

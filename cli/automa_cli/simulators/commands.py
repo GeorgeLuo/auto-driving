@@ -9,7 +9,7 @@ from ..providers.models import DEFAULT_READINESS_TIMEOUT_S
 from ..providers.urls import normalize_chase_url
 from ..shared.cli.timeout_input import validate_timeout_input
 from .render import render_simulator_result, render_simulators_status
-from .service import create_simulator, delete_simulator
+from .service import SIMULATOR_BACKENDS, create_simulator, delete_simulator
 from .status import simulators_status
 
 
@@ -35,7 +35,7 @@ def register_simulators(subcommands: argparse._SubParsersAction) -> None:
         ),
     )
     simulators_create.add_argument(
-        "--backend", choices=("metrics-ui", "native"), default="metrics-ui",
+        "--backend", choices=SIMULATOR_BACKENDS, default=SIMULATOR_BACKENDS[0],
         help=(
             "Use Metrics UI (default) or native (experimental environment). "
             "Equivalence with Metrics UI covers motion and protocol only. "

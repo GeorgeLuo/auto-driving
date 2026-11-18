@@ -115,6 +115,9 @@ class ViewerWithoutHostTests(unittest.TestCase):
             page = response.read().decode("utf-8")
         loads = re.findall(r'<(?:script src|link rel="stylesheet" href)="([^"]+)"', page)
         self.assertIn("../shared/float.js", loads)
+        workbench = re.search(r'<a class="nav" href="([^"]+)" id="workbenchLink"', page).group(1)
+        with urlopen(urljoin(page_url, workbench), timeout=1.0) as response:
+            self.assertIn('<span class="brand">Workbench</span>', response.read().decode("utf-8"))
         for link in loads:
             with self.subTest(link=link):
                 with urlopen(urljoin(page_url, link), timeout=1.0) as response:

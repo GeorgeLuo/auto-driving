@@ -182,7 +182,7 @@ def _directory_entries(
 ) -> list[object]:
     if manifest is None:
         return _unmanifested_entries(source_path)
-    return _manifest_frame_entries(source_path, manifest, manifest_path)
+    return manifest_frame_entries(source_path, manifest, manifest_path)
 
 
 def _unmanifested_entries(source_path: Path) -> list[object]:
@@ -192,11 +192,13 @@ def _unmanifested_entries(source_path: Path) -> list[object]:
     return [{"image_path": str(path.relative_to(source_path))} for path in paths]
 
 
-def _manifest_frame_entries(
+def manifest_frame_entries(
     source_path: Path,
     manifest: dict[str, object],
     manifest_path: Path | None,
 ) -> list[object]:
+    """Read manifest entries in record order, including legacy inline frames."""
+
     name = manifest_path.name if manifest_path is not None else "manifest.json"
     try:
         if RECORDING_ENTRIES_FIELD in manifest:
@@ -334,6 +336,17 @@ def _copy_recording_identity(entry: dict[str, object], metadata: dict[str, objec
         value = entry.get(key)
         if isinstance(value, str) and value:
             metadata[key] = value
+
+
+def recorded_replay_frame(
+    source_path: Path, manifest: dict[str, object], entry: object, position: int,
+) -> ReplayFrame:
+    """Read a single recorded input without importing or running its plugins."""
+
+    return _build_frame(
+        source_id=_source_id(source_path, manifest), position=position, entry=entry,
+        source_path=source_path, max_image_bytes=WORKBENCH_DEFAULT_MAX_IMAGE_BYTES,
+    )
 
 
 def _build_frame(
@@ -522,6 +535,8 @@ __all__ = [
     "WORKBENCH_DEFAULT_MAX_IMAGE_BYTES",
     "content_type_for_path",
     "load_image_source",
+    "manifest_frame_entries",
     "normalize_image_directory",
     "read_image_manifest",
+    "recorded_replay_frame",
 ]

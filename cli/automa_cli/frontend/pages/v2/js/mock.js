@@ -55,7 +55,12 @@ const mock = (() => {
   }
 
   // ---- The store: what simulators create started, what vehicles discover listed, the hosts. ----
-  const store = { simulators: [], vehicles: [], hosts: [] };
+  const store = { simulators: [], vehicles: [], hosts: [], captures: [
+    { capture: "chase/bundle/runtime/automation/host-runs/run-closed", host: "chase", vehicle: "chase-sim",
+      run_id: "run-closed", started_at_ms: 1700000002000, duration_ms: 1500, frame_count: 2, size_bytes: 4096, state: "closed" },
+    { capture: "chase/bundle/runtime/automation/host-runs/run-active", host: "chase", vehicle: "chase-sim",
+      run_id: "run-active", started_at_ms: 1700000001000, duration_ms: 400, frame_count: 1, size_bytes: 1024, state: "active" },
+  ] };
   const findHost = (name) => store.hosts.find((h) => h.name === name);
   // The endpoints vehicles discover can reach; anything else refuses the connection.
   const REACHABLE = {
@@ -607,6 +612,46 @@ const mock = (() => {
              events: afterSeq(H.events, cursor) };
   }
 
+  const captureById = (id) => store.captures.find((c) => c.capture === id);
+  function captureList() {
+    const captures = store.captures.map((c) => ({ ...c })).sort((a, b) => (b.started_at_ms || 0) - (a.started_at_ms || 0));
+    return { schema: "automa_captures", captures };
+  }
+  function captureMetadata({ capture }) {
+    const c = captureById(capture);
+    if (!c) return refused("capture is not a recording");
+    return { schema: "automa_capture", capture: c.capture, host: c.host, vehicle: c.vehicle, run_id: c.run_id,
+      format: "entry", state: c.state, viewable: c.state !== "active", started_at_ms: c.started_at_ms,
+      ended_at_ms: c.started_at_ms + c.duration_ms, duration_ms: c.duration_ms, frame_count: c.frame_count, flagged_frames: 0,
+      release: { tree_sha256: "tree-closed", created_at_ms: 1 },
+      generations: [{ generation_id: "gen-1", release: { tree_sha256: "tree-closed", created_at_ms: 1 },
+        steps: [{ step: "perception", plugins: ["frame"] }, { step: "action", plugins: ["selected"] }] }],
+      sources: [{ name: "uploaded.py", bytes: 40 }],
+      files: [{ name: "manifest.jsonl", bytes: 1200, count: 1, largest: "manifest.jsonl", largest_bytes: 1200 },
+              { name: "frames", bytes: 2800, count: c.frame_count, largest: "frames/frame-0.jpg", largest_bytes: 1500 }] };
+  }
+  function captureFrame({ capture, index }) {
+    const c = captureById(capture);
+    if (!c) return refused("capture is not a recording");
+    if (c.state === "active") return refused("an active capture is still being written");
+    const position = Number(index);
+    const sample = CAPTURE[position] || null;
+    const capturedAt = c.started_at_ms + position * 1000;
+    const perception = sample && sample.perception ? sample.perception : {
+      things: [{ thing_id: "box", kind: "obstacle", confidence: 0.9 }],
+      plugin_runs: [{ plugin_id: "frame", status: "ok", duration_ms: 3, thing_count: 1 }], status: "ok", confidence: 0.9 };
+    return { schema: "host_frame_publication", host_name: c.host, health: "healthy", ok: true, read_at_ms: capturedAt,
+      result_age_ms: 12, stale_after_ms: 1000, host_telemetry: null, evidence: null,
+      image: { frame_id: sample ? sample.frame.frame_id : `frame-${position}`, frame_index: position, captured_at_ms: capturedAt,
+        published_at_ms: capturedAt, content_type: "image/jpeg", width_px: sample ? sample.frame.width_px : 4,
+        height_px: sample ? sample.frame.height_px : 3, url: sample ? sample.image : `capture/frame-${position}.png` },
+      report: { schema: "host_report", host_name: c.host, run_id: c.run_id, generation_id: "gen-1", frame_id: `frame-${position}`,
+        frame_index: position, timestamp_ms: capturedAt, published_at_ms: capturedAt, status: "ok", error: null,
+        application: { applied: true, mode: "autonomy", reason: "recorded", steering: 0.1 * (position + 1), throttle: 0.2 },
+        cycle: { perception, observation: null, memory: sample ? sample.memory : null, proposal: null, plan: null, action: null },
+        values: { timing: { duration_ms: 20, steps: [{ step: "perception", duration_ms: 8 }] } } } };
+  }
+
   // Each route: viewer says the viewer answers it; wait is a read's latency (a status read probes).
   const ROUTES = {
     "GET /api/vehicles": { viewer: true, wait: 300, read: vehicles },
@@ -630,6 +675,9 @@ const mock = (() => {
     "GET /api/plugins/stream": { viewer: true, wait: 0, read: stream },
     "GET /api/hosts/latest": { viewer: true, wait: 0, read: latest },
     "GET /api/hosts/learning": { viewer: true, wait: 0, read: learningHistory },
+    "GET /api/captures": { viewer: true, wait: 0, read: captureList },
+    "GET /api/captures/metadata": { viewer: true, wait: 0, read: captureMetadata },
+    "GET /api/captures/frame": { viewer: true, wait: 0, read: captureFrame },
   };
   const routeOf = (method, route) => ROUTES[`${method} ${route.split("?")[0]}`];
   const answers = (method, route) => { const r = routeOf(method, route); return !!r && !(SERVED && r.viewer); };

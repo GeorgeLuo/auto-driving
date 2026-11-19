@@ -266,6 +266,7 @@ class OpenViewerCommandTests(unittest.TestCase):
         with mock.patch.object(app, "serve_viewer", return_value=130) as serve_viewer:
             app.main([])
         self.assertEqual(sorted(serve_viewer.call_args.kwargs["reads"]), [
+            "/api/captures", "/api/captures/frame", "/api/captures/image", "/api/captures/metadata",
             "/api/hosts/frame", "/api/hosts/latest", "/api/hosts/learning", "/api/hosts/status", "/api/plugins/list", "/api/plugins/stream",
             "/api/simulators", "/api/vehicles",
         ])

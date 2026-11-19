@@ -6,7 +6,7 @@
 
 const TICK_MS = typeof mock !== "undefined" ? mock.ms(250) || 25 : 250;
 const HOSTS_EVERY = 8;
-const WINDOWS = [Vehicles, Hosts, Plugins, Simulators, Learning];
+const WINDOWS = [Vehicles, Hosts, Plugins, Simulators, Learning, Captures];
 
 function paintColumn() {
   const hosts = Hosts.listing().length, created = Simulators.listing().length, streams = Stream.count();
@@ -16,6 +16,8 @@ function paintColumn() {
   setText($("streamReadout"), streams ? `${streams} open` : "");
   setText($("learningReadout"), Learning.state.host || "");
   setText($("simulatorsReadout"), created ? `${created} created` : "none");
+  const captures = Captures.listing().length;
+  setText($("capturesReadout"), captures ? `${captures}` : "none");
 }
 function render() {
   for (const win of WINDOWS) win.paint();
@@ -26,7 +28,7 @@ function render() {
 
 // Every list the page shows, and each host's plugins.
 async function refresh() {
-  const [, , hosts] = await Promise.all(["/api/vehicles", "/api/simulators", "/api/hosts/status", routes.plugins(null)].map(api.read));
+  const [, , hosts] = await Promise.all(["/api/vehicles", "/api/simulators", "/api/hosts/status", routes.plugins(null), "/api/captures"].map(api.read));
   await Promise.all((hosts.hosts || []).map((h) => api.read(routes.plugins(h.host_name))));
   render();
 }
@@ -36,7 +38,8 @@ async function poll() {
   Learning.poll();
   const streamed = new Set([...Stream.streamed(), ...Plugins.streamed()]);
   await Promise.all([...[...streamed].map(api.read),
-                     ...(ticks % HOSTS_EVERY === 0 ? [api.read("/api/hosts/status")] : [])]);
+                     ...(ticks % HOSTS_EVERY === 0 ? [api.read("/api/hosts/status"), api.read("/api/captures")] : [])]);
+  await Captures.poll();
   render();
   setTimeout(poll, TICK_MS);
 }
@@ -52,6 +55,7 @@ async function poll() {
   const layout = {
     simulatorsFrame: [left, 0], vehiclesFrame: [left, h], hostsFrame: [left, 2 * h], pluginsFrame: [right, 0],
     learningFrame: [right, h, 2 * h],  // below Plugins, twice as tall: its charts stack
+    capturesFrame: [left + 32, 32],
   };
   for (const [id, [x, y, height = h]] of Object.entries(layout)) {
     localStorage.setItem(`automa-float-${id}`, JSON.stringify({ position: { x, y }, size: { width: w, height }, minimized: false, closed: true }));

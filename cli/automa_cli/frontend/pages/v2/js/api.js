@@ -18,6 +18,9 @@ const routes = {
   latest: (host) => `/api/hosts/latest?${query({ host_name: host })}`,
   stream: (host, step) => `/api/plugins/stream?${query({ host_name: host, step })}`,
   learning: (host, since) => `/api/hosts/learning?${query({ host_name: host, since })}`,
+  captures: () => "/api/captures",
+  capture: (id) => `/api/captures/metadata?${query({ capture: id })}`,
+  captureFrame: (id, index) => `/api/captures/frame?${query({ capture: id, index })}`,
 };
 
 const api = (() => {

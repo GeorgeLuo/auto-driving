@@ -12,6 +12,8 @@ probe with the screen it prints as ``text``. A host's latest frame reads as
 the perception page reads it, with its image at ``/api/hosts/frame``.
 A host's learning history is the memory step's beliefs and plugins over the
 run, the rows after the page's ``since`` cursor.
+A capture is one recorded run. The list reads every recording under the runtime
+root, and a closed capture's frame and image are read one at a time.
 """
 
 from __future__ import annotations
@@ -33,6 +35,7 @@ from .hosts.progress import ProgressEvent
 from .hosts.runs.render import render_lifecycle_result
 from .hosts.runs.service import restart_host_automation, start_host_automation_background, stop_host_automation
 from .hosts.runs.status import hosts_status
+from .hosts.captures import capture_frame, capture_image, capture_metadata, list_captures
 from .hosts.views.frames import HostFrames
 from .hosts.views.learning import HostLearning
 from .plugins.catalog.render import render_listing, render_save, render_selection, render_upload
@@ -359,6 +362,10 @@ VIEWER_READS = {
     "/api/hosts/learning": lambda query: HOST_LEARNING.history(_text(query, "host_name"), _since(query)),
     "/api/plugins/list": _plugins_list,
     "/api/plugins/stream": _plugins_stream,
+    "/api/captures": lambda _query: list_captures(),
+    "/api/captures/metadata": lambda query: capture_metadata(_text(query, "capture")),
+    "/api/captures/frame": lambda query: capture_frame(_text(query, "capture"), _text(query, "index")),
+    "/api/captures/image": lambda query: capture_image(_text(query, "capture"), _text(query, "index")),
 }
 _RUN_FIELDS = ("name", "observe_only", "num_decisions", "unbounded", "record")
 _UPLOAD_COLLECTION_FIELDS = frozenset({"host_name", "manifest", "arm"})

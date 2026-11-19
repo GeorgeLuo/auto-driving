@@ -107,11 +107,38 @@ with sync_playwright() as p:
     page.on("console", lambda msg: msg.type == "error" and errors.append(msg.text))
     page.goto((HERE / "index.html").as_uri() + "?fast")
     labels = page.locator("main nav .nav").evaluate_all("els => els.map(el => el.firstChild.textContent.trim())")
-    assert labels == ["Stream", "Learning", "Vehicles", "Hosts", "Plugins", "Simulators", "Workbench"], labels
-    for readout, text in [("vehicles", "0/0 up"), ("hosts", "0 hosts"), ("plugins", "packaged"), ("simulators", "none")]:
+    assert labels == ["Stream", "Learning", "Vehicles", "Hosts", "Plugins", "Simulators", "Captures", "Workbench"], labels
+    for readout, text in [("vehicles", "0/0 up"), ("hosts", "0 hosts"), ("plugins", "packaged"), ("simulators", "none"), ("captures", "2")]:
         expect(page.locator(f"#{readout}Readout")).to_have_text(text)
     shot = lambda name: page.screenshot(path=str(SHOTS / f"{name}.png"))
     shot("0-start")
+    # Captures: the closed run opens in the stream feed; the active run stays a listing.
+    button(page, "Captures").click()
+    captures = frame(page, "capturesFrame")
+    expect(captures).to_be_visible()
+    expect(captures.locator(".row.marked", has_text="run-active")).to_have_count(1)
+    captures.locator(".row:not([hidden])", has_text="run-closed").click()
+    expect(status(page, "capturesFrame")).to_contain_text("Run run-closed\nHost chase\nVehicle chase-sim\nFormat entry file")
+    expect(status(page, "capturesFrame")).to_contain_text("Frames 2, 0 with an error or absence reason")
+    expect(status(page, "capturesFrame")).to_contain_text("perception: frame")
+    expect(status(page, "capturesFrame")).to_contain_text("largest manifest.jsonl")
+    key(page, "capturesFrame", "VIEW").click()
+    expect(captures.locator(".float-frame-title [data-mode]")).to_contain_text("1/2")
+    expect(captures.locator(".float-frame-title [data-mode]")).to_contain_text("steer 0.1  throttle 0.2")
+    expect(captures.locator(".feed-stage img")).to_be_visible()
+    expect(captures.locator("[data-aside]")).to_be_visible()
+    key(page, "capturesFrame", "NEXT").click()
+    expect(captures.locator(".float-frame-title [data-mode]")).to_contain_text("2/2")
+    expect(key(page, "capturesFrame", "NEXT")).to_be_disabled()
+    key(page, "capturesFrame", "FIRST").click()
+    expect(captures.locator(".float-frame-title [data-mode]")).to_contain_text("1/2")
+    key(page, "capturesFrame", "LIST").click()
+    expect(status(page, "capturesFrame")).to_contain_text("Format entry file")
+    captures.locator(".row:not([hidden])", has_text="run-active").click()
+    expect(captures.locator("[data-keys] .key:not([hidden])")).to_have_count(0)
+    captures.locator("[data-frame-close]").click()
+    expect(captures).to_be_hidden()
+    shot("0a-captures")
     # Default size: a third of the page tall, twice as wide as tall.
     for name in ["Simulators", "Vehicles", "Hosts", "Plugins"]:
         button(page, name).click()

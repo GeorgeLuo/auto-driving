@@ -121,6 +121,7 @@ _MODULE_ROLES = {
     "hosts.step_activations": "store",
     "hosts.step_formatting": "pure",
     "hosts.vehicle_access": "operation",
+    "hosts.captures": "operation",
     "hosts.views.frames": "operation",
     "hosts.views.learning": "operation",
     "hosts.views.learning_history": "pure",

@@ -26,7 +26,7 @@ from autonomy.runtime.recording import (
 from autonomy.runtime.session import RunConfiguration
 from autonomy.vehicle import FRONT_CAMERA_SENSOR_ID, SensorFrame, SensorReading
 from cli.automa_cli.replay.frames import run_frame
-from cli.automa_cli.replay.source import load_image_source
+from cli.automa_cli.replay.source import normalize_image_directory
 from cli.automa_cli.replay.models import SourceValidationError
 from implementations.runtime.picar.control import DonkeyControlTarget
 from tests.shared.autonomy.runtime.recording_fixtures import read_recording_entries, read_recording_generations
@@ -101,7 +101,7 @@ class ControlApplicationRecordingTests(unittest.TestCase):
             self.assertEqual(read_recording_entries(exported), entries)
             self.assertEqual(read_recording_generations(exported), read_recording_generations(recording.root))
             for directory in (recording.root, exported):
-                source = load_image_source(directory)
+                source = normalize_image_directory(directory)
                 seen = []
                 cycle_times = []
                 capture_times = []
@@ -155,7 +155,7 @@ class ControlApplicationRecordingTests(unittest.TestCase):
             self.assertEqual([change["kept"] if change else None for change in changes], [0, 2, 3, 0, None, 0, 0])
             self.assertEqual([len(change["added"]) if change else None for change in changes], [3, 1, 0, 1, None, 0, 1])
             self.assertEqual(control_application_windows(changes), windows)
-            source = load_image_source(recording.root)
+            source = normalize_image_directory(recording.root)
             self.assertEqual([frame.control_applications for frame in source.frames], windows)
 
     def test_source_uses_kept_in_record_order_without_a_runtime_limit(self):
@@ -170,7 +170,7 @@ class ControlApplicationRecordingTests(unittest.TestCase):
             frames.append({"frame_id": "last", "timestamp_ms": count, "image_path": "frame_00.png",
                            CONTROL_APPLICATION_CHANGE_FIELD: {"kept": 2, "added": []}})
             write_manifest(root, {"frames": frames})
-            source = load_image_source(root)
+            source = normalize_image_directory(root)
         self.assertEqual(len(source.frames[-2].control_applications), count)
         self.assertEqual(source.frames[-1].control_applications, source.frames[-2].control_applications[-2:])
         self.assertEqual(source.frames[-1].control_applications[-1].delivered_at_ms, 100 - count + 1)
@@ -200,7 +200,7 @@ class ControlApplicationRecordingTests(unittest.TestCase):
                         CONTROL_APPLICATION_CHANGE_FIELD: {"kept": 0, "added": [application]},
                     }]})
                     with self.assertRaisesRegex(SourceValidationError, r"frames.0.control_application_change.added.0"):
-                        load_image_source(root)
+                        normalize_image_directory(root)
             for change in ({}, [], {"kept": 0}, {"kept": 0, "added": {}},
                            {"kept": True, "added": []}, {"kept": -1, "added": []},
                            {"kept": 1, "added": []}, {"kept": 0.5, "added": []}):
@@ -208,7 +208,7 @@ class ControlApplicationRecordingTests(unittest.TestCase):
                     write_manifest(root, {"frames": [{"image_path": "frame_00.png",
                                                       CONTROL_APPLICATION_CHANGE_FIELD: change}]})
                     with self.assertRaisesRegex(SourceValidationError, "frame 0 has invalid control applications"):
-                        load_image_source(root)
+                        normalize_image_directory(root)
 
     def test_older_application_shapes_are_rejected_with_nested_field_paths(self):
         valid = ControlApplication(None, "manual", False, "idle", AutonomyControl()).to_dict()
@@ -226,7 +226,7 @@ class ControlApplicationRecordingTests(unittest.TestCase):
         application = ControlApplication(None, "autonomy", True, "idle", AutonomyControl(), 100)
         with image_source(1) as root:
             write_manifest(root, {"frames": [{"image_path": "frame_00.png"}]})
-            source = load_image_source(root)
+            source = normalize_image_directory(root)
         self.assertIsNone(source.frames[0].control_applications)
         shared_memory = {CONTROL_APPLICATIONS_KEY: (application,), MODE_KEY: "local"}
         seen = []

@@ -615,10 +615,6 @@ def intersection_bbox(proposals: list[GeometryProposal]) -> Rect | None:
     return bbox if area(bbox) > 0.0 else None
 
 
-def support_confidence(proposals: list[GeometryProposal]) -> float:
-    return family_support_confidence(proposals)[0]
-
-
 def family_support_confidence(
     proposals: list[GeometryProposal],
 ) -> tuple[float, tuple[str, ...], tuple[tuple[str, float], ...]]:

@@ -6,6 +6,7 @@ from typing import Any
 import numpy as np
 
 from autonomy.decision_cycle.confidence import confidence_rank
+from autonomy.fields import require_number
 from autonomy.decision_cycle.perception.evidence.values import (
     PerceivedThing,
     PerceptionEvidenceBatch,
@@ -70,6 +71,10 @@ class TemporalFloorContinuityPlugin:
         association_distance: float = 0.30,
         minimum_association_score: float = 0.18,
         max_hold_frames: int = 2,
+        held_confidence_decay: float = 0.82,
+        overlap_weight: float = 0.55,
+        distance_weight: float = 0.30,
+        confidence_weight: float = 0.15,
         **base_config: Any,
     ) -> None:
         self.smoothing_alpha = _clamp(float(smoothing_alpha), 0.05, 1.0)
@@ -78,6 +83,18 @@ class TemporalFloorContinuityPlugin:
             float(minimum_association_score), 0.0, 1.0
         )
         self.max_hold_frames = max(0, int(max_hold_frames))
+        self.held_confidence_decay = require_number(
+            held_confidence_decay, field_name="held_confidence_decay", bounds=(0, 1)
+        )
+        self.overlap_weight = require_number(
+            overlap_weight, field_name="overlap_weight", bounds=(0, 1)
+        )
+        self.distance_weight = require_number(
+            distance_weight, field_name="distance_weight", bounds=(0, 1)
+        )
+        self.confidence_weight = require_number(
+            confidence_weight, field_name="confidence_weight", bounds=(0, 1)
+        )
         self._base = FloorContinuityPlugin(**base_config)
 
     def _initialize_history(self) -> None:
@@ -193,7 +210,7 @@ class TemporalFloorContinuityPlugin:
                     self._last_bbox,
                     None
                     if self._last_confidence is None
-                    else self._last_confidence * (0.82**self._misses),
+                    else self._last_confidence * (self.held_confidence_decay**self._misses),
                     age_frames=self._age,
                     missed_frames=self._misses,
                     held=True,
@@ -221,7 +238,18 @@ class TemporalFloorContinuityPlugin:
             matched = False
         else:
             scored = [
-                (_association_score(self._last_bbox, candidate.location.bbox_xyxy_norm, candidate.confidence, self.association_distance), candidate)
+                (
+                    _association_score(
+                        self._last_bbox,
+                        candidate.location.bbox_xyxy_norm,
+                        candidate.confidence,
+                        self.association_distance,
+                        overlap_weight=self.overlap_weight,
+                        distance_weight=self.distance_weight,
+                        confidence_weight=self.confidence_weight,
+                    ),
+                    candidate,
+                )
                 for candidate in raw
                 if candidate.location.bbox_xyxy_norm is not None
             ]
@@ -322,6 +350,10 @@ def _association_score(
     current: tuple[float, float, float, float] | None,
     confidence: float | None,
     max_distance: float,
+    *,
+    overlap_weight: float = 0.55,
+    distance_weight: float = 0.30,
+    confidence_weight: float = 0.15,
 ) -> float:
     if current is None:
         return 0.0
@@ -331,7 +363,11 @@ def _association_score(
     distance = float(np.hypot(old_center[0] - new_center[0], old_center[1] - new_center[1]))
     distance_score = max(0.0, 1.0 - distance / max(max_distance, 1e-6))
     confidence_term = 0.0 if confidence is None else _clamp(confidence, 0.0, 1.0)
-    return float(0.55 * iou + 0.30 * distance_score + 0.15 * confidence_term)
+    return float(
+        overlap_weight * iou
+        + distance_weight * distance_score
+        + confidence_weight * confidence_term
+    )
 
 
 def _iou(left: tuple[float, float, float, float], right: tuple[float, float, float, float]) -> float:

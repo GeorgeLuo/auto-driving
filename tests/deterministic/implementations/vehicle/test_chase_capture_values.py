@@ -7,14 +7,11 @@ from unittest import mock
 
 import numpy as np
 
-from autonomy.vehicle import SensorFrame, SensorReading
 from implementations.vehicle.chase_sim.frame_identity import (
     ChaseCaptureValidationError,
     ChaseReferenceFrame,
     evaluate_chase_evaluator_reference,
     score_reference_alignment_batch,
-    simulator_epoch_from_sensor_frame,
-    simulator_frame_index_from_sensor_frame,
     validate_chase_sensor_capture,
 )
 from implementations.vehicle.chase_sim.session import (
@@ -105,22 +102,6 @@ class ChaseCaptureValueTests(unittest.TestCase):
             "status": "invalid", "reason": "reference_invalid", "path": "evaluator",
             "message": "expected an object", "reference": None,
         })
-
-    def test_sensor_frame_metadata_uses_typed_readings_and_preserves_alias_precedence(self):
-        frame = SensorFrame(
-            "read", {"front_camera": SensorReading(
-                "front_camera", "camera", 0,
-                metadata={"frameIndex": " 42 ", "simulationEpoch": " reading-run "},
-            )}, 0, 0, metadata={"simulator_frame_index": True, "frame_index": 7.0,
-                               "simulation_epoch": " frame-run "},
-        )
-        self.assertEqual(simulator_frame_index_from_sensor_frame(frame), 7)
-        self.assertEqual(simulator_epoch_from_sensor_frame(frame), "frame-run")
-        frame.metadata.clear()
-        self.assertEqual(simulator_frame_index_from_sensor_frame(frame), 42)
-        self.assertEqual(simulator_epoch_from_sensor_frame(frame), "reading-run")
-        self.assertIsNone(simulator_frame_index_from_sensor_frame(None))
-        self.assertIsNone(simulator_epoch_from_sensor_frame(None))
 
     def test_shared_controls_preserve_session_and_evaluator_acceptance_rules(self):
         for steering in (True, "0", float("nan"), float("inf"), -2, -1, 0, 1, 2):

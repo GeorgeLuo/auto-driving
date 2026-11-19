@@ -1,8 +1,7 @@
 """The perception step's output and the request-level perception boundary.
 
 ``PerceptionText`` is current evidence, with one ``PerceptionPluginRun`` per
-plugin. ``PerceptionBackend`` is anything that runs perception on a
-``PerceptionRequest``, such as the step's ``PerceptionRunner``.
+plugin. ``PerceptionRunner`` runs perception on a ``PerceptionRequest``.
 """
 
 from __future__ import annotations
@@ -11,13 +10,11 @@ from dataclasses import asdict, dataclass, field
 from collections.abc import Mapping
 
 from autonomy.serialization import deep_freeze, frozen_mapping_to_dict
-from typing import Any, Literal, Protocol, runtime_checkable
+from typing import Any, Literal
 
-from autonomy.decision_cycle.perception.feeds.context import PerceptionRequest
 from autonomy.decision_cycle.perception.evidence.rendering import render_perception_text
 from autonomy.decision_cycle.perception.evidence.values import PerceivedThing, PerceptionSignal
 from autonomy.decision_cycle.runner import FailurePolicy
-from autonomy.shared_memory import SharedMemory
 from autonomy.fields import (
     FieldError, require_ascii_id, require_choice, require_keys, require_nested,
     require_number, require_safe_int, require_schema, require_text,
@@ -147,14 +144,3 @@ class PerceptionText:
         )
 
 
-@runtime_checkable
-class PerceptionBackend(Protocol):
-    """Run perception on one request: sensors in, current evidence out."""
-
-    plugin_id: str
-
-    def reset(self, shared_memory: SharedMemory | None = None) -> None:
-        ...
-
-    def perceive(self, request: PerceptionRequest) -> PerceptionText:
-        ...

@@ -19,7 +19,7 @@ from autonomy.decision_cycle.proposal.values import (
 )
 from autonomy.decision_cycle.context import DecisionFrameContext
 from autonomy.decision_cycle.memory.evidence import RetainedEvidence
-from autonomy.fields import require_ascii_id
+from autonomy.fields import require_ascii_id, require_number
 from autonomy.decision_cycle.memory.publication import EVIDENCE_KEY
 
 DEFAULT_ACCEPTED_KINDS = ("floor_boundary", "obstacle", "obstruction_evidence")
@@ -281,6 +281,7 @@ def _steer_away(
     pool: list[RetainedEvidence],
     lifecycle: str,
     steer_magnitude: float,
+    forward_throttle: float = DEFAULT_FORWARD_THROTTLE,
 ) -> ActionProposal | None:
     # Confidence remains primary. For equal-confidence physical boundaries,
     # prefer the foreground cue before the stable record-id tie-break.
@@ -299,7 +300,7 @@ def _steer_away(
         return None
     magnitude = float(steer_magnitude)
     steering = magnitude if side == "left" else -magnitude
-    command = ProposedVehicleCommand(steering=steering, throttle=DEFAULT_FORWARD_THROTTLE)
+    command = ProposedVehicleCommand(steering=steering, throttle=forward_throttle)
     return _proposal(
         context,
         lifecycle=lifecycle,
@@ -319,6 +320,7 @@ def propose(
     accepted_kinds: Sequence[str] = DEFAULT_ACCEPTED_KINDS,
     retained_max_age_ms: int = DEFAULT_RETAINED_MAX_AGE_MS,
     steer_magnitude: float = DEFAULT_STEER_MAGNITUDE,
+    forward_throttle: float = DEFAULT_FORWARD_THROTTLE,
 ) -> ActionProposal:
     """Emit exactly one ActionProposal from the context and retained evidence."""
 
@@ -332,7 +334,13 @@ def propose(
         return pooled
     active_pool, pool_lifecycle, stale = pooled
     if active_pool is not None:
-        chosen = _steer_away(context, active_pool, pool_lifecycle or "retained", steer_magnitude)
+        chosen = _steer_away(
+            context,
+            active_pool,
+            pool_lifecycle or "retained",
+            steer_magnitude,
+            forward_throttle,
+        )
         if chosen is not None:
             return chosen
         # Active freshness class present but no lateral cue in that class.
@@ -361,6 +369,7 @@ class AvoidRecentObstruction:
         accepted_kinds: Sequence[str] = DEFAULT_ACCEPTED_KINDS,
         retained_max_age_ms: int = DEFAULT_RETAINED_MAX_AGE_MS,
         steer_magnitude: float = DEFAULT_STEER_MAGNITUDE,
+        forward_throttle: float = DEFAULT_FORWARD_THROTTLE,
         evidence_key: object = EVIDENCE_KEY,
     ) -> None:
         if type(accepted_kinds) not in (list, tuple):
@@ -387,6 +396,9 @@ class AvoidRecentObstruction:
         self.accepted_kinds = kinds
         self.retained_max_age_ms = retained_max_age_ms
         self.steer_magnitude = magnitude
+        self.forward_throttle = require_number(
+            forward_throttle, field_name="forward_throttle", bounds=(0, 1)
+        )
         self.evidence_key = evidence_key
 
     def propose(self, context: DecisionFrameContext) -> ActionProposal:
@@ -396,4 +408,5 @@ class AvoidRecentObstruction:
             accepted_kinds=self.accepted_kinds,
             retained_max_age_ms=self.retained_max_age_ms,
             steer_magnitude=self.steer_magnitude,
+            forward_throttle=self.forward_throttle,
         )

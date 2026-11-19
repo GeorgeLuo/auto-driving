@@ -19,7 +19,7 @@ from implementations.decision_cycle.perception.plugins.floor_plane.model import 
 )
 
 
-def main() -> int:
+def main(argv: list[str] | None = None) -> int:
     parser = argparse.ArgumentParser(description="Process one PiRacer camera still into floor-plane debug outputs.")
     parser.add_argument("--url", default=f"{get_default_picar_base_url()}/frame.jpg",
                         help="JPEG endpoint to fetch when --input is not provided.")
@@ -30,7 +30,7 @@ def main() -> int:
                         help="Image y-ratio where floor-plane projection begins.")
     parser.add_argument("--threshold", type=float, default=FloorPlaneConfig.floor_threshold,
                         help="Color distance threshold for likely-floor classification.")
-    args = parser.parse_args()
+    args = parser.parse_args(argv)
 
     out_dir = Path(args.out_dir or Path("lab") / "runs" / "stills" / dt.datetime.now().strftime("%Y%m%d-%H%M%S"))
     out_dir.mkdir(parents=True, exist_ok=True)

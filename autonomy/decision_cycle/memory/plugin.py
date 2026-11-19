@@ -76,8 +76,8 @@ class MemoryPluginContract:
 class MemoryPlugin(Protocol):
     """Loadable memory plugin.
 
-    The runner that applies a selection of these is a ``MemoryBackend``
-    (``interface``). A plugin does not describe the step's schema. ``reset``
+    The runner that applies a selection of these is ``MemoryRunner``. A plugin
+    does not describe the step's schema. ``reset``
     is optional and may omit the map. An optional ``status(shared_memory)``
     summary and published belief values must be JSON data.
     """

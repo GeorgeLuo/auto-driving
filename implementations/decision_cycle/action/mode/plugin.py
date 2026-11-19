@@ -15,7 +15,7 @@ from autonomy.decision_cycle.plan.values import ActionPlan
 from autonomy.decision_cycle.context import DecisionFrameContext
 from autonomy.runtime.control import AutonomyControl
 
-LIVE_MODES = frozenset({"autonomy", "local"})
+LIVE_MODES = frozenset({"autonomy"})
 
 
 class ModeAction:

@@ -6,7 +6,7 @@
       "plugins": ["highest_confidence"]
     },
     "follow_policy": {
-      "description": "Follow the current policy's ordered executors; idle on an exit or without an active executor.",
+      "description": "Follow a published policy with tagged executors, in order; idle on an exit or without an active executor. Requires that published policy.",
       "plugins": ["follow_policy"]
     }
   },
@@ -18,7 +18,7 @@
     },
     {
       "spec": "implementations.decision_cycle.plan.plugins.follow_policy.plugin:FollowPolicy",
-      "description": "Select the first active executor of the published policy.",
+      "description": "Select the first active executor of a published policy with tagged executors. Idle without that policy.",
       "default_config": {}
     }
   ]

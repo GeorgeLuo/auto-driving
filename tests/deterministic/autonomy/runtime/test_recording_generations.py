@@ -18,7 +18,7 @@ from autonomy.vehicle import FRONT_CAMERA_SENSOR_ID, SensorFrame, SensorReading
 from cli.automa_cli.hosts.runs.models import RunState
 from cli.automa_cli.hosts.runs.monitor import _sync_recording
 from cli.automa_cli.plugins.inspect.replay import StepReplay
-from cli.automa_cli.replay.source import load_image_source
+from cli.automa_cli.replay.source import normalize_image_directory
 from implementations.runtime.picar.control import DonkeyControlTarget
 from tests.shared.autonomy.runtime.recording_fixtures import (
     read_recording_entries, read_recording_generations,
@@ -90,7 +90,7 @@ class RecordingGenerationTests(unittest.TestCase):
             )
             self.assertEqual(read_recording_generations(export), read_recording_generations(recording.root))
 
-            source = load_image_source(recording.root)
+            source = normalize_image_directory(recording.root)
             self.assertIs(source.frames[0].selections, source.frames[1].selections)
             self.assertIsNot(source.frames[0].selections, source.frames[2].selections)
             self.assertEqual(source.frames[0].selections["perception"].plugins, ("a", "b"))
@@ -118,7 +118,7 @@ class RecordingGenerationTests(unittest.TestCase):
             entries = read_recording_entries(recording.root)
             self.assertEqual(entries[0]["generation_id"], entries[1]["generation_id"])
 
-            source = load_image_source(recording.root)
+            source = normalize_image_directory(recording.root)
             self.assertIs(source.frames[0].selections, source.frames[1].selections)
             self.assertEqual(source.frames[1].selections["perception"].metadata["preset"], "earlier")
             replay = StepReplay(source, steps=("perception",))

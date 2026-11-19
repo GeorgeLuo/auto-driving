@@ -83,9 +83,17 @@ class ObstructionTrackState:
         output_bbox_shrink_y=1.0,
         minimum_output_confidence=0.0,
         floor_cutoff_y=0.72,
+        flow_window=21,
+        flow_levels=3,
+        flow_forward_backward_px=1.5,
+        feature_seed_cap=80,
     ):
         self.max_tracks = max(1, int(max_tracks))
         self.floor_cutoff_y = clamp(float(floor_cutoff_y), 0.35, 0.95)
+        self.flow_window = int(flow_window)
+        self.flow_levels = int(flow_levels)
+        self.flow_forward_backward_px = float(flow_forward_backward_px)
+        self.feature_seed_cap = int(feature_seed_cap)
         self.association_distance = max(0.01, float(association_distance))
         self.minimum_association_score = clamp(
             float(minimum_association_score), 0.0, 1.0
@@ -178,6 +186,9 @@ class ObstructionTrackState:
                     self._previous_gray,
                     gray,
                     self.minimum_feature_points,
+                    window=self.flow_window,
+                    levels=self.flow_levels,
+                    forward_backward_px=self.flow_forward_backward_px,
                 )
                 if result is None:
                     continue
@@ -242,7 +253,7 @@ class ObstructionTrackState:
                 event = "reacquired" if track.missed_frames > self.max_missed_frames else "matched"
                 points = feature_points.get(track.track_id)
                 if points is None and gray is not None:
-                    points = _seed_points(gray, smoothed)
+                    points = _seed_points(gray, smoothed, max_corners=self.feature_seed_cap)
                 updated[track.track_id] = _Track(
                     track_id=track.track_id,
                     bbox=smoothed,
@@ -316,7 +327,7 @@ class ObstructionTrackState:
                 flow_support=0.0,
                 age_frames=1,
                 last_association_score=0.0,
-                points=_seed_points(gray, bbox) if gray is not None else None,
+                points=_seed_points(gray, bbox, max_corners=self.feature_seed_cap) if gray is not None else None,
             )
             events[track_id] = event
 
@@ -399,7 +410,12 @@ def _shrink_bbox(
     )
 
 
-def _seed_points(gray: np.ndarray | None, bbox: tuple[float, float, float, float]) -> np.ndarray | None:
+def _seed_points(
+    gray: np.ndarray | None,
+    bbox: tuple[float, float, float, float],
+    *,
+    max_corners: int = 80,
+) -> np.ndarray | None:
     if gray is None:
         return None
     height, width = gray.shape[:2]
@@ -411,7 +427,7 @@ def _seed_points(gray: np.ndarray | None, bbox: tuple[float, float, float, float
     mask[y1:y2, x1:x2] = 255
     points = cv2.goodFeaturesToTrack(
         gray,
-        maxCorners=80,
+        maxCorners=int(max_corners),
         qualityLevel=0.01,
         minDistance=5,
         blockSize=7,
@@ -425,6 +441,10 @@ def _predict_track(
     previous_gray: np.ndarray,
     gray: np.ndarray,
     minimum_points: int,
+    *,
+    window: int = 21,
+    levels: int = 3,
+    forward_backward_px: float = 1.5,
 ) -> tuple[tuple[float, float, float, float], np.ndarray, int] | None:
     if track.points is None or len(track.points) < minimum_points:
         return None
@@ -434,8 +454,8 @@ def _predict_track(
         gray,
         p0,
         None,
-        winSize=(21, 21),
-        maxLevel=3,
+        winSize=(int(window), int(window)),
+        maxLevel=int(levels),
         criteria=(cv2.TERM_CRITERIA_EPS | cv2.TERM_CRITERIA_COUNT, 30, 0.01),
     )
     if p1 is None:
@@ -445,15 +465,15 @@ def _predict_track(
         previous_gray,
         p1,
         None,
-        winSize=(21, 21),
-        maxLevel=3,
+        winSize=(int(window), int(window)),
+        maxLevel=int(levels),
         criteria=(cv2.TERM_CRITERIA_EPS | cv2.TERM_CRITERIA_COUNT, 30, 0.01),
     )
     if p_back is None:
         return None
     p1_flat = p1.reshape(-1, 2)
     good = status.ravel().astype(bool) & status_back.ravel().astype(bool)
-    good &= np.linalg.norm(track.points - p_back.reshape(-1, 2), axis=1) < 1.5
+    good &= np.linalg.norm(track.points - p_back.reshape(-1, 2), axis=1) < forward_backward_px
     height, width = gray.shape[:2]
     good &= (p1_flat[:, 0] >= 0) & (p1_flat[:, 0] < width)
     good &= (p1_flat[:, 1] >= 0) & (p1_flat[:, 1] < height)

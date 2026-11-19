@@ -1,11 +1,13 @@
 from __future__ import annotations
 
-from collections import deque
 from dataclasses import dataclass
 from typing import Any, Callable
 
+import cv2
 import numpy as np
 from PIL import Image
+
+from autonomy.fields import require_number, require_ordered_numbers
 
 from autonomy.decision_cycle.perception.evidence.values import (
     PerceivedThing,
@@ -56,16 +58,48 @@ class SimColorTargetsPlugin:
         thumbnail_width: int = 320,
         min_evader_fraction: float = 0.0005,
         min_obstruction_fraction: float = 0.01,
+        evader_red_minimum: float = 0.45,
+        evader_red_lead: float = 0.12,
+        evader_red_green_ratio: float = 1.25,
+        evader_red_blue_ratio: float = 1.10,
+        neutral_chroma_maximum: float = 0.055,
+        neutral_luma_minimum: float = 0.18,
+        neutral_luma_maximum: float = 0.92,
+        beige_red_blue_minimum: float = 0.035,
+        beige_row_minimum: float = 0.35,
+        dark_luma_maximum: float = 0.12,
     ) -> None:
         self.thumbnail_width = max(80, int(thumbnail_width))
         self.min_evader_fraction = max(0.0, float(min_evader_fraction))
         self.min_obstruction_fraction = max(0.0, float(min_obstruction_fraction))
+        self.evader_red_minimum = require_number(evader_red_minimum, field_name="evader_red_minimum", bounds=(0, 1))
+        self.evader_red_lead = require_number(evader_red_lead, field_name="evader_red_lead", bounds=(0, 1))
+        self.evader_red_green_ratio = require_number(
+            evader_red_green_ratio, field_name="evader_red_green_ratio", bounds=(0, float("inf")),
+        )
+        self.evader_red_blue_ratio = require_number(
+            evader_red_blue_ratio, field_name="evader_red_blue_ratio", bounds=(0, float("inf")),
+        )
+        self.neutral_luma_minimum, self.neutral_luma_maximum = require_ordered_numbers(
+            neutral_luma_minimum, neutral_luma_maximum,
+            low_name="neutral_luma_minimum", high_name="neutral_luma_maximum", bounds=(0, 1),
+        )
+        self.neutral_chroma_maximum = require_number(
+            neutral_chroma_maximum, field_name="neutral_chroma_maximum", bounds=(0, 1),
+        )
+        self.beige_red_blue_minimum = require_number(
+            beige_red_blue_minimum, field_name="beige_red_blue_minimum", bounds=(0, 1),
+        )
+        self.beige_row_minimum = require_number(beige_row_minimum, field_name="beige_row_minimum", bounds=(0, 1))
+        self.dark_luma_maximum = require_number(dark_luma_maximum, field_name="dark_luma_maximum", bounds=(0, 1))
 
     def perceive(self, inputs: PerceptionPluginInputs) -> PerceptionEvidenceBatch:
         frame = inputs.require("frame", CameraFrame)
         rgb = _resize_rgb(frame.rgb, self.thumbnail_width)
-        evader = _detect_region(rgb, _evader_mask, self.min_evader_fraction)
-        obstruction = _detect_region(rgb, _obstruction_mask, self.min_obstruction_fraction)
+        evader = _detect_region(rgb, lambda image: _evader_mask(image, self), self.min_evader_fraction)
+        obstruction = _detect_region(
+            rgb, lambda image: _obstruction_mask(image, self), self.min_obstruction_fraction,
+        )
 
         things: list[PerceivedThing] = []
 
@@ -112,19 +146,19 @@ def _resize_rgb(rgb: np.ndarray, thumbnail_width: int) -> np.ndarray:
     return np.asarray(image).astype(np.float32) / 255.0
 
 
-def _evader_mask(rgb: np.ndarray) -> np.ndarray:
+def _evader_mask(rgb: np.ndarray, plugin: SimColorTargetsPlugin) -> np.ndarray:
     r = rgb[:, :, 0]
     g = rgb[:, :, 1]
     b = rgb[:, :, 2]
     return (
-        (r > 0.45)
-        & ((r - np.maximum(g, b)) > 0.12)
-        & (r > g * 1.25)
-        & (r > b * 1.10)
+        (r > plugin.evader_red_minimum)
+        & ((r - np.maximum(g, b)) > plugin.evader_red_lead)
+        & (r > g * plugin.evader_red_green_ratio)
+        & (r > b * plugin.evader_red_blue_ratio)
     )
 
 
-def _obstruction_mask(rgb: np.ndarray) -> np.ndarray:
+def _obstruction_mask(rgb: np.ndarray, plugin: SimColorTargetsPlugin) -> np.ndarray:
     r = rgb[:, :, 0]
     g = rgb[:, :, 1]
     b = rgb[:, :, 2]
@@ -133,9 +167,18 @@ def _obstruction_mask(rgb: np.ndarray) -> np.ndarray:
     height = rgb.shape[0]
     yy = np.arange(height)[:, None] / max(height - 1, 1)
 
-    neutral_gray = (chroma < 0.055) & (brightness > 0.18) & (brightness < 0.92)
-    beige_floor = (r > g) & (g > b) & ((r - b) > 0.035) & (yy > 0.35)
-    very_dark = brightness < 0.12
+    neutral_gray = (
+        (chroma < plugin.neutral_chroma_maximum)
+        & (brightness > plugin.neutral_luma_minimum)
+        & (brightness < plugin.neutral_luma_maximum)
+    )
+    beige_floor = (
+        (r > g)
+        & (g > b)
+        & ((r - b) > plugin.beige_red_blue_minimum)
+        & (yy > plugin.beige_row_minimum)
+    )
+    very_dark = brightness < plugin.dark_luma_maximum
     return neutral_gray & ~beige_floor & ~very_dark
 
 
@@ -171,39 +214,23 @@ def _detect_region(
 
 
 def _largest_component(mask: np.ndarray) -> tuple[int, int, int, int, int] | None:
-    height, width = mask.shape[:2]
-    visited = np.zeros((height, width), dtype=bool)
-    best: tuple[int, int, int, int, int] | None = None
+    """Largest 8-connected component. Equal areas keep the first label in raster order."""
 
-    ys, xs = np.nonzero(mask)
-    for start_x, start_y in zip(xs.tolist(), ys.tolist(), strict=False):
-        if visited[start_y, start_x] or not mask[start_y, start_x]:
-            continue
-        x1 = x2 = start_x
-        y1 = y2 = start_y
-        area = 0
-        queue: deque[tuple[int, int]] = deque([(start_x, start_y)])
-        visited[start_y, start_x] = True
-
-        while queue:
-            x, y = queue.popleft()
-            area += 1
-            x1 = min(x1, x)
-            x2 = max(x2, x)
-            y1 = min(y1, y)
-            y2 = max(y2, y)
-
-            for ny in range(max(0, y - 1), min(height, y + 2)):
-                for nx in range(max(0, x - 1), min(width, x + 2)):
-                    if visited[ny, nx] or not mask[ny, nx]:
-                        continue
-                    visited[ny, nx] = True
-                    queue.append((nx, ny))
-
-        if best is None or area > best[4]:
-            best = (x1, y1, x2, y2, area)
-
-    return best
+    count, labels, stats, _centroids = cv2.connectedComponentsWithStats(
+        mask.astype(np.uint8), connectivity=8,
+    )
+    if count == 1:
+        return None
+    areas = stats[1:, cv2.CC_STAT_AREA]
+    tied = np.flatnonzero(areas == areas.max()) + 1
+    if len(tied) == 1:
+        label = int(tied[0])
+    else:
+        is_tied = np.zeros(count, dtype=bool)
+        is_tied[tied] = True
+        label = int(labels.ravel()[np.argmax(is_tied[labels.ravel()])])
+    x, y, width, height, area = (int(value) for value in stats[label])
+    return x, y, x + width - 1, y + height - 1, area
 
 
 def _region_signal(signal_id: str, region: ColorRegion) -> PerceptionSignal:

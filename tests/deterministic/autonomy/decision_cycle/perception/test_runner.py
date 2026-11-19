@@ -11,7 +11,7 @@ import numpy as np
 
 from autonomy.decision_cycle.context import DecisionFrameContext
 from autonomy.decision_cycle.perception.interface import PERCEPTION_TEXT_SCHEMA
-from autonomy.decision_cycle.activation import STEP_ACTIVATION_SCHEMA, read_step_activation
+from autonomy.decision_cycle.activation import STEP_ACTIVATION_SCHEMA, read_step_activation, step_activation
 from autonomy.decision_cycle.perception.evidence.values import (
     PerceivedThing,
     PerceptionEvidenceBatch,
@@ -166,13 +166,14 @@ def _array_reading(
 
 class PluginRunnerTests(unittest.TestCase):
     def test_runner_injects_inputs_attributes_evidence_and_isolates_errors(self) -> None:
-        mapper = PerceptionRunner.from_selection(
+        mapper = PerceptionRunner.from_activation(step_activation(
+            "perception",
             plugins=["working", "exploding"],
             plugin_specs={
                 "working": f"{__name__}:WorkingPlugin",
                 "exploding": f"{__name__}:ExplodingPlugin",
             },
-        )
+        ))
 
         perception = mapper.perceive(build_perception_request(_sensor_frame(_array_reading())))
 
@@ -201,9 +202,10 @@ class PluginRunnerTests(unittest.TestCase):
             self.assertEqual(record["error"], run.error)
 
     def test_a_runner_built_from_a_selection_names_no_activation_file(self) -> None:
-        mapper = PerceptionRunner.from_selection(
+        mapper = PerceptionRunner.from_activation(step_activation(
+            "perception",
             plugins=["working"], plugin_specs={"working": f"{__name__}:WorkingPlugin"},
-        )
+        ))
         requests = []
         perceive = mapper.perceive
         mapper.perceive = lambda request: requests.append(request) or perceive(request)
@@ -213,9 +215,10 @@ class PluginRunnerTests(unittest.TestCase):
         self.assertEqual(requests[0].metadata, {"activation": None, "frame_index": 3})
 
     def test_cycle_runner_forwards_context_metadata_and_owns_frame_identity(self) -> None:
-        mapper = PerceptionRunner.from_selection(
+        mapper = PerceptionRunner.from_activation(step_activation(
+            "perception",
             plugins=["working"], plugin_specs={"working": f"{__name__}:WorkingPlugin"},
-        )
+        ))
         requests = []
         perceive = mapper.perceive
         mapper.perceive = lambda request: requests.append(request) or perceive(request)
@@ -228,13 +231,14 @@ class PluginRunnerTests(unittest.TestCase):
         })
 
     def test_runner_reset_is_optional_and_invokes_stateful_hook_when_present(self) -> None:
-        mapper = PerceptionRunner.from_selection(
+        mapper = PerceptionRunner.from_activation(step_activation(
+            "perception",
             plugins=["working", "frame"],
             plugin_specs={
                 "working": f"{__name__}:WorkingPlugin",
                 "frame": step_plugins("perception")["frame"]["spec"],
             },
-        )
+        ))
         RESET_CALLS.clear()
 
         mapper.reset()
@@ -243,12 +247,13 @@ class PluginRunnerTests(unittest.TestCase):
         self.assertEqual(RESET_CALLS, ["working", "working"])
 
     def test_memory_required_plugin_with_no_argument_reset_is_reset(self) -> None:
-        mapper = PerceptionRunner.from_selection(
+        mapper = PerceptionRunner.from_activation(step_activation(
+            "perception",
             plugins=["memory_required_reset"],
             plugin_specs={
                 "memory_required_reset": f"{__name__}:MemoryRequiredNoArgReset",
             },
-        )
+        ))
 
         RESET_CALLS.clear()
         mapper.reset({})
@@ -256,13 +261,14 @@ class PluginRunnerTests(unittest.TestCase):
         self.assertEqual(RESET_CALLS, ["memory_required_reset"])
 
     def test_missing_input_short_circuits_plugin_as_unavailable(self) -> None:
-        mapper = PerceptionRunner.from_selection(
+        mapper = PerceptionRunner.from_activation(step_activation(
+            "perception",
             plugins=["working", "unavailable"],
             plugin_specs={
                 "working": f"{__name__}:WorkingPlugin",
                 "unavailable": f"{__name__}:UnavailablePlugin",
             },
-        )
+        ))
 
         perception = mapper.perceive(build_perception_request(_sensor_frame(_array_reading())))
 
@@ -271,10 +277,11 @@ class PluginRunnerTests(unittest.TestCase):
         self.assertEqual(mapper.plugins["unavailable"].invocations, 0)
 
     def test_repeated_calls_keep_the_constructed_instances(self) -> None:
-        mapper = PerceptionRunner.from_selection(
+        mapper = PerceptionRunner.from_activation(step_activation(
+            "perception",
             plugins=["working"],
             plugin_specs={"working": f"{__name__}:WorkingPlugin"},
-        )
+        ))
         working = mapper.plugins["working"]
         frame = _sensor_frame(_array_reading(), "frame-1")
         mapper.perceive(build_perception_request(frame))
@@ -333,10 +340,11 @@ class PluginRunnerTests(unittest.TestCase):
         self.assertEqual(list(step.plugins), ["working"])
         self.assertEqual(step.status()["plugin_report"]["applied_plugin_ids"], ["working"])
 
-        failed_step = PerceptionRunner.from_selection(
+        failed_step = PerceptionRunner.from_activation(step_activation(
+            "perception",
             plugins=["exploding"],
             plugin_specs={"exploding": f"{__name__}:ExplodingPlugin"},
-        )
+        ))
         failed = failed_step(
             DecisionFrameContext(
                 frame_id="frame-2",

@@ -1,11 +1,21 @@
 # Multi-obstruction temporal tracks
 
 This plugin is the corrective replay proposed by the Astra review. It
-uses low-threshold rectangular edge contours, removes regions that look like
-lower-frame floor/background support, and associates several remaining generic
-image-space regions across adjacent frames. When a contour disappears, a
-bounded optical-flow prediction is marked explicitly rather than silently
-turning into a held ghost.
+uses low-threshold rectangular edge contours, drops boxes against a fixed
+image cut-off (`floor_cutoff_y`, plus the contour edge gates), and associates
+several remaining generic image-space regions across adjacent frames. The
+cut-off is an image-row rule. This plugin does not read `floor_plane` or
+`floor_continuity` output. When a contour disappears, a bounded optical-flow
+prediction is marked explicitly rather than silently turning into a held ghost.
+
+Contour gates are `contour_min_vertices`..`contour_max_vertices` (4..15),
+`contour_min_width`..`contour_max_width` (0.04..0.85) and
+`contour_min_height`..`contour_max_height` (0.08..0.60). A pair with the low
+end above the high end is rejected. Image-edge rejection uses `reject_bottom_y`
+(0.95), `reject_above_y` (0.28), `reject_top_edge_y` (0.03) and
+`reject_top_edge_height` (0.25). The tracker uses an LK window
+`flow_window` (21), `flow_levels` (3), a forward-backward gate
+`flow_forward_backward_px` (1.5) and `feature_seed_cap` (80).
 
 The output is deliberately generic `obstacle` evidence. It does not claim a
 semantic class, depth, traversability, or autonomous object identity. Each

@@ -59,12 +59,3 @@ class PerceptionRequest:
 
     def feed_error(self, feed_id: str) -> str | None:
         return self._feed_errors.get(feed_id)
-
-    def feed_summary(self) -> dict[str, Any]:
-        return {
-            "available": {
-                feed_id: type(feed).__name__
-                for feed_id, feed in sorted(self._feeds.items())
-            },
-            "errors": dict(sorted(self._feed_errors.items())),
-        }

@@ -10,7 +10,6 @@ from __future__ import annotations
 
 import base64
 import binascii
-from collections.abc import Iterator
 from dataclasses import dataclass, field
 from io import BytesIO
 from typing import TYPE_CHECKING, Literal, NoReturn
@@ -18,7 +17,6 @@ from urllib.parse import unquote_to_bytes
 
 from PIL import Image
 
-from autonomy.vehicle import SensorFrame
 from .control import ChaseControl, validate_chase_control
 
 if TYPE_CHECKING:
@@ -178,28 +176,6 @@ class ChaseEvaluatorReference:
         return result
 
 
-def coerce_simulator_frame_index(value: object) -> int | None:
-    """Return a non-negative int frame index, or None when absent/invalid.
-
-    Tolerant helper for local/serialized metadata (sensor frames, files, memory).
-    Untrusted Metrics UI wire fields must use require_protocol_frame_index.
-    """
-
-    if isinstance(value, bool):
-        return None
-    if isinstance(value, int):
-        return value if value >= 0 else None
-    if isinstance(value, float) and value.is_integer() and value >= 0:
-        return int(value)
-    if isinstance(value, str) and value.strip():
-        try:
-            parsed = int(value.strip(), 10)
-        except ValueError:
-            return None
-        return parsed if parsed >= 0 else None
-    return None
-
-
 def require_protocol_frame_index(value: object) -> int | None:
     """Return a type-strict non-negative JSON integer, or None when invalid.
 
@@ -216,28 +192,6 @@ def format_chase_frame_id(frame_index: int) -> str:
     """Stable frame label anchored to the simulator frame index."""
 
     return f"chase_frame_{int(frame_index):06d}"
-
-
-def simulator_frame_index_from_sensor_frame(sensor_frame: SensorFrame | None) -> int | None:
-    """Extract simulator frame index from a typed sensor frame's metadata."""
-
-    for metadata in _sensor_frame_metadata_records(sensor_frame):
-        for key in ("simulator_frame_index", "frame_index", "frameIndex"):
-            index = coerce_simulator_frame_index(metadata.get(key))
-            if index is not None:
-                return index
-    return None
-
-
-def simulator_epoch_from_sensor_frame(sensor_frame: SensorFrame | None) -> str | None:
-    """Extract the simulation-run epoch from a typed sensor frame's metadata."""
-
-    for metadata in _sensor_frame_metadata_records(sensor_frame):
-        for key in ("simulation_epoch", "simulationEpoch"):
-            value = metadata.get(key)
-            if isinstance(value, str) and value.strip():
-                return value.strip()
-    return None
 
 
 def build_chaser_reference(
@@ -626,13 +580,6 @@ def score_reference_alignment_batch(
         missing_identity=missing_identity, missing_reference=missing_reference,
         missing_run_identity=missing_identity, mismatched=mismatched, min_frames=min_frames,
     )
-
-
-def _sensor_frame_metadata_records(sensor_frame: SensorFrame | None) -> Iterator[dict[str, object]]:
-    if sensor_frame is not None:
-        yield sensor_frame.metadata
-        for reading in sensor_frame.readings.values():
-            yield reading.metadata
 
 
 def _nonempty_string(value: object) -> str | None:

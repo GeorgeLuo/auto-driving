@@ -1,7 +1,7 @@
 from __future__ import annotations
 
 import json
-from dataclasses import dataclass, asdict, fields
+from dataclasses import dataclass, asdict
 from functools import lru_cache
 from pathlib import Path
 from typing import Any
@@ -10,7 +10,32 @@ import cv2
 import numpy as np
 from PIL import Image, ImageDraw
 
-from autonomy.fields import require_number, require_safe_int
+from autonomy.fields import FieldError, require_number, require_ordered_numbers, require_safe_int
+from implementations.decision_cycle.perception.shared.floor.scan import first_column_hits
+
+_UNIT_RATIO_FIELDS = (
+    "horizon_ratio",
+    "morph_threshold",
+    "topdown_near_width_ratio",
+    "topdown_far_width_ratio",
+    "min_boundary_width_ratio",
+    "near_width_ratio",
+    "far_width_ratio",
+)
+_NON_NEGATIVE_FLOAT_FIELDS = ("floor_threshold", "brightness_weight")
+_INT_FIELD_MINIMUMS = (
+    ("morph_radius", 0),
+    ("topdown_width", 2),
+    ("topdown_height", 2),
+    ("topdown_margin", 0),
+    ("obstacle_run_length", 1),
+    ("min_floor_support", 1),
+    ("boundary_dilate_radius", 0),
+)
+_SEED_BOUNDS_PAIRS = (
+    ("seed_x0_ratio", "seed_x1_ratio"),
+    ("seed_y0_ratio", "seed_y1_ratio"),
+)
 
 
 @dataclass
@@ -37,17 +62,29 @@ class FloorPlaneConfig:
     far_width_ratio: float = 0.34
 
     def __post_init__(self) -> None:
-        integers = {
-            "morph_radius", "topdown_width", "topdown_height", "topdown_margin",
-            "obstacle_run_length", "min_floor_support", "boundary_dilate_radius",
-        }
-        for field in fields(self):
-            value = getattr(self, field.name)
-            if field.name in integers:
-                validated = require_safe_int(value, field_name=field.name)
-            else:
-                validated = require_number(value, field_name=field.name)
-            setattr(self, field.name, validated)
+        for name in _UNIT_RATIO_FIELDS:
+            setattr(self, name, require_number(getattr(self, name), field_name=name, bounds=(0, 1)))
+        for name in _NON_NEGATIVE_FLOAT_FIELDS:
+            setattr(
+                self, name, require_number(getattr(self, name), field_name=name, bounds=(0, float("inf"))),
+            )
+        for name, minimum in _INT_FIELD_MINIMUMS:
+            value = require_safe_int(getattr(self, name), field_name=name)
+            if value < minimum:
+                raise FieldError(name, f"must be >= {minimum}")
+            setattr(self, name, value)
+        for low_name, high_name in _SEED_BOUNDS_PAIRS:
+            low, high = require_ordered_numbers(
+                getattr(self, low_name),
+                getattr(self, high_name),
+                low_name=low_name,
+                high_name=high_name,
+                bounds=(0, 1),
+            )
+            if low == high:
+                raise FieldError(low_name, f"must be < {high_name}")
+            setattr(self, low_name, low)
+            setattr(self, high_name, high)
 
 
 @dataclass
@@ -139,7 +176,7 @@ def _seed_center_and_spread(
     return center, np.maximum(spread, np.array([0.025, 0.025, 0.025, 0.04], dtype=np.float32))
 
 
-def _opened_floor_mask(floor_mask: np.ndarray, config: FloorPlaneConfig) -> np.ndarray:
+def _majority_floor_mask(floor_mask: np.ndarray, config: FloorPlaneConfig) -> np.ndarray:
     side = 2 * int(config.morph_radius) + 1
     counts = cv2.boxFilter(
         floor_mask.astype(np.uint8),
@@ -164,7 +201,7 @@ def estimate_floor_mask(rgb: np.ndarray, config: FloorPlaneConfig) -> tuple[np.n
     dist = np.sqrt(square[..., 0] + square[..., 1] + square[..., 2] + square[..., 3])
     floor_mask = (dist <= config.floor_threshold) & roi_mask
     if config.morph_radius > 0:
-        floor_mask = _opened_floor_mask(floor_mask, config)
+        floor_mask = _majority_floor_mask(floor_mask, config)
     model_info = {
         "seed_rect": [seed_rect[0], seed_rect[1], seed_rect[2], seed_rect[3]],
         "feature_center": center.round(5).tolist(),
@@ -294,37 +331,6 @@ def raycast_source_occupancy(floor_mask: np.ndarray, occupied_mask: np.ndarray,
     return np.asarray(occupancy_img, dtype=np.uint8)
 
 
-def _first_hits(
-    bottom_floor: np.ndarray,
-    bottom_valid: np.ndarray,
-    floor_minimum: int,
-    run_minimum: int,
-    *,
-    reset_at_gaps: bool,
-) -> tuple[np.ndarray, np.ndarray, np.ndarray]:
-    """First bottom-up run of occupied pixels after enough floor support."""
-
-    height = bottom_floor.shape[0]
-    if height < run_minimum:
-        empty = np.empty(0, dtype=np.intp)
-        return empty, empty, empty
-    floor_prefix = np.cumsum(bottom_floor & bottom_valid, axis=0, dtype=np.int32)
-    if reset_at_gaps:
-        rows = np.arange(height, dtype=np.int32)[:, None]
-        last_gap = np.maximum.accumulate(np.where(bottom_valid, -1, rows), axis=0)
-        previous_floor = np.take_along_axis(floor_prefix, last_gap.clip(min=0), axis=0)
-        floor_prefix -= np.where(last_gap == -1, 0, previous_floor)
-    occupied = bottom_valid & ~bottom_floor
-    occupied_prefix = np.empty((height + 1, occupied.shape[1]), dtype=np.int32)
-    occupied_prefix[0] = 0
-    np.cumsum(occupied, axis=0, dtype=np.int32, out=occupied_prefix[1:])
-    eligible = occupied_prefix[run_minimum:] - occupied_prefix[:-run_minimum] == run_minimum
-    eligible &= floor_prefix[: height - run_minimum + 1] >= floor_minimum
-    columns = np.flatnonzero(eligible.any(axis=0))
-    starts = np.argmax(eligible[:, columns], axis=0) if columns.size else np.empty(0, dtype=np.intp)
-    return columns, starts, floor_prefix[starts, columns] if columns.size else np.empty(0, dtype=np.int32)
-
-
 @lru_cache(maxsize=8)
 def _cached_source_mask(
     width: int,
@@ -348,13 +354,11 @@ def source_obstacle_hits(floor_mask: np.ndarray, config: FloorPlaneConfig) -> np
     horizon = int(height * config.horizon_ratio)
     if horizon >= height:
         return np.zeros_like(floor_mask, dtype=bool)
-    # A negative horizon still walks every row; a negative slice would not.
-    scan_from = max(0, horizon)
-    columns, starts, _supports = _first_hits(
-        floor_mask[scan_from:][::-1],
+    columns, starts, _supports = first_column_hits(
+        floor_mask[horizon:][::-1],
         _cached_source_mask(
             width, height, config.horizon_ratio, config.near_width_ratio, config.far_width_ratio,
-        )[scan_from:][::-1],
+        )[horizon:][::-1],
         max(1, int(config.min_floor_support)),
         max(1, int(config.obstacle_run_length)),
         reset_at_gaps=True,

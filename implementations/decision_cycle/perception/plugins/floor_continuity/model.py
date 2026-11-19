@@ -7,6 +7,7 @@ import cv2
 import numpy as np
 
 from autonomy.fields import require_ordered_numbers
+from implementations.decision_cycle.perception.shared.floor.scan import first_column_hits
 
 
 @dataclass(frozen=True)
@@ -334,33 +335,6 @@ def _bottom_connected_floor(
     return floor & candidate_mask
 
 
-def _first_column_hits(
-    bottom_floor: np.ndarray,
-    bottom_valid: np.ndarray,
-    floor_minimum: int,
-    run_minimum: int,
-) -> tuple[np.ndarray, np.ndarray, np.ndarray]:
-    """First bottom-up occupied run. Validity is already stopped at the first gap."""
-
-    height = bottom_floor.shape[0]
-    if height < run_minimum:
-        empty = np.empty(0, dtype=np.intp)
-        return empty, empty, empty
-    floor_prefix = np.cumsum(bottom_floor & bottom_valid, axis=0, dtype=np.int32)
-    occupied = bottom_valid & ~bottom_floor
-    occupied_prefix = np.empty((height + 1, occupied.shape[1]), dtype=np.int32)
-    occupied_prefix[0] = 0
-    np.cumsum(occupied, axis=0, dtype=np.int32, out=occupied_prefix[1:])
-    eligible = occupied_prefix[run_minimum:] - occupied_prefix[:-run_minimum] == run_minimum
-    eligible &= floor_prefix[: height - run_minimum + 1] >= floor_minimum
-    columns = np.flatnonzero(eligible.any(axis=0))
-    if columns.size == 0:
-        empty = np.empty(0, dtype=np.intp)
-        return empty, empty, np.empty(0, dtype=np.int32)
-    starts = np.argmax(eligible[:, columns], axis=0)
-    return columns, starts, floor_prefix[starts, columns]
-
-
 def _first_interruptions(
     floor_mask: np.ndarray,
     roi_mask: np.ndarray,
@@ -371,7 +345,7 @@ def _first_interruptions(
     run_minimum = max(1, int(config.minimum_interruption_run_px))
     # A column stops at the first row, from the bottom, that leaves the ROI.
     valid = np.logical_and.accumulate(roi_mask[::-1], axis=0)
-    columns, starts, supports = _first_column_hits(
+    columns, starts, supports = first_column_hits(
         floor_mask[::-1],
         valid,
         max(1, int(config.minimum_floor_support_px)),

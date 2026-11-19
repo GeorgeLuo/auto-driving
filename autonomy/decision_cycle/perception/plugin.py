@@ -1,4 +1,4 @@
-"""Perception plugin contract and inputs.
+"""Perception plugin contract, inputs, and protocol.
 
 ``PerceptionPluginContract`` declares what one plugin accepts and what its
 evidence means. ``PerceptionPluginInputs`` are the resolved values the
@@ -9,10 +9,13 @@ from __future__ import annotations
 
 from dataclasses import dataclass, field
 from types import MappingProxyType
-from typing import Any, Literal, Mapping, TypeVar
+from typing import Any, Literal, Mapping, Protocol, TypeVar, runtime_checkable
 
 from autonomy.decision_cycle.perception.feeds.interface import PerceptionPluginInput
-from autonomy.decision_cycle.perception.evidence.values import PerceivedThing
+from autonomy.decision_cycle.perception.evidence.values import (
+    PerceivedThing,
+    PerceptionEvidenceBatch,
+)
 from autonomy.shared_memory import SharedMemory
 
 
@@ -103,3 +106,10 @@ class PerceptionPluginInputs:
         return value
 
 
+@runtime_checkable
+class PerceptionPlugin(Protocol):
+    plugin_id: str
+    contract: PerceptionPluginContract
+
+    def perceive(self, inputs: PerceptionPluginInputs) -> PerceptionEvidenceBatch:
+        ...

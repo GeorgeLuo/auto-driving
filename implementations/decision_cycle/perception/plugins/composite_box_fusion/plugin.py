@@ -41,6 +41,7 @@ from implementations.decision_cycle.perception.plugins.multi_obstruction_tracks.
 )
 
 from .issue219_cues import (
+    PreparedCueImage,
     _bbox_iou,
     _canny_morph,
     _corner_junctions,
@@ -48,8 +49,6 @@ from .issue219_cues import (
     _partial_contour,
     _photometric_windows,
     _quad_rectangularity,
-    cue_preparation_active,
-    shared_cue_preparation,
 )
 from .geometry import (
     FIXED_JEV_PROMPT,
@@ -310,9 +309,6 @@ class CompositeBoxFusionPlugin(MultiObstructionTracksPlugin):
     def _detect_candidates(
         self, rgb: np.ndarray
     ) -> tuple[list[PerceivedThing], np.ndarray, dict[str, Any]]:
-        if not cue_preparation_active():
-            with shared_cue_preparation():
-                return self._detect_candidates(rgb)
         # Let the inherited current-edge detector normalize its raw input once.
         # The issue-219 edge/partial/line cues share one separately prepared
         # luminance image below; passing that image into the parent would apply
@@ -327,19 +323,20 @@ class CompositeBoxFusionPlugin(MultiObstructionTracksPlugin):
         base_things: list[PerceivedThing],
     ) -> _CompositeCues:
         normalized_rgb = self._normalized_luminance_rgb(rgb)
+        prepared = PreparedCueImage(normalized_rgb, self.issue_working_width)
         source_things: dict[str, list[PerceivedThing]] = {
             "current_edge_contours": [
                 self._decorate("current_edge_contours", index, thing)
                 for index, thing in enumerate(base_things)
             ],
         }
-        source_things.update(self._edge_and_partial_sources(normalized_rgb))
+        source_things.update(self._edge_and_partial_sources(normalized_rgb, prepared))
         photometric_sources, classical_summary = self._photometric_sources(rgb)
         source_things.update(photometric_sources)
         floor_measurements = self._floor_context_measurements(rgb, source_things)
         return _CompositeCues(
             source_things,
-            self._line_support_sources(normalized_rgb),
+            self._line_support_sources(normalized_rgb, prepared),
             floor_measurements,
             classical_summary,
         )
@@ -347,6 +344,7 @@ class CompositeBoxFusionPlugin(MultiObstructionTracksPlugin):
     def _edge_and_partial_sources(
         self,
         normalized_rgb: np.ndarray,
+        prepared: PreparedCueImage,
     ) -> dict[str, list[PerceivedThing]]:
         sources: dict[str, list[PerceivedThing]] = {}
         if "edge_contours" in self.enabled_substrategies:
@@ -360,6 +358,7 @@ class CompositeBoxFusionPlugin(MultiObstructionTracksPlugin):
                     shared_close_kernel=self.shared_close_kernel,
                     shared_min_width_px=self.shared_min_width_px,
                     shared_min_height_px=self.shared_min_height_px,
+                    prepared=prepared,
                 ),
             )
         if "partial_faces" in self.enabled_substrategies:
@@ -373,6 +372,7 @@ class CompositeBoxFusionPlugin(MultiObstructionTracksPlugin):
                     shared_min_width_px=self.shared_min_width_px,
                     shared_min_height_px=self.shared_min_height_px,
                     shared_max_vertices=self.shared_max_vertices,
+                    prepared=prepared,
                 ),
             )
             sources["partial_contour"] = self._issue_cues(
@@ -385,6 +385,7 @@ class CompositeBoxFusionPlugin(MultiObstructionTracksPlugin):
                     shared_close_kernel=self.shared_close_kernel,
                     shared_min_width_px=self.shared_min_width_px,
                     shared_min_height_px=self.shared_min_height_px,
+                    prepared=prepared,
                 ),
             )
         return sources
@@ -427,7 +428,11 @@ class CompositeBoxFusionPlugin(MultiObstructionTracksPlugin):
             source_things["floor_continuity"] = []
             return {"error": f"{type(exc).__name__}: {exc}"}
 
-    def _line_support_sources(self, normalized_rgb: np.ndarray) -> dict[str, list[PerceivedThing]]:
+    def _line_support_sources(
+        self,
+        normalized_rgb: np.ndarray,
+        prepared: PreparedCueImage,
+    ) -> dict[str, list[PerceivedThing]]:
         if "line_junction_support" not in self.enabled_substrategies:
             return {}
         return {
@@ -441,6 +446,7 @@ class CompositeBoxFusionPlugin(MultiObstructionTracksPlugin):
                     corner_radius_px=self.corner_radius_px,
                     pair_min_px=self.corner_pair_min_px,
                     pair_max_px=self.corner_pair_max_px,
+                    prepared=prepared,
                 ),
             ),
             "hough_fragments": self._issue_cues(
@@ -450,6 +456,7 @@ class CompositeBoxFusionPlugin(MultiObstructionTracksPlugin):
                     working_width=self.issue_working_width,
                     max_boxes=self.hough_fragments_max_boxes,
                     shared_blur_kernel=self.shared_blur_kernel,
+                    prepared=prepared,
                 ),
             ),
         }
@@ -726,10 +733,7 @@ class CompositeBoxFusionPlugin(MultiObstructionTracksPlugin):
 
     def _floor_candidate(self, index: int, boundary: dict[str, Any], analysis: Any) -> PerceivedThing:
         bbox = tuple(float(value) for value in boundary["bbox_xyxy_norm"])
-        polygon = tuple(
-            tuple(float(value) for value in point)
-            for point in boundary.get("polygon_xy_norm", [])
-        )
+        polygon = _polygon_xy_norm(boundary.get("polygon_xy_norm"))
         properties = {
             "evidence": "multi_cue_floor_continuity_interruption",
             "source": "floor_continuity",

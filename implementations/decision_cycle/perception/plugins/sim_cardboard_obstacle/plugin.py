@@ -103,7 +103,9 @@ class SimCardboardObstaclePlugin:
         self.split_width_ratio = require_number(split_width_ratio, field_name="split_width_ratio", bounds=(0, 1))
         self.split_step_ratio = require_number(split_step_ratio, field_name="split_step_ratio", bounds=(0, 1))
         self.split_width_floor_px = require_safe_int(split_width_floor_px, field_name="split_width_floor_px")
-        self.split_step_floor_px = require_number(split_step_floor_px, field_name="split_step_floor_px", bounds=(0, 1e6))
+        self.split_step_floor_px = require_number(
+            split_step_floor_px, field_name="split_step_floor_px", bounds=(0, float("inf")),
+        )
 
     def perceive(self, inputs: PerceptionPluginInputs) -> PerceptionEvidenceBatch:
         frame = inputs.require("frame", CameraFrame)

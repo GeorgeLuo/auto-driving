@@ -8,15 +8,22 @@ import tempfile
 import unittest
 from dataclasses import fields
 from pathlib import Path
+from unittest import mock
 
 import cv2
 import numpy as np
 from PIL import Image
 
-from autonomy.fields import FieldError
+from autonomy.decision_cycle.context import DecisionFrameContext
+from autonomy.decision_cycle.memory.evidence import MemoryOrigin, RetainedEvidence
+from autonomy.decision_cycle.memory.publication import EVIDENCE_KEY
 from autonomy.decision_cycle.perception.evidence.values import ViewLocation
+from autonomy.decision_cycle.perception.plugin import PerceptionPlugin, PerceptionPluginInputs
+from autonomy.fields import FieldError
 from implementations.decision_cycle.catalog import preset_activation, step_plugins
+from implementations.decision_cycle.perception.feeds.camera import CameraFrame
 from implementations.decision_cycle.perception.plugins.composite_box_fusion.issue219_cues import (
+    PreparedCueImage,
     _corner_junctions,
     _integral_mean,
     _keep_scored_boxes,
@@ -27,8 +34,8 @@ from implementations.decision_cycle.perception.plugins.composite_box_fusion.plug
     _polygon_xy_norm,
 )
 from implementations.decision_cycle.perception.plugins.floor_continuity.model import (
+    FloorContinuityAnalysis,
     FloorContinuityConfig,
-    _first_column_hits,
     _first_interruptions,
 )
 from implementations.decision_cycle.perception.plugins.floor_continuity.plugin import FloorContinuityPlugin
@@ -37,7 +44,6 @@ from implementations.decision_cycle.perception.plugins.floor_continuity_temporal
 )
 from implementations.decision_cycle.perception.plugins.floor_plane.model import (
     FloorPlaneConfig,
-    _first_hits,
     estimate_floor_mask,
     process_still,
     source_obstacle_hits,
@@ -58,6 +64,7 @@ from implementations.decision_cycle.perception.shared.features.feature_tracking 
     FeatureMatch,
     detect_keypoints,
 )
+from implementations.decision_cycle.perception.shared.floor.scan import first_column_hits
 from implementations.decision_cycle.perception.shared.motion.scene_motion import (
     find_best_similarity_group,
 )
@@ -77,13 +84,26 @@ class FloorPlaneTests(unittest.TestCase):
         plugin = FloorPlanePlugin(horizon_ratio=0.45)
         self.assertEqual(plugin.config.horizon_ratio, 0.45)
         self.assertIsInstance(plugin.config, FloorPlaneConfig)
+        self.assertIsInstance(plugin, PerceptionPlugin)
 
         with self.assertRaises(TypeError):
             FloorPlanePlugin(not_a_floor_field=1)
-        with self.assertRaises(FieldError):
-            FloorPlanePlugin(horizon_ratio="low")
-        with self.assertRaises(FieldError):
-            FloorPlanePlugin(morph_radius=1.5)
+        for bad_config in (
+            {"horizon_ratio": "low"},
+            {"horizon_ratio": -0.1},
+            {"horizon_ratio": 1.1},
+            {"morph_radius": 1.5},
+            {"seed_x0_ratio": 0.75, "seed_x1_ratio": 0.25},
+            {"seed_x0_ratio": 0.5, "seed_x1_ratio": 0.5},
+            {"seed_y0_ratio": 0.9, "seed_y1_ratio": 0.7},
+            {"topdown_width": 1},
+            {"topdown_height": 0},
+            {"obstacle_run_length": 0},
+            {"min_floor_support": 0},
+            {"floor_threshold": -1.0},
+        ):
+            with self.subTest(bad_config=bad_config), self.assertRaises(FieldError):
+                FloorPlanePlugin(**bad_config)
 
     def test_catalog_lists_every_floor_plane_field_at_its_default(self) -> None:
         listed = _catalog_config("floor_plane")
@@ -92,18 +112,19 @@ class FloorPlaneTests(unittest.TestCase):
         for item in fields(FloorPlaneConfig):
             self.assertEqual(listed[item.name], getattr(defaults, item.name))
 
-    def test_support_resets_at_roi_gaps(self) -> None:
+    def test_shared_column_scan_resets_at_roi_gaps_when_requested(self) -> None:
         floor = np.zeros((20, 1), dtype=bool)
         valid = np.ones((20, 1), dtype=bool)
         floor[:8] = True
         valid[8] = False
         floor[9:13] = True
-        kept, starts, supports = _first_hits(floor, valid, 10, 4, reset_at_gaps=True)
-        kept_without, starts_without, supports_without = _first_hits(
+        kept, starts, supports = first_column_hits(floor, valid, 10, 4, reset_at_gaps=True)
+        kept_without, starts_without, supports_without = first_column_hits(
             floor, valid, 10, 4, reset_at_gaps=False,
         )
         self.assertEqual(kept.size, 0)
         self.assertEqual(starts.size, 0)
+        self.assertEqual(supports.size, 0)
         self.assertEqual(kept_without.tolist(), [0])
         self.assertEqual(int(supports_without[0]), 12)
         self.assertGreater(int(supports_without[0]), 10)
@@ -180,7 +201,9 @@ class FloorContinuityTests(unittest.TestCase):
         floor[16:20] = False
         roi[15, :] = False
         floor[:12] = True
-        columns, starts, supports = _first_column_hits(floor[::-1], np.logical_and.accumulate(roi[::-1], axis=0), 8, 4)
+        columns, _starts, supports = first_column_hits(
+            floor[::-1], np.logical_and.accumulate(roi[::-1], axis=0), 8, 4,
+        )
         self.assertEqual(columns.tolist(), [0, 1])
         self.assertTrue(np.all(supports >= 8))
         config = FloorContinuityConfig(
@@ -195,7 +218,7 @@ class FloorContinuityTests(unittest.TestCase):
 
 
 class ExposedSettingTests(unittest.TestCase):
-    def test_new_keys_keep_today_defaults_and_reject_inverted_pairs(self) -> None:
+    def test_temporal_floor_settings_validate_and_match_catalog(self) -> None:
         temporal = TemporalFloorContinuityPlugin()
         self.assertEqual(temporal.held_confidence_decay, 0.82)
         self.assertEqual(
@@ -204,7 +227,11 @@ class ExposedSettingTests(unittest.TestCase):
         )
         with self.assertRaises(FieldError):
             TemporalFloorContinuityPlugin(held_confidence_decay=1.2)
+        listed = _catalog_config("floor_continuity_temporal")
+        self.assertEqual(listed["held_confidence_decay"], 0.82)
+        self.assertEqual(listed["overlap_weight"], 0.55)
 
+    def test_cardboard_and_color_target_settings_validate_and_match_catalog(self) -> None:
         cardboard = SimCardboardObstaclePlugin()
         self.assertEqual(
             (cardboard.red_minimum, cardboard.red_maximum, cardboard.green_minimum, cardboard.green_maximum),
@@ -218,6 +245,11 @@ class ExposedSettingTests(unittest.TestCase):
         self.assertEqual((cardboard.split_width_floor_px, cardboard.split_step_floor_px), (5, 3.0))
         with self.assertRaises(FieldError):
             SimCardboardObstaclePlugin(red_minimum=0.90, red_maximum=0.20)
+        self.assertEqual(SimCardboardObstaclePlugin(split_step_floor_px=2e6).split_step_floor_px, 2e6)
+        cardboard_catalog = _catalog_config("sim_cardboard_obstacle")
+        self.assertEqual(cardboard_catalog["working_width"], 640)
+        self.assertEqual(cardboard_catalog["red_minimum"], 0.28)
+        self.assertEqual(cardboard_catalog["split_step_floor_px"], 3.0)
 
         color = SimColorTargetsPlugin()
         self.assertEqual((color.evader_red_minimum, color.evader_red_lead), (0.45, 0.12))
@@ -227,7 +259,13 @@ class ExposedSettingTests(unittest.TestCase):
         self.assertEqual((color.beige_red_blue_minimum, color.beige_row_minimum), (0.035, 0.35))
         with self.assertRaises(FieldError):
             SimColorTargetsPlugin(neutral_luma_minimum=0.95, neutral_luma_maximum=0.20)
+        self.assertEqual(SimColorTargetsPlugin(evader_red_green_ratio=2e6).evader_red_green_ratio, 2e6)
+        color_catalog = _catalog_config("sim_color_targets")
+        self.assertEqual(color_catalog["thumbnail_width"], 320)
+        self.assertEqual(color_catalog["evader_red_minimum"], 0.45)
+        self.assertEqual(color_catalog["beige_row_minimum"], 0.35)
 
+    def test_tracker_and_fusion_settings_validate_and_match_catalog(self) -> None:
         tracks = MultiObstructionTracksPlugin()
         self.assertEqual((tracks.contour_min_vertices, tracks.contour_max_vertices), (4, 15))
         self.assertEqual((tracks.contour_min_width, tracks.contour_max_width), (0.04, 0.85))
@@ -237,6 +275,9 @@ class ExposedSettingTests(unittest.TestCase):
         with self.assertRaises(FieldError):
             MultiObstructionTracksPlugin(contour_min_vertices=20, contour_max_vertices=4)
         MultiObstructionTracksPlugin(adaptive_contours_max_boxes=12)
+        tracks_catalog = _catalog_config("multi_obstruction_tracks")
+        self.assertEqual(tracks_catalog["flow_window"], 21)
+        self.assertEqual(tracks_catalog["contour_min_vertices"], 4)
 
         fusion = CompositeBoxFusionPlugin()
         self.assertEqual(fusion.corner_max_corners, 600)
@@ -247,23 +288,44 @@ class ExposedSettingTests(unittest.TestCase):
         CompositeBoxFusionPlugin(adaptive_contours_max_boxes=9)
         with self.assertRaises(FieldError):
             CompositeBoxFusionPlugin(corner_pair_min_px=400, corner_pair_max_px=24)
+        fusion_catalog = _catalog_config("composite_box_fusion")
+        self.assertEqual(fusion_catalog["corner_max_corners"], 600)
+        self.assertEqual(fusion_catalog["corner_pair_max_px"], 360)
+        self.assertFalse(fusion_catalog["object_separated_geometry"])
 
+    def test_avoid_recent_obstruction_forward_throttle_reaches_command(self) -> None:
         avoid = AvoidRecentObstruction()
         self.assertEqual(avoid.forward_throttle, DEFAULT_FORWARD_THROTTLE)
         self.assertEqual(avoid.forward_throttle, 0.60)
         with self.assertRaises(FieldError):
             AvoidRecentObstruction(forward_throttle=1.4)
 
-        for plugin_id, expected in {
-            "floor_continuity_temporal": {"held_confidence_decay": 0.82, "overlap_weight": 0.55},
-            "sim_cardboard_obstacle": {"red_minimum": 0.28, "split_step_floor_px": 3.0},
-            "sim_color_targets": {"evader_red_minimum": 0.45, "beige_row_minimum": 0.35},
-            "multi_obstruction_tracks": {"flow_window": 21, "contour_min_vertices": 4},
-            "composite_box_fusion": {"corner_max_corners": 600, "corner_pair_max_px": 360},
-        }.items():
-            listed = _catalog_config(plugin_id)
-            for key, value in expected.items():
-                self.assertEqual(listed[key], value, plugin_id)
+        evidence = RetainedEvidence(
+            record_id="obs_1",
+            kind="obstacle",
+            label="left box",
+            confidence=0.9,
+            origin=MemoryOrigin(
+                observation_id="obs-frame-1",
+                observed_id="box-1",
+                coordinate_frame="image",
+                observed_at_ms=1000,
+                updated_at_ms=1000,
+                frame_id="frame-1",
+            ),
+            location=ViewLocation(frame="image", zone="near_left", bbox_xyxy_norm=(0.1, 0.5, 0.3, 0.8)),
+        )
+        context = DecisionFrameContext(
+            frame_id="frame-1",
+            frame_index=1,
+            timestamp_ms=1000,
+            shared_memory={EVIDENCE_KEY: (evidence,)},
+        )
+        proposal = AvoidRecentObstruction(forward_throttle=0.35).propose(context)
+        self.assertTrue(proposal.available)
+        self.assertIsNotNone(proposal.command)
+        assert proposal.command is not None
+        self.assertEqual(proposal.command.throttle, 0.35)
 
 
 class ComponentAndPredicateTests(unittest.TestCase):
@@ -335,6 +397,16 @@ class MotionRankingTests(unittest.TestCase):
 
 
 class FusionTests(unittest.TestCase):
+    def test_prepared_cue_image_reuses_resized_and_gray_rasters_per_instance(self) -> None:
+        rgb = np.zeros((100, 200, 3), dtype=np.uint8)
+        prepared = PreparedCueImage(rgb, 100)
+        first_working = prepared.working_rgb()
+        self.assertIs(prepared.working_rgb(), first_working)
+        self.assertEqual(first_working.shape, (50, 100, 3))
+        first_gray = prepared.gray_variants()
+        self.assertIs(prepared.gray_variants(), first_gray)
+        self.assertEqual(set(first_gray), {"gray", "lab_l", "hsv_v", "clahe"})
+
     def test_equal_scores_clipped_edges_and_the_corner_cap(self) -> None:
         candidates = [
             ((0.0, 0.0, 0.2, 0.2), 0.5, "corner_junctions", 0, "corner_support", "first", {}),
@@ -414,6 +486,47 @@ class FusionTests(unittest.TestCase):
             self.assertIsNotNone(thing.location.bbox_xyxy_norm)
             self.assertIn("contour_xy_norm", thing.properties)
 
+    def test_floor_candidate_handles_null_and_short_polygons(self) -> None:
+        plugin = CompositeBoxFusionPlugin(
+            enabled_substrategies=("floor_context",),
+            jev_enabled=False,
+            cache_responses=False,
+        )
+        mask = np.zeros((4, 4), dtype=bool)
+        analysis = FloorContinuityAnalysis(
+            source_width=64,
+            source_height=48,
+            working_width=64,
+            working_height=48,
+            floor_mask=mask,
+            boundary_mask=mask,
+            floor=None,
+            boundaries=(
+                {"bbox_xyxy_norm": (0.1, 0.5, 0.4, 0.7), "polygon_xy_norm": None, "confidence": 0.8},
+                {"bbox_xyxy_norm": (0.5, 0.5, 0.8, 0.7), "polygon_xy_norm": [(0.5, 0.5), (0.8, 0.7)], "confidence": 0.7},
+            ),
+            measurements={"floor_fraction_roi": 0.5},
+        )
+        inputs = PerceptionPluginInputs(
+            frame_id="frame-1",
+            captured_at_ms=1000,
+            feeds={"frame": CameraFrame("front_camera", 1000, np.zeros((48, 64, 3), dtype=np.uint8))},
+            shared_memory={},
+        )
+        with mock.patch(
+            "implementations.decision_cycle.perception.plugins.composite_box_fusion.plugin.analyze_floor_continuity",
+            return_value=analysis,
+        ):
+            batch = plugin.perceive(inputs)
+        floor_proposals = [
+            record for record in batch.measurements["composite"]["raw_source_proposals"]
+            if record["source"] == "floor_continuity"
+        ]
+        self.assertEqual(batch.measurements["composite"]["floor"], {"floor_fraction_roi": 0.5})
+        self.assertEqual(len(floor_proposals), 2)
+        for record in floor_proposals:
+            self.assertIsNone(record["geometry"]["polygon_xy_norm"])
+
     def test_consolidated_presets_report_the_base_plugin_id(self) -> None:
         capture = preset_activation("perception", "capture_floor")
         self.assertEqual(capture.plugins, ("floor_continuity",))
@@ -430,6 +543,7 @@ class FusionTests(unittest.TestCase):
         self.assertEqual(separated.plugins, ("composite_box_fusion",))
         config = separated.plugin_configs["composite_box_fusion"]
         self.assertTrue(config["object_separated_geometry"])
+        self.assertEqual(config["corner_max_corners"], 600)
         plugin = CompositeBoxFusionPlugin(**config)
         self.assertEqual(plugin.plugin_id, "composite_box_fusion")
         self.assertTrue(plugin.object_separated_geometry)
@@ -437,7 +551,8 @@ class FusionTests(unittest.TestCase):
         self.assertFalse(offline.jev_enabled)
         self.assertFalse(offline.cache_responses)
         specs = {item["spec"] for item in step_plugins("perception").values()}
-        self.assertFalse(any("floor_continuity_capture" in spec or "object_separated" in spec for spec in specs))
+        self.assertFalse(any("floor_continuity_capture" in spec for spec in specs))
+        self.assertFalse(any("object_separated" in spec for spec in specs))
 
 
 def _corner_points(things) -> int:

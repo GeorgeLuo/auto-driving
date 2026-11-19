@@ -4,8 +4,6 @@
 from __future__ import annotations
 
 import math
-from contextlib import contextmanager
-from contextvars import ContextVar
 from functools import lru_cache
 from typing import Any, NamedTuple
 
@@ -17,67 +15,61 @@ from autonomy.decision_cycle.perception.evidence.values import (
     ViewLocation,
 )
 
-_cue_cache: ContextVar[dict[str, dict] | None] = ContextVar(
-    "fusion_cue_preparation",
-    default=None,
-)
+
+class PreparedCueImage:
+    """Call-local working RGB raster and lazy grayscale variants for one frame."""
+
+    def __init__(self, source_rgb: np.ndarray, working_width: int) -> None:
+        self._source_rgb = source_rgb
+        self._working_width = working_width
+        self._rgb: np.ndarray | None = None
+        self._gray_variants: dict[str, np.ndarray] | None = None
+
+    def working_rgb(self) -> np.ndarray:
+        if self._rgb is None:
+            self._rgb = _working_rgb(self._source_rgb, self._working_width)
+        return self._rgb
+
+    def gray_variants(self) -> dict[str, np.ndarray]:
+        if self._gray_variants is None:
+            self._gray_variants = _gray_variants(self.working_rgb())
+        return self._gray_variants
 
 
-@contextmanager
-def shared_cue_preparation():
-    """Reuse working rasters and grey variants for one detector call."""
-
-    token = _cue_cache.set({"rgb": {}, "gray": {}})
-    try:
-        yield
-    finally:
-        _cue_cache.reset(token)
-
-
-def cue_preparation_active() -> bool:
-    return _cue_cache.get() is not None
+def _prepare_cue_image(
+    rgb: np.ndarray,
+    working_width: int,
+    prepared: PreparedCueImage | None,
+) -> PreparedCueImage:
+    return PreparedCueImage(rgb, working_width) if prepared is None else prepared
 
 
 def _working_rgb(rgb: np.ndarray, working_width: int) -> np.ndarray:
-    cache = _cue_cache.get()
-    key = (id(rgb), int(working_width))
-    if cache is not None and key in cache["rgb"]:
-        return cache["rgb"][key]
     source_height, source_width = rgb.shape[:2]
     scale = min(1.0, working_width / max(source_width, 1))
     if scale >= 1.0:
-        result = rgb
-    else:
-        result = cv2.resize(
-            rgb,
-            (
-                max(1, int(round(source_width * scale))),
-                max(1, int(round(source_height * scale))),
-            ),
-            interpolation=cv2.INTER_AREA,
-        )
-    if cache is not None:
-        cache["rgb"][key] = result
-    return result
+        return rgb
+    return cv2.resize(
+        rgb,
+        (
+            max(1, int(round(source_width * scale))),
+            max(1, int(round(source_height * scale))),
+        ),
+        interpolation=cv2.INTER_AREA,
+    )
+
 
 def _gray_variants(rgb: np.ndarray) -> dict[str, np.ndarray]:
-    cache = _cue_cache.get()
-    key = id(rgb)
-    if cache is not None and key in cache["gray"]:
-        return cache["gray"][key]
     lab = cv2.cvtColor(rgb, cv2.COLOR_RGB2LAB)
     hsv = cv2.cvtColor(rgb, cv2.COLOR_RGB2HSV)
     gray = cv2.cvtColor(rgb, cv2.COLOR_RGB2GRAY)
     clahe = cv2.createCLAHE(clipLimit=2.0, tileGridSize=(8, 8)).apply(gray)
-    result = {
+    return {
         "gray": gray,
         "lab_l": lab[..., 0],
         "hsv_v": hsv[..., 2],
         "clahe": clahe,
     }
-    if cache is not None:
-        cache["gray"][key] = result
-    return result
 
 def _cv_box_thing(
     source: str,
@@ -211,15 +203,16 @@ def _canny_morph(
     shared_close_kernel: int = 0,
     shared_min_width_px: int = 0,
     shared_min_height_px: int = 0,
+    prepared: PreparedCueImage | None = None,
 ) -> list[PerceivedThing]:
-    working = _working_rgb(rgb, working_width)
+    prepared = _prepare_cue_image(rgb, working_width, prepared)
     outputs: list[PerceivedThing] = []
     settings = (
         (35, 105, 5, 7, 1, 0),
         (55, 145, 3, 5, 2, 0),
         (75, 190, 5, 9, 1, 1),
     )
-    for channel_name, channel in _gray_variants(working).items():
+    for channel_name, channel in prepared.gray_variants().items():
         for low, high, blur, close_kernel, close_iter, open_iter in settings:
             if shared_blur_kernel > 0:
                 blur = shared_blur_kernel
@@ -528,10 +521,11 @@ def _corner_junctions(
     corner_radius_px: float = 96.0,
     pair_min_px: float = 24.0,
     pair_max_px: float = 360.0,
+    prepared: PreparedCueImage | None = None,
 ) -> list[PerceivedThing]:
     """Emit local corner clusters and aligned corner-pair ROIs, not rectangles."""
-    working = _working_rgb(rgb, working_width)
-    gray = cv2.cvtColor(working, cv2.COLOR_RGB2GRAY)
+    prepared = _prepare_cue_image(rgb, working_width, prepared)
+    gray = cv2.cvtColor(prepared.working_rgb(), cv2.COLOR_RGB2GRAY)
     points = cv2.goodFeaturesToTrack(
         gray,
         maxCorners=int(max_corners),
@@ -595,10 +589,11 @@ def _quad_rectangularity(
     shared_min_width_px: int = 0,
     shared_min_height_px: int = 0,
     shared_max_vertices: int = 0,
+    prepared: PreparedCueImage | None = None,
 ) -> list[PerceivedThing]:
-    working = _working_rgb(rgb, working_width)
+    prepared = _prepare_cue_image(rgb, working_width, prepared)
     outputs: list[PerceivedThing] = []
-    for channel_name, channel in _gray_variants(working).items():
+    for channel_name, channel in prepared.gray_variants().items():
         for block, constant, morph_size, morph_iter in (
             (31, 5, 3, 1),
             (51, 9, 5, 1),
@@ -690,11 +685,12 @@ def _partial_contour(
     shared_close_kernel: int = 0,
     shared_min_width_px: int = 0,
     shared_min_height_px: int = 0,
+    prepared: PreparedCueImage | None = None,
 ) -> list[PerceivedThing]:
-    working = _working_rgb(rgb, working_width)
-    height, width = working.shape[:2]
+    prepared = _prepare_cue_image(rgb, working_width, prepared)
+    height, width = prepared.working_rgb().shape[:2]
     outputs: list[PerceivedThing] = []
-    for channel_name, channel in _gray_variants(working).items():
+    for channel_name, channel in prepared.gray_variants().items():
         for low, high, blur in ((25, 75, 3), (45, 120, 5), (70, 170, 7)):
             if shared_blur_kernel > 0:
                 blur = shared_blur_kernel
@@ -934,10 +930,11 @@ def _hough_fragments(
     working_width: int,
     max_boxes: int,
     shared_blur_kernel: int = 0,
+    prepared: PreparedCueImage | None = None,
 ) -> list[PerceivedThing]:
-    working = _working_rgb(rgb, working_width)
-    height, width = working.shape[:2]
-    gray = cv2.cvtColor(working, cv2.COLOR_RGB2GRAY)
+    prepared = _prepare_cue_image(rgb, working_width, prepared)
+    height, width = prepared.working_rgb().shape[:2]
+    gray = cv2.cvtColor(prepared.working_rgb(), cv2.COLOR_RGB2GRAY)
     blur_kernel = shared_blur_kernel or 5
     gray = cv2.GaussianBlur(gray, (blur_kernel, blur_kernel), 0)
     edges = cv2.Canny(gray, 35, 105, L2gradient=True)

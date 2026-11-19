@@ -74,8 +74,12 @@ class SimColorTargetsPlugin:
         self.min_obstruction_fraction = max(0.0, float(min_obstruction_fraction))
         self.evader_red_minimum = require_number(evader_red_minimum, field_name="evader_red_minimum", bounds=(0, 1))
         self.evader_red_lead = require_number(evader_red_lead, field_name="evader_red_lead", bounds=(0, 1))
-        self.evader_red_green_ratio = require_number(evader_red_green_ratio, field_name="evader_red_green_ratio", bounds=(0, 1e6))
-        self.evader_red_blue_ratio = require_number(evader_red_blue_ratio, field_name="evader_red_blue_ratio", bounds=(0, 1e6))
+        self.evader_red_green_ratio = require_number(
+            evader_red_green_ratio, field_name="evader_red_green_ratio", bounds=(0, float("inf")),
+        )
+        self.evader_red_blue_ratio = require_number(
+            evader_red_blue_ratio, field_name="evader_red_blue_ratio", bounds=(0, float("inf")),
+        )
         self.neutral_luma_minimum, self.neutral_luma_maximum = require_ordered_numbers(
             neutral_luma_minimum, neutral_luma_maximum,
             low_name="neutral_luma_minimum", high_name="neutral_luma_maximum", bounds=(0, 1),

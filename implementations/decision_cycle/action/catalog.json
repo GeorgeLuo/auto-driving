@@ -13,7 +13,7 @@
     },
     {
       "spec": "implementations.decision_cycle.action.mode.plugin:ModeAction",
-      "description": "Apply the selected command in a live drive mode (autonomy, local); otherwise authorize idle control.",
+      "description": "Apply the selected command in a live drive mode (autonomy); otherwise authorize idle control.",
       "default_config": {}
     }
   ]

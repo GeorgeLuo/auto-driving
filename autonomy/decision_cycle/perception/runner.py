@@ -38,6 +38,7 @@ from autonomy.decision_cycle.perception.interface import (
     PluginResultStatus,
 )
 from autonomy.decision_cycle.perception.plugin import (
+    PerceptionPlugin,
     PerceptionPluginContract,
     PerceptionPluginInputs,
     PerceptionPluginWarmingUp,
@@ -52,7 +53,7 @@ class _PluginExecution:
     error: str | None = None
 
 
-class PerceptionRunner(StepRunner[object]):
+class PerceptionRunner(StepRunner[PerceptionPlugin]):
     """Run the manager's selected perception plugins once per sensor frame.
 
     The cycle calls the runner with the frame context. ``perceive`` runs the
@@ -70,7 +71,7 @@ class PerceptionRunner(StepRunner[object]):
         definitions: Sequence[PluginDefinition],
         *,
         activation: StepActivation | None = None,
-        provided: Mapping[str, object] | None = None,
+        provided: Mapping[str, PerceptionPlugin] | None = None,
     ) -> None:
         self.last_output: PerceptionText | None = None
         self.last_frame_index: int | None = None
@@ -209,7 +210,7 @@ class PerceptionRunner(StepRunner[object]):
 
     # Selection hooks ------------------------------------------------------
 
-    def validate_plugin(self, plugin: object, definition: PluginDefinition) -> None:
+    def validate_plugin(self, plugin: PerceptionPlugin, definition: PluginDefinition) -> None:
         if not isinstance(getattr(plugin, "contract", None), PerceptionPluginContract):
             raise TypeError(
                 f"plugin {definition.plugin_id!r} must expose PerceptionPluginContract as contract"
@@ -217,7 +218,7 @@ class PerceptionRunner(StepRunner[object]):
         if not callable(getattr(plugin, "perceive", None)):
             raise TypeError(f"plugin {definition.plugin_id!r} must implement perceive()")
 
-    def validate_selection(self, plugins: tuple[object, ...]) -> None:
+    def validate_selection(self, plugins: tuple[PerceptionPlugin, ...]) -> None:
         """Resolve the feed provider each plugin declares; a feed has one provider."""
 
         super().validate_selection(plugins)
@@ -243,7 +244,7 @@ class PerceptionRunner(StepRunner[object]):
                     )
         self._feed_providers = providers
 
-    def _reset_plugin(self, plugin: object, shared_memory=None) -> None:
+    def _reset_plugin(self, plugin: PerceptionPlugin, shared_memory=None) -> None:
         try:
             super()._reset_plugin(plugin, shared_memory)
         except Exception:
@@ -252,7 +253,7 @@ class PerceptionRunner(StepRunner[object]):
 
     def _execute_plugin(
         self,
-        plugin: object,
+        plugin: PerceptionPlugin,
         request: PerceptionRequest,
         catalog_id: str,
         prior_things: tuple[PerceivedThing, ...] = (),
@@ -280,11 +281,8 @@ class PerceptionRunner(StepRunner[object]):
                 prior_things=prior_things,
             )
             with self._plugin_call(plugin, request.shared_memory):
-                batch = plugin.perceive(inputs)
-            if not isinstance(batch, PerceptionEvidenceBatch):
-                raise TypeError(
-                    f"plugin {catalog_id!r} must return PerceptionEvidenceBatch"
-                )
+                returned = plugin.perceive(inputs)
+            batch = _evidence_batch(returned, catalog_id)
             status: PluginResultStatus = "ok" if batch.signals or batch.things else "empty"
             return _execution(
                 started,
@@ -338,6 +336,14 @@ class PerceptionRunner(StepRunner[object]):
             raise TypeError(f"feed provider {spec!r} is not callable")
         self._feed_providers[spec] = provider
         return provider
+
+
+def _evidence_batch(returned: object, catalog_id: str) -> PerceptionEvidenceBatch:
+    """A perception plugin's return, which must be a ``PerceptionEvidenceBatch``."""
+
+    if not isinstance(returned, PerceptionEvidenceBatch):
+        raise TypeError(f"plugin {catalog_id!r} must return PerceptionEvidenceBatch")
+    return returned
 
 
 def _execution(

@@ -13,7 +13,8 @@
       "default_config": {
         "accepted_kinds": ["floor_boundary", "obstacle", "obstruction_evidence"],
         "retained_max_age_ms": 1000,
-        "steer_magnitude": 1.0
+        "steer_magnitude": 1.0,
+        "forward_throttle": 0.6
       }
     }
   ]

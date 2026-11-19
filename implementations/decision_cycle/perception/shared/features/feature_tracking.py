@@ -85,6 +85,79 @@ def grayscale(image: Image.Image) -> np.ndarray:
     return 0.299 * arr[..., 0] + 0.587 * arr[..., 1] + 0.114 * arr[..., 2]
 
 
+def _keypoint_window(
+    shape: tuple[int, ...],
+    bbox: list[int],
+    patch_radius: int,
+) -> tuple[int, int, int, int] | None:
+    x0, y0, x1, y1 = bbox
+    height, width = shape
+    margin = patch_radius + 2
+    x0 = max(x0 + margin, margin)
+    y0 = max(y0 + margin, margin)
+    x1 = min(x1 - margin, width - margin - 1)
+    y1 = min(y1 - margin, height - margin - 1)
+    if x1 <= x0 or y1 <= y0:
+        return None
+    return x0, y0, x1, y1
+
+
+def _harris_response(gray: np.ndarray, window: tuple[int, int, int, int]) -> np.ndarray:
+    dx = np.zeros_like(gray)
+    dy = np.zeros_like(gray)
+    dx[:, 1:-1] = gray[:, 2:] - gray[:, :-2]
+    dy[1:-1, :] = gray[2:, :] - gray[:-2, :]
+    ixx = box_sum(dx * dx, radius=2)
+    iyy = box_sum(dy * dy, radius=2)
+    ixy = box_sum(dx * dy, radius=2)
+    trace = ixx + iyy
+    determinant = ixx * iyy - ixy * ixy
+    score = determinant / np.maximum(trace, 1e-6)
+    x0, y0, x1, y1 = window
+    score[:y0, :] = 0
+    score[y1 + 1:, :] = 0
+    score[:, :x0] = 0
+    score[:, x1 + 1:] = 0
+    return score
+
+
+def _clear_keypoint_disk(eligible: np.ndarray, x: int, y: int, radius: int) -> None:
+    height, width = eligible.shape
+    left = max(0, x - radius)
+    right = min(width, x + radius + 1)
+    top = max(0, y - radius)
+    bottom = min(height, y + radius + 1)
+    px = np.arange(left, right) - x
+    py = np.arange(top, bottom) - y
+    eligible[top:bottom, left:right] &= (py[:, None] ** 2 + px ** 2) >= radius ** 2
+
+
+def _spaced_keypoints(
+    score: np.ndarray,
+    window: tuple[int, int, int, int],
+    *,
+    max_features: int,
+    min_distance: int,
+) -> list[tuple[int, int]]:
+    width = score.shape[1]
+    x0, y0, x1, y1 = window
+    flat = score.ravel()
+    above = np.flatnonzero(flat > np.percentile(score[y0:y1 + 1, x0:x1 + 1], 80))
+    order = above[np.argsort(-flat[above], kind="stable")]
+    eligible = np.ones(score.shape, dtype=bool)
+    selected: list[tuple[int, int]] = []
+    radius = abs(int(min_distance))
+    for index in order:
+        y, x = divmod(int(index), width)
+        if not eligible[y, x]:
+            continue
+        selected.append((x, y))
+        if len(selected) >= max_features:
+            break
+        _clear_keypoint_disk(eligible, x, y, radius)
+    return selected
+
+
 def detect_keypoints(
     gray: np.ndarray,
     bbox: list[int],
@@ -93,44 +166,15 @@ def detect_keypoints(
     min_distance: int,
     patch_radius: int,
 ) -> list[tuple[int, int]]:
-    x0, y0, x1, y1 = bbox
-    height, width = gray.shape
-    margin = patch_radius + 2
-    x0 = max(x0 + margin, margin)
-    y0 = max(y0 + margin, margin)
-    x1 = min(x1 - margin, width - margin - 1)
-    y1 = min(y1 - margin, height - margin - 1)
-    if x1 <= x0 or y1 <= y0:
+    window = _keypoint_window(gray.shape, bbox, patch_radius)
+    if window is None:
         return []
-
-    dx = np.zeros_like(gray)
-    dy = np.zeros_like(gray)
-    dx[:, 1:-1] = gray[:, 2:] - gray[:, :-2]
-    dy[1:-1, :] = gray[2:, :] - gray[:-2, :]
-
-    ixx = box_sum(dx * dx, radius=2)
-    iyy = box_sum(dy * dy, radius=2)
-    ixy = box_sum(dx * dy, radius=2)
-    trace = ixx + iyy
-    determinant = ixx * iyy - ixy * ixy
-    score = determinant / np.maximum(trace, 1e-6)
-    score[:y0, :] = 0
-    score[y1 + 1:, :] = 0
-    score[:, :x0] = 0
-    score[:, x1 + 1:] = 0
-
-    candidates = np.argwhere(score > np.percentile(score[y0:y1 + 1, x0:x1 + 1], 80))
-    candidates = sorted(candidates, key=lambda p: score[p[0], p[1]], reverse=True)
-
-    selected: list[tuple[int, int]] = []
-    min_distance_sq = min_distance * min_distance
-    for y, x in candidates:
-        point = (int(x), int(y))
-        if all((point[0] - px) ** 2 + (point[1] - py) ** 2 >= min_distance_sq for px, py in selected):
-            selected.append(point)
-            if len(selected) >= max_features:
-                break
-    return selected
+    return _spaced_keypoints(
+        _harris_response(gray, window),
+        window,
+        max_features=max_features,
+        min_distance=min_distance,
+    )
 
 
 def box_sum(values: np.ndarray, radius: int) -> np.ndarray:

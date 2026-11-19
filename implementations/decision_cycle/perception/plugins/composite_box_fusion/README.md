@@ -15,14 +15,22 @@ from commit `2e0a49d`. Step 3 enumerates bounded raw proposals, spatial
 clusters, raw/union/robust/median/intersection hypotheses, and deterministic
 selector choices before the inherited tracker receives a selected geometry.
 
-This plugin and the object-separated variant each inherit temporal association
-from `MultiObstructionTracksPlugin`. Each emits tracked `obstacle` things and
-the `multi_obstruction_tracks_available` signal, and keeps optical-flow history
-and ID allocation at `perception.<plugin_id>.history` in the host map. Select
-one directly, for example `plugins inspect perception images --plugin composite_box_fusion`.
-Selecting `multi_obstruction_tracks` alongside it runs an independent detector
-and tracker and emits evidence from both. The memory `bounded_evidence` plugin
-retains the tracked things for later steps.
+This plugin inherits temporal association from `MultiObstructionTracksPlugin`.
+It emits tracked `obstacle` things and the `multi_obstruction_tracks_available`
+signal, and keeps optical-flow history and ID allocation at
+`perception.composite_box_fusion.history` in the host map. Select it directly,
+for example `plugins inspect perception images --plugin composite_box_fusion`.
+The `object_separated_fusion` preset selects this same plugin with
+`object_separated_geometry` enabled, so reports use the `composite_box_fusion`
+plugin id. Selecting `multi_obstruction_tracks` alongside it runs an independent
+detector and tracker and emits evidence from both. The memory `bounded_evidence`
+plugin retains the tracked things for later steps.
+
+Corner junctions use `corner_max_corners` (600), `corner_radius_px` (96),
+and a pair-distance range `corner_pair_min_px`..`corner_pair_max_px` (24..360).
+A range with the low end above the high end is rejected at construction.
+`adaptive_contours_max_boxes` remains accepted so older staged configs still
+construct; the adaptive-contour cue itself is gone.
 
 Diagnostic scratch is call-local; selector-response caches remain
 content-addressed experiment inputs rather than temporal tracking history.

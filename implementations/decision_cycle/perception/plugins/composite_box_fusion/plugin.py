@@ -5,11 +5,12 @@ import hashlib
 import json
 import os
 from pathlib import Path
-from typing import Any
+from typing import Any, NamedTuple
 
 import cv2
 import numpy as np
 
+from autonomy.fields import FieldError, require_number, require_safe_int
 from autonomy.decision_cycle.perception.evidence.values import (
     PerceivedThing,
     PerceptionEvidenceBatch,
@@ -47,6 +48,8 @@ from .issue219_cues import (
     _partial_contour,
     _photometric_windows,
     _quad_rectangularity,
+    cue_preparation_active,
+    shared_cue_preparation,
 )
 from .geometry import (
     FIXED_JEV_PROMPT,
@@ -60,6 +63,33 @@ from .geometry import (
     select_jev_hypotheses,
     source_balanced_budget,
 )
+
+
+class _CompositeCues(NamedTuple):
+    source_things: dict[str, list[PerceivedThing]]
+    support_things: dict[str, list[PerceivedThing]]
+    floor_measurements: dict[str, object]
+    classical_summary: dict[str, object]
+
+
+class _RecordedCandidates(NamedTuple):
+    object_candidates: list[PerceivedThing]
+    filtered: list[PerceivedThing]
+    raw_proposal_records: list[dict[str, object]]
+    support_records: list[dict[str, object]]
+    geometry: dict[str, object]
+
+
+def _polygon_xy_norm(points: object) -> tuple[tuple[float, float], ...] | None:
+    """A normalized contour, or null when fewer than three points remain."""
+
+    polygon = tuple(
+        tuple(float(value) for value in point)
+        for point in (points or ())
+    )
+    if len(polygon) < 3:
+        return None
+    return polygon
 
 
 class CompositeBoxFusionPlugin(MultiObstructionTracksPlugin):
@@ -114,7 +144,6 @@ class CompositeBoxFusionPlugin(MultiObstructionTracksPlugin):
         "floor_context",
         "line_junction_support",
     )
-    _emit_object_separated_geometry = False
     _jev_cache_directory = Path(__file__).resolve().parent / "cache"
 
     def __init__(
@@ -129,6 +158,10 @@ class CompositeBoxFusionPlugin(MultiObstructionTracksPlugin):
         photometric_windows_max_boxes: int = 18,
         hough_fragments_max_boxes: int = 12,
         corner_junctions_max_boxes: int = 12,
+        corner_max_corners: int = 600,
+        corner_radius_px: float = 96.0,
+        corner_pair_min_px: float = 24.0,
+        corner_pair_max_px: float = 360.0,
         adaptive_contours_max_boxes: int = 12,
         floor_working_width: int = 320,
         floor_horizon_ratio: float = 0.40,
@@ -182,6 +215,22 @@ class CompositeBoxFusionPlugin(MultiObstructionTracksPlugin):
         self.photometric_windows_max_boxes = max(1, int(photometric_windows_max_boxes))
         self.hough_fragments_max_boxes = max(1, int(hough_fragments_max_boxes))
         self.corner_junctions_max_boxes = max(1, int(corner_junctions_max_boxes))
+        self.corner_max_corners = require_safe_int(
+            corner_max_corners, field_name="corner_max_corners"
+        )
+        if self.corner_max_corners < 1:
+            raise FieldError("corner_max_corners", "must be >= 1")
+        self.corner_radius_px = require_number(
+            corner_radius_px, field_name="corner_radius_px", bounds=(0, float("inf"))
+        )
+        self.corner_pair_min_px = require_number(
+            corner_pair_min_px, field_name="corner_pair_min_px", bounds=(0, float("inf"))
+        )
+        self.corner_pair_max_px = require_number(
+            corner_pair_max_px, field_name="corner_pair_max_px", bounds=(0, float("inf"))
+        )
+        if self.corner_pair_min_px > self.corner_pair_max_px:
+            raise FieldError("corner_pair_min_px", "must be <= corner_pair_max_px")
         self.adaptive_contours_max_boxes = max(1, int(adaptive_contours_max_boxes))
         self.raw_proposal_budget = max(1, int(raw_proposal_budget))
         self.geometry_max_clusters = max(1, int(geometry_max_clusters))
@@ -265,22 +314,47 @@ class CompositeBoxFusionPlugin(MultiObstructionTracksPlugin):
     def _detect_candidates(
         self, rgb: np.ndarray
     ) -> tuple[list[PerceivedThing], np.ndarray, dict[str, Any]]:
+        if not cue_preparation_active():
+            with shared_cue_preparation():
+                return self._detect_candidates(rgb)
         # Let the inherited current-edge detector normalize its raw input once.
         # The issue-219 edge/partial/line cues share one separately prepared
         # luminance image below; passing that image into the parent would apply
         # the configured normalization a second time to current edges.
         base_things, gray, base_summary = super()._detect_candidates(rgb)
-        normalized_rgb = self._normalized_luminance_rgb(rgb)
-        source_things: dict[str, list[PerceivedThing]] = {}
-        source_things["current_edge_contours"] = [
-            self._decorate("current_edge_contours", index, thing)
-            for index, thing in enumerate(base_things)
-        ]
-        support_things: dict[str, list[PerceivedThing]] = {}
-        floor_measurements: dict[str, Any] = {}
+        cues = self._collect_composite_cues(rgb, base_things)
+        return self._tracking_candidates_from_cues(gray, base_summary, cues)
 
+    def _collect_composite_cues(
+        self,
+        rgb: np.ndarray,
+        base_things: list[PerceivedThing],
+    ) -> _CompositeCues:
+        normalized_rgb = self._normalized_luminance_rgb(rgb)
+        source_things: dict[str, list[PerceivedThing]] = {
+            "current_edge_contours": [
+                self._decorate("current_edge_contours", index, thing)
+                for index, thing in enumerate(base_things)
+            ],
+        }
+        source_things.update(self._edge_and_partial_sources(normalized_rgb))
+        photometric_sources, classical_summary = self._photometric_sources(rgb)
+        source_things.update(photometric_sources)
+        floor_measurements = self._floor_context_measurements(rgb, source_things)
+        return _CompositeCues(
+            source_things,
+            self._line_support_sources(normalized_rgb),
+            floor_measurements,
+            classical_summary,
+        )
+
+    def _edge_and_partial_sources(
+        self,
+        normalized_rgb: np.ndarray,
+    ) -> dict[str, list[PerceivedThing]]:
+        sources: dict[str, list[PerceivedThing]] = {}
         if "edge_contours" in self.enabled_substrategies:
-            source_things["canny_morph"] = self._issue_cues(
+            sources["canny_morph"] = self._issue_cues(
                 "canny_morph",
                 _canny_morph(
                     normalized_rgb,
@@ -293,7 +367,7 @@ class CompositeBoxFusionPlugin(MultiObstructionTracksPlugin):
                 ),
             )
         if "partial_faces" in self.enabled_substrategies:
-            source_things["quad_rectangularity"] = self._issue_cues(
+            sources["quad_rectangularity"] = self._issue_cues(
                 "quad_rectangularity",
                 _quad_rectangularity(
                     normalized_rgb,
@@ -305,7 +379,7 @@ class CompositeBoxFusionPlugin(MultiObstructionTracksPlugin):
                     shared_max_vertices=self.shared_max_vertices,
                 ),
             )
-            source_things["partial_contour"] = self._issue_cues(
+            sources["partial_contour"] = self._issue_cues(
                 "partial_contour",
                 _partial_contour(
                     normalized_rgb,
@@ -317,39 +391,63 @@ class CompositeBoxFusionPlugin(MultiObstructionTracksPlugin):
                     shared_min_height_px=self.shared_min_height_px,
                 ),
             )
-        if "photometric_regions" in self.enabled_substrategies:
-            source_things["classical_regions"], classical_summary = self._classical_regions(rgb)
-            source_things["photometric_windows"] = self._issue_cues(
-                "photometric_windows",
-                _photometric_windows(
-                    rgb,
-                    working_width=self.issue_working_width,
-                    max_boxes=self.photometric_windows_max_boxes,
-                ),
-            )
-        else:
-            classical_summary = {}
-        if "floor_context" in self.enabled_substrategies:
-            try:
-                analysis = analyze_floor_continuity(rgb, self.floor_config)
-                source_things["floor_continuity"] = [
-                    self._floor_candidate(index, boundary, analysis)
-                    for index, boundary in enumerate(analysis.boundaries)
-                ]
-                floor_measurements = dict(analysis.measurements)
-            except Exception as exc:  # floor is one cue; preserve the other sources
-                source_things["floor_continuity"] = []
-                floor_measurements = {"error": f"{type(exc).__name__}: {exc}"}
-        if "line_junction_support" in self.enabled_substrategies:
-            support_things["corner_junctions"] = self._issue_cues(
+        return sources
+
+    def _photometric_sources(
+        self,
+        rgb: np.ndarray,
+    ) -> tuple[dict[str, list[PerceivedThing]], dict[str, object]]:
+        if "photometric_regions" not in self.enabled_substrategies:
+            return {}, {}
+        regions, summary = self._classical_regions(rgb)
+        windows = self._issue_cues(
+            "photometric_windows",
+            _photometric_windows(
+                rgb,
+                working_width=self.issue_working_width,
+                max_boxes=self.photometric_windows_max_boxes,
+            ),
+        )
+        return {
+            "classical_regions": regions,
+            "photometric_windows": windows,
+        }, summary
+
+    def _floor_context_measurements(
+        self,
+        rgb: np.ndarray,
+        source_things: dict[str, list[PerceivedThing]],
+    ) -> dict[str, object]:
+        if "floor_context" not in self.enabled_substrategies:
+            return {}
+        try:
+            analysis = analyze_floor_continuity(rgb, self.floor_config)
+            source_things["floor_continuity"] = [
+                self._floor_candidate(index, boundary, analysis)
+                for index, boundary in enumerate(analysis.boundaries)
+            ]
+            return dict(analysis.measurements)
+        except Exception as exc:  # floor is one cue; preserve the other sources
+            source_things["floor_continuity"] = []
+            return {"error": f"{type(exc).__name__}: {exc}"}
+
+    def _line_support_sources(self, normalized_rgb: np.ndarray) -> dict[str, list[PerceivedThing]]:
+        if "line_junction_support" not in self.enabled_substrategies:
+            return {}
+        return {
+            "corner_junctions": self._issue_cues(
                 "corner_junctions",
                 _corner_junctions(
                     normalized_rgb,
                     working_width=self.issue_working_width,
                     max_boxes=self.corner_junctions_max_boxes,
+                    max_corners=self.corner_max_corners,
+                    corner_radius_px=self.corner_radius_px,
+                    pair_min_px=self.corner_pair_min_px,
+                    pair_max_px=self.corner_pair_max_px,
                 ),
-            )
-            support_things["hough_fragments"] = self._issue_cues(
+            ),
+            "hough_fragments": self._issue_cues(
                 "hough_fragments",
                 _hough_fragments(
                     normalized_rgb,
@@ -357,26 +455,49 @@ class CompositeBoxFusionPlugin(MultiObstructionTracksPlugin):
                     max_boxes=self.hough_fragments_max_boxes,
                     shared_blur_kernel=self.shared_blur_kernel,
                 ),
-            )
-
-        object_candidates = [thing for things in source_things.values() for thing in things]
-        raw_proposal_records = [
-            self._proposal_record(thing)
-            for thing in object_candidates
-        ]
-        record_by_id = {
-            record["thing_id"]: record for record in raw_proposal_records
+            ),
         }
+
+    def _record_and_filter_candidates(
+        self,
+        source_things: dict[str, list[PerceivedThing]],
+        support_things: dict[str, list[PerceivedThing]],
+    ) -> _RecordedCandidates:
+        object_candidates = [thing for things in source_things.values() for thing in things]
+        raw_proposal_records = [self._proposal_record(thing) for thing in object_candidates]
+        record_by_id = {record["thing_id"]: record for record in raw_proposal_records}
         object_candidates, suppression_rejections = self._suppress_correlated(object_candidates)
-        for thing_id, reasons in suppression_rejections.items():
-            record = record_by_id.get(thing_id)
-            if record is not None:
-                record["rejection_reasons"].extend(reasons)
+        self._note_suppression(record_by_id, suppression_rejections)
         object_candidates = self._attach_line_support(
             object_candidates,
             [thing for things in support_things.values() for thing in things],
         )
         filtered = self._filter_candidates(tuple(object_candidates))
+        self._note_filter_rejections(record_by_id, object_candidates, filtered)
+        return _RecordedCandidates(
+            object_candidates,
+            filtered,
+            raw_proposal_records,
+            self._support_only_records(support_things),
+            self._enumerate_geometry(object_candidates, filtered, raw_proposal_records),
+        )
+
+    def _note_suppression(
+        self,
+        record_by_id: dict[str, dict[str, object]],
+        suppression_rejections: dict[str, list[str]],
+    ) -> None:
+        for thing_id, reasons in suppression_rejections.items():
+            record = record_by_id.get(thing_id)
+            if record is not None:
+                record["rejection_reasons"].extend(reasons)
+
+    def _note_filter_rejections(
+        self,
+        record_by_id: dict[str, dict[str, object]],
+        object_candidates: list[PerceivedThing],
+        filtered: list[PerceivedThing],
+    ) -> None:
         filtered_ids = {thing.thing_id for thing in filtered}
         for thing in object_candidates:
             record = record_by_id[thing.thing_id]
@@ -386,7 +507,12 @@ class CompositeBoxFusionPlugin(MultiObstructionTracksPlugin):
                 record["rejection_reasons"].append("candidate_budget_exceeded")
             record["pre_geometry_selected_for_tracking"] = thing.thing_id in filtered_ids
             record["selected_for_tracking"] = False
-        support_records = [
+
+    def _support_only_records(
+        self,
+        support_things: dict[str, list[PerceivedThing]],
+    ) -> list[dict[str, object]]:
+        return [
             {
                 **self._proposal_record(thing),
                 "rejection_reasons": ["support_only_not_object_candidate"],
@@ -395,26 +521,55 @@ class CompositeBoxFusionPlugin(MultiObstructionTracksPlugin):
             for things in support_things.values()
             for thing in things
         ]
-        geometry_result = self._enumerate_geometry(
-            object_candidates,
-            filtered,
-            raw_proposal_records,
+
+    def _tracking_candidates_from_cues(
+        self,
+        gray: np.ndarray,
+        base_summary: dict[str, object],
+        cues: _CompositeCues,
+    ) -> tuple[list[PerceivedThing], np.ndarray, dict[str, object]]:
+        recorded = self._record_and_filter_candidates(cues.source_things, cues.support_things)
+        tracking_candidates = recorded.geometry["tracking_candidates"]
+        source_counts = {source: len(things) for source, things in cues.source_things.items()}
+        support_counts = {source: len(things) for source, things in cues.support_things.items()}
+        self._last_composite_summary = self._composite_summary(
+            cues,
+            recorded,
+            tracking_candidates,
+            source_counts=source_counts,
+            support_counts=support_counts,
         )
-        tracking_candidates = geometry_result["tracking_candidates"]
-        source_counts = {source: len(things) for source, things in source_things.items()}
-        support_counts = {source: len(things) for source, things in support_things.items()}
-        self._last_composite_summary = {
+        detector_summary = self._merged_detector_summary(
+            base_summary,
+            cues=cues,
+            recorded=recorded,
+            tracking_candidates=tracking_candidates,
+            source_counts=source_counts,
+            support_counts=support_counts,
+        )
+        return tracking_candidates, gray, detector_summary
+
+    def _composite_summary(
+        self,
+        cues: _CompositeCues,
+        recorded: _RecordedCandidates,
+        tracking_candidates: list[PerceivedThing],
+        *,
+        source_counts: dict[str, int],
+        support_counts: dict[str, int],
+    ) -> dict[str, object]:
+        return {
             "enabled_substrategies": list(self.enabled_substrategies),
             "raw_counts_by_source": source_counts,
             "support_counts_by_source": support_counts,
-            "filtered_candidate_count": len(filtered),
+            "filtered_candidate_count": len(recorded.filtered),
             "tracking_candidate_count": len(tracking_candidates),
             "tracking_candidate_ids": [thing.thing_id for thing in tracking_candidates],
-            "floor": floor_measurements,
-            "classical_regions": classical_summary,
-            "raw_source_proposals": raw_proposal_records,
-            "support_proposals": support_records,
-            "geometry": geometry_result["summary"],
+            "floor": cues.floor_measurements,
+            "classical_regions": cues.classical_summary,
+            "raw_source_proposals": recorded.raw_proposal_records,
+            "support_proposals": recorded.support_records,
+            "geometry": recorded.geometry["summary"],
             "candidate_sources": [
                 {
                     "thing_id": thing.thing_id,
@@ -432,10 +587,21 @@ class CompositeBoxFusionPlugin(MultiObstructionTracksPlugin):
                     "bbox_xyxy_norm": thing.location.bbox_xyxy_norm,
                     "confidence": thing.confidence,
                 }
-                for things in support_things.values()
+                for things in cues.support_things.values()
                 for thing in things
             ],
         }
+
+    def _merged_detector_summary(
+        self,
+        base_summary: dict[str, object],
+        *,
+        cues: _CompositeCues,
+        recorded: _RecordedCandidates,
+        tracking_candidates: list[PerceivedThing],
+        source_counts: dict[str, int],
+        support_counts: dict[str, int],
+    ) -> dict[str, object]:
         detector_summary = dict(base_summary)
         detector_summary.update(
             {
@@ -443,14 +609,14 @@ class CompositeBoxFusionPlugin(MultiObstructionTracksPlugin):
                 "enabled_substrategies": list(self.enabled_substrategies),
                 "raw_counts_by_source": source_counts,
                 "support_counts_by_source": support_counts,
-                "candidate_count_before_tracking": len(filtered),
+                "candidate_count_before_tracking": len(recorded.filtered),
                 "candidate_count_after_geometry_selection": len(tracking_candidates),
-                "raw_source_proposal_count": len(raw_proposal_records),
-                "support_proposal_count": len(support_records),
-                "raw_source_proposals": raw_proposal_records,
-                "support_proposals": support_records,
-                "geometry": geometry_result["summary"],
-                "floor_measurements": floor_measurements,
+                "raw_source_proposal_count": len(recorded.raw_proposal_records),
+                "support_proposal_count": len(recorded.support_records),
+                "raw_source_proposals": recorded.raw_proposal_records,
+                "support_proposals": recorded.support_records,
+                "geometry": recorded.geometry["summary"],
+                "floor_measurements": cues.floor_measurements,
                 "shared_luminance_normalization": {
                     "mode": self.contrast_normalization,
                     "clip_limit": self.contrast_clip_limit,
@@ -460,7 +626,7 @@ class CompositeBoxFusionPlugin(MultiObstructionTracksPlugin):
             }
         )
         detector_summary["candidate_count_before_tracking"] = len(tracking_candidates)
-        return tracking_candidates, gray, detector_summary
+        return detector_summary
 
     def _normalized_luminance_rgb(self, rgb: np.ndarray) -> np.ndarray:
         if self.contrast_normalization == "none":
@@ -527,6 +693,7 @@ class CompositeBoxFusionPlugin(MultiObstructionTracksPlugin):
         things: list[PerceivedThing] = []
         for index, proposal in enumerate(proposals):
             bbox = tuple(float(value) for value in proposal["bbox"])
+            contour = proposal.get("contour", [])
             things.append(
                 self._decorate(
                     "classical_regions",
@@ -539,10 +706,7 @@ class CompositeBoxFusionPlugin(MultiObstructionTracksPlugin):
                             frame="image",
                             zone=zone(bbox),
                             bbox_xyxy_norm=bbox,
-                            polygon_xy_norm=tuple(
-                                tuple(float(value) for value in point)
-                                for point in proposal.get("contour", [])
-                            ),
+                            polygon_xy_norm=_polygon_xy_norm(contour),
                         ),
                         confidence=float(proposal["confidence"]),
                         properties={
@@ -695,8 +859,8 @@ class CompositeBoxFusionPlugin(MultiObstructionTracksPlugin):
             split_spatial_modes=self.geometry_split_spatial_modes,
             split_center_gap=self.geometry_split_center_gap,
             **(
-                {"object_separated": self.object_separated_geometry}
-                if self._emit_object_separated_geometry
+                {"object_separated": True}
+                if self.object_separated_geometry
                 else {}
             ),
         )
@@ -812,8 +976,8 @@ class CompositeBoxFusionPlugin(MultiObstructionTracksPlugin):
             },
             "active_selector": self.geometry_selector,
             **(
-                {"object_separated_geometry": self.object_separated_geometry}
-                if self._emit_object_separated_geometry
+                {"object_separated_geometry": True}
+                if self.object_separated_geometry
                 else {}
             ),
             "selected_hypotheses": [hypothesis.to_dict() for hypothesis in selected_hypotheses],

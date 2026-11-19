@@ -6,6 +6,8 @@ from typing import Any
 import cv2
 import numpy as np
 
+from autonomy.fields import FieldError, require_number
+
 
 @dataclass(frozen=True)
 class FloorContinuityConfig:
@@ -26,6 +28,14 @@ class FloorContinuityConfig:
     minimum_boundary_width_ratio: float = 0.025
     minimum_boundary_confidence: float = 0.65
     max_boundaries: int = 8
+    center_support_x0: float = 0.40
+    center_support_x1: float = 0.60
+
+    def __post_init__(self) -> None:
+        low = require_number(self.center_support_x0, field_name="center_support_x0", bounds=(0, 1))
+        high = require_number(self.center_support_x1, field_name="center_support_x1", bounds=(0, 1))
+        if low > high:
+            raise FieldError("center_support_x0", "must be <= center_support_x1")
 
 
 @dataclass(frozen=True)
@@ -83,7 +93,10 @@ def analyze_floor_continuity(
 
     roi_pixels = max(int(np.count_nonzero(roi_mask)), 1)
     floor_fraction = float(np.count_nonzero(floor_mask & roi_mask) / roi_pixels)
-    center_slice = slice(max(0, int(width * 0.4)), min(width, int(width * 0.6)))
+    center_slice = slice(
+        max(0, int(width * config.center_support_x0)),
+        min(width, int(width * config.center_support_x1)),
+    )
     center_columns = floor_mask[:, center_slice].any(axis=0)
     center_support = float(np.mean(center_columns)) if center_columns.size else 0.0
     floor_confidence = _clamp01(
@@ -318,6 +331,33 @@ def _bottom_connected_floor(
     return floor & candidate_mask
 
 
+def _first_column_hits(
+    bottom_floor: np.ndarray,
+    bottom_valid: np.ndarray,
+    floor_minimum: int,
+    run_minimum: int,
+) -> tuple[np.ndarray, np.ndarray, np.ndarray]:
+    """First bottom-up occupied run. Validity is already stopped at the first gap."""
+
+    height = bottom_floor.shape[0]
+    if height < run_minimum:
+        empty = np.empty(0, dtype=np.intp)
+        return empty, empty, empty
+    floor_prefix = np.cumsum(bottom_floor & bottom_valid, axis=0, dtype=np.int32)
+    occupied = bottom_valid & ~bottom_floor
+    occupied_prefix = np.empty((height + 1, occupied.shape[1]), dtype=np.int32)
+    occupied_prefix[0] = 0
+    np.cumsum(occupied, axis=0, dtype=np.int32, out=occupied_prefix[1:])
+    eligible = occupied_prefix[run_minimum:] - occupied_prefix[:-run_minimum] == run_minimum
+    eligible &= floor_prefix[: height - run_minimum + 1] >= floor_minimum
+    columns = np.flatnonzero(eligible.any(axis=0))
+    if columns.size == 0:
+        empty = np.empty(0, dtype=np.intp)
+        return empty, empty, np.empty(0, dtype=np.int32)
+    starts = np.argmax(eligible[:, columns], axis=0)
+    return columns, starts, floor_prefix[starts, columns]
+
+
 def _first_interruptions(
     floor_mask: np.ndarray,
     roi_mask: np.ndarray,
@@ -325,47 +365,31 @@ def _first_interruptions(
     config: FloorContinuityConfig,
 ) -> tuple[np.ndarray, dict[int, dict[str, float]]]:
     height, width = floor_mask.shape
-    min_floor = max(1, int(config.minimum_floor_support_px))
-    min_run = max(1, int(config.minimum_interruption_run_px))
+    run_minimum = max(1, int(config.minimum_interruption_run_px))
+    # A column stops at the first row, from the bottom, that leaves the ROI.
+    valid = np.logical_and.accumulate(roi_mask[::-1], axis=0)
+    columns, starts, supports = _first_column_hits(
+        floor_mask[::-1],
+        valid,
+        max(1, int(config.minimum_floor_support_px)),
+        run_minimum,
+    )
     hits = np.zeros_like(floor_mask, dtype=np.uint8)
     details: dict[int, dict[str, float]] = {}
-    for x in range(width):
-        floor_support = 0
-        non_floor_run = 0
-        run_start = -1
-        for y in range(height - 1, -1, -1):
-            if not roi_mask[y, x]:
-                break
-            if floor_mask[y, x]:
-                floor_support += 1
-                non_floor_run = 0
-                continue
-            if floor_support < min_floor:
-                non_floor_run = 0
-                continue
-            if non_floor_run == 0:
-                run_start = y
-            non_floor_run += 1
-            if non_floor_run >= min_run:
-                y0 = max(0, run_start - 2)
-                y1 = min(height, run_start + 3)
-                hits[y0:y1, x] = 1
-                details[x] = {
-                    "y": float(run_start),
-                    "floor_support": float(floor_support),
-                    "edge_support": float(np.max(gradient_unit[y0:y1, x])),
-                    "run_support": float(non_floor_run),
-                }
-                break
-
+    for x, start, support in zip(columns.tolist(), starts.tolist(), supports.tolist(), strict=True):
+        y = height - 1 - start
+        y0, y1 = max(0, y - 2), min(height, y + 3)
+        hits[y0:y1, x] = 1
+        details[x] = {
+            "y": float(y),
+            "floor_support": float(support),
+            "edge_support": float(gradient_unit[y0:y1, x].max()),
+            "run_support": float(run_minimum),
+        }
     close_width = max(3, int(round(width * config.minimum_boundary_width_ratio)))
     if close_width % 2 == 0:
         close_width += 1
-    hits = cv2.morphologyEx(
-        hits,
-        cv2.MORPH_CLOSE,
-        np.ones((3, close_width), dtype=np.uint8),
-    )
+    hits = cv2.morphologyEx(hits, cv2.MORPH_CLOSE, np.ones((3, close_width), dtype=np.uint8))
     return hits.astype(bool), details
 
 

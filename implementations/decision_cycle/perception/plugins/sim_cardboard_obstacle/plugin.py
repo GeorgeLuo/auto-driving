@@ -21,6 +21,7 @@ from implementations.decision_cycle.perception.feeds.camera import (
     CameraFrame,
     FRONT_CAMERA_RGB_INPUT,
 )
+from autonomy.fields import FieldError, require_number, require_safe_int
 from implementations.decision_cycle.perception.shared.obstructions.boxes import zone
 
 
@@ -65,12 +66,41 @@ class SimCardboardObstaclePlugin:
         max_area_fraction: float = 0.9,
         close_px: int = 5,
         open_px: int = 3,
+        red_minimum: float = 0.28,
+        red_maximum: float = 0.86,
+        green_minimum: float = 0.12,
+        green_maximum: float = 0.66,
+        blue_maximum: float = 0.48,
+        red_green_lead: float = 0.08,
+        green_blue_lead: float = 0.04,
+        chroma_minimum: float = 0.20,
+        brightness_minimum: float = 0.16,
+        brightness_maximum: float = 0.72,
+        split_width_ratio: float = 0.10,
+        split_step_ratio: float = 0.04,
+        split_width_floor_px: int = 5,
+        split_step_floor_px: float = 3.0,
     ) -> None:
         self.working_width = max(80, int(working_width))
         self.min_area_fraction = max(0.0, min(1.0, float(min_area_fraction)))
         self.max_area_fraction = max(self.min_area_fraction, min(1.0, float(max_area_fraction)))
         self.close_px = max(0, int(close_px))
         self.open_px = max(0, int(open_px))
+        self.red_minimum, self.red_maximum = _ordered_unit("red_minimum", red_minimum, "red_maximum", red_maximum)
+        self.green_minimum, self.green_maximum = _ordered_unit(
+            "green_minimum", green_minimum, "green_maximum", green_maximum,
+        )
+        self.blue_maximum = require_number(blue_maximum, field_name="blue_maximum", bounds=(0, 1))
+        self.red_green_lead = require_number(red_green_lead, field_name="red_green_lead", bounds=(0, 1))
+        self.green_blue_lead = require_number(green_blue_lead, field_name="green_blue_lead", bounds=(0, 1))
+        self.chroma_minimum = require_number(chroma_minimum, field_name="chroma_minimum", bounds=(0, 1))
+        self.brightness_minimum, self.brightness_maximum = _ordered_unit(
+            "brightness_minimum", brightness_minimum, "brightness_maximum", brightness_maximum,
+        )
+        self.split_width_ratio = require_number(split_width_ratio, field_name="split_width_ratio", bounds=(0, 1))
+        self.split_step_ratio = require_number(split_step_ratio, field_name="split_step_ratio", bounds=(0, 1))
+        self.split_width_floor_px = require_safe_int(split_width_floor_px, field_name="split_width_floor_px")
+        self.split_step_floor_px = require_number(split_step_floor_px, field_name="split_step_floor_px", bounds=(0, 1e6))
 
     def perceive(self, inputs: PerceptionPluginInputs) -> PerceptionEvidenceBatch:
         frame = inputs.require("frame", CameraFrame)
@@ -81,6 +111,7 @@ class SimCardboardObstaclePlugin:
             max_area_fraction=self.max_area_fraction,
             close_px=self.close_px,
             open_px=self.open_px,
+            plugin=self,
         )
         return PerceptionEvidenceBatch(
             signals=(_sight_signal(obstacles),),
@@ -105,6 +136,14 @@ def _resize_rgb(rgb: np.ndarray, working_width: int) -> np.ndarray:
     return np.ascontiguousarray(resized)
 
 
+def _ordered_unit(low_name: str, low: object, high_name: str, high: object) -> tuple[float, float]:
+    low_value = require_number(low, field_name=low_name, bounds=(0, 1))
+    high_value = require_number(high, field_name=high_name, bounds=(0, 1))
+    if low_value > high_value:
+        raise FieldError(low_name, f"must be <= {high_name}")
+    return low_value, high_value
+
+
 def _detect(
     rgb: np.ndarray,
     *,
@@ -112,8 +151,9 @@ def _detect(
     max_area_fraction: float,
     close_px: int,
     open_px: int,
+    plugin: SimCardboardObstaclePlugin,
 ) -> tuple[_Obstacle, ...]:
-    mask = _cardboard_mask(rgb)
+    mask = _cardboard_mask(rgb, plugin)
     mask = _refine_mask(mask, close_px=close_px, open_px=open_px)
     height, width = mask.shape[:2]
     count, labels, stats, _centroids = cv2.connectedComponentsWithStats(mask, connectivity=8)
@@ -124,7 +164,7 @@ def _detect(
         if area / image_area < min_area_fraction:
             continue
         component = labels[y:y + box_height, x:x + box_width] == label
-        for offset, region in _visible_regions(component, min_area_fraction * image_area):
+        for offset, region in _visible_regions(component, min_area_fraction * image_area, plugin):
             area = int(region.sum())
             fraction = area / image_area
             if not min_area_fraction <= fraction <= max_area_fraction:
@@ -147,7 +187,11 @@ def _detect(
     return tuple(sorted(obstacles, key=lambda item: (-item.area_fraction, item.bbox_xyxy_norm)))
 
 
-def _visible_regions(component: np.ndarray, minimum_area: float) -> list[tuple[int, np.ndarray]]:
+def _visible_regions(
+    component: np.ndarray,
+    minimum_area: float,
+    plugin: SimCardboardObstaclePlugin,
+) -> list[tuple[int, np.ndarray]]:
     """Separate touching boxes at steps in their visible ground-contact edge.
 
     Box faces at different depths can touch in the color mask. Their lower
@@ -157,13 +201,14 @@ def _visible_regions(component: np.ndarray, minimum_area: float) -> list[tuple[i
     """
 
     height, width = component.shape
-    minimum_width = max(5, int(round(height * 0.1)))
+    minimum_width = max(plugin.split_width_floor_px, int(round(height * plugin.split_width_ratio)))
     if width < 2 * minimum_width:
         return [(0, component)]
     bottom = height - 1 - component[::-1].argmax(axis=0).astype(np.float32)
     bottom = cv2.medianBlur(bottom[None, :], 5).ravel()
-    steps = np.abs(bottom[4:] - bottom[:-4])
-    candidates = np.flatnonzero(steps >= max(3.0, height * 0.04)) + 2
+    span = 4
+    steps = np.abs(bottom[span:] - bottom[:-span])
+    candidates = np.flatnonzero(steps >= max(plugin.split_step_floor_px, height * plugin.split_step_ratio)) + span // 2
     groups: list[list[int]] = []
     for column in candidates:
         column = int(column)
@@ -185,24 +230,23 @@ def _visible_regions(component: np.ndarray, minimum_area: float) -> list[tuple[i
     return [(left, component[:, left:right]) for left, right in zip(boundaries, boundaries[1:])]
 
 
-def _cardboard_mask(rgb: np.ndarray) -> np.ndarray:
-    image = rgb.astype(np.float32) / 255.0
-    red = image[:, :, 0]
-    green = image[:, :, 1]
-    blue = image[:, :, 2]
-    chroma = image.max(axis=2) - image.min(axis=2)
-    brightness = image.mean(axis=2)
+def _cardboard_mask(rgb: np.ndarray, plugin: SimCardboardObstaclePlugin) -> np.ndarray:
+    image = rgb.astype(np.float32) / np.float32(255.0)
+    red, green, blue = image[..., 0], image[..., 1], image[..., 2]
+    brightness = (red + green + blue) / np.float32(3)
+    # Channel leads make red the brightest channel and blue the darkest, so
+    # chroma is exactly red minus blue.
     cardboard = (
-        (red > 0.28)
-        & (red < 0.86)
-        & (green > 0.12)
-        & (green < 0.66)
-        & (blue < 0.48)
-        & ((red - green) > 0.08)
-        & ((green - blue) > 0.04)
-        & (chroma > 0.20)
-        & (brightness < 0.72)
-        & (brightness > 0.16)
+        (red > plugin.red_minimum)
+        & (red < plugin.red_maximum)
+        & (green > plugin.green_minimum)
+        & (green < plugin.green_maximum)
+        & (blue < plugin.blue_maximum)
+        & (red - green > plugin.red_green_lead)
+        & (green - blue > plugin.green_blue_lead)
+        & (red - blue > plugin.chroma_minimum)
+        & (brightness < plugin.brightness_maximum)
+        & (brightness > plugin.brightness_minimum)
     )
     return cardboard.astype(np.uint8)
 

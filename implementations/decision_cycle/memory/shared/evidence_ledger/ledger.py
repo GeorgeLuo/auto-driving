@@ -57,21 +57,6 @@ class LedgerBounds:
         )))
 
 
-def bounds_from_config(config: dict[str, Any]) -> LedgerBounds:
-    max_age_ms = config.get("max_age_ms", DEFAULT_MAX_AGE_MS)
-    max_property_bytes = config.get("max_property_bytes", DEFAULT_MAX_PROPERTY_BYTES)
-    max_serialized_bytes = config.get("max_serialized_bytes", DEFAULT_MAX_SERIALIZED_BYTES)
-    return LedgerBounds(
-        max_records=int(config.get("max_records", DEFAULT_MAX_RECORDS)),
-        max_age_ms=int(max_age_ms) if max_age_ms is not None else None,
-        eviction_policy=str(config.get("eviction_policy") or DEFAULT_EVICTION_POLICY),
-        max_property_bytes=int(max_property_bytes) if max_property_bytes is not None else None,
-        max_serialized_bytes=(
-            int(max_serialized_bytes) if max_serialized_bytes is not None else None
-        ),
-    )
-
-
 @dataclass(frozen=True)
 class EvidenceLedger:
     """Retained records and the bookkeeping that later frames read back."""

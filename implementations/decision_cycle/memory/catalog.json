@@ -23,7 +23,7 @@
     },
     {
       "spec": "implementations.decision_cycle.memory.plugins.control_runs.plugin:ControlRuns",
-      "description": "Retain the last 40 runs of attributed applied autonomy controls. Arm by name to append to collection memory.",
+      "description": "Retain the last 40 runs of applied control receipts. Observe-only produces no applied runs. Arm by name to append to collection memory.",
       "default_config": {}
     }
   ]

@@ -147,10 +147,11 @@ class WorkbenchTests(unittest.TestCase):
 
     def test_shared_memory_connects_plugin_and_memory_step_across_frames(self):
         PROBE_READS.clear()
-        perception_step = PerceptionRunner.from_selection(
-            plugins=["probe"],
-            plugin_specs={"probe": f"{__name__}:SharedMemoryProbe"},
-        )
+        perception_step = PerceptionRunner.from_activation(step_activation(
+            "perception",
+            ["probe"],
+            {"probe": f"{__name__}:SharedMemoryProbe"},
+        ))
         step_reads = []
         reports = []
         published = []

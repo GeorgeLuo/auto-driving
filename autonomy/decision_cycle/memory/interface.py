@@ -1,9 +1,8 @@
 """The memory step's contract, report, and the ledger summary tooling reads.
 
-``MemoryBackend`` is the runner boundary, as ``PerceptionBackend`` is for
-perception. ``FAILURE_POLICY`` is what ``MemoryRunner`` does when a plugin
-fails. The evidence slot stays one value per key, last write wins for evidence
-and beliefs.
+``MemoryRunner`` is the runner boundary. ``FAILURE_POLICY`` is what it does
+when a plugin fails. The evidence slot stays one value per key, last write
+wins for evidence and beliefs.
 
 ``MemoryReport`` is the diagnostics record for one run, with one
 ``MemoryPluginReport`` per applied plugin in selection order, and
@@ -18,11 +17,9 @@ from __future__ import annotations
 
 from collections.abc import Mapping
 from dataclasses import dataclass
-from typing import Any, Protocol, runtime_checkable
+from typing import Any
 
-from autonomy.decision_cycle.context import DecisionFrameContext
 from autonomy.decision_cycle.runner import FailurePolicy
-from autonomy.shared_memory import SharedMemory
 from autonomy.fields import FieldError, require_ascii_id, require_choice, require_keys, require_nested, require_schema
 from autonomy.serialization import deep_freeze, frozen_mapping_to_dict
 
@@ -35,22 +32,6 @@ FAILURE_POLICY = FailurePolicy(
     reset="record",
     missing_input="invoke",
 )
-
-
-@runtime_checkable
-class MemoryBackend(Protocol):
-    """Run memory on the cycle context and its host map, returning a report."""
-
-    plugin_id: str
-
-    def reset(self, shared_memory: SharedMemory | None = None) -> dict[str, Any]:
-        """Reset each plugin. Return the keys written during the reset."""
-
-    def update(
-        self,
-        context: DecisionFrameContext,
-    ) -> MemoryReport:
-        """Run one cycle. Return the memory report."""
 
 
 EPOCH_ID = "epoch_id"

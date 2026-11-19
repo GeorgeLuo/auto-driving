@@ -1,12 +1,16 @@
 from __future__ import annotations
 
 import json
-from dataclasses import dataclass, asdict
+from dataclasses import dataclass, asdict, fields
+from functools import lru_cache
 from pathlib import Path
 from typing import Any
 
+import cv2
 import numpy as np
 from PIL import Image, ImageDraw
+
+from autonomy.fields import require_number, require_safe_int
 
 
 @dataclass
@@ -31,6 +35,19 @@ class FloorPlaneConfig:
     min_boundary_width_ratio: float = 0.02
     near_width_ratio: float = 1.0
     far_width_ratio: float = 0.34
+
+    def __post_init__(self) -> None:
+        integers = {
+            "morph_radius", "topdown_width", "topdown_height", "topdown_margin",
+            "obstacle_run_length", "min_floor_support", "boundary_dilate_radius",
+        }
+        for field in fields(self):
+            value = getattr(self, field.name)
+            if field.name in integers:
+                validated = require_safe_int(value, field_name=field.name)
+            else:
+                validated = require_number(value, field_name=field.name)
+            setattr(self, field.name, validated)
 
 
 @dataclass
@@ -92,68 +109,68 @@ def process_still(image_path: str | Path, out_dir: str | Path,
     return result
 
 
-def estimate_floor_mask(rgb: np.ndarray, config: FloorPlaneConfig) -> tuple[np.ndarray, np.ndarray, dict[str, Any]]:
-    height, width = rgb.shape[:2]
-    yy = np.arange(height)[:, None]
-    roi_mask = np.broadcast_to(yy >= int(height * config.horizon_ratio), (height, width))
+def _floor_color_features(rgb: np.ndarray, brightness_weight: float) -> np.ndarray:
+    red, green, blue = rgb[..., 0], rgb[..., 1], rgb[..., 2]
+    total = np.maximum(red + green + blue, 1e-4)
+    luma = (0.299 * red + 0.587 * green + 0.114 * blue) * brightness_weight
+    return np.stack((red / total, green / total, blue / total, luma), axis=-1)
 
-    x0 = int(width * config.seed_x0_ratio)
-    x1 = int(width * config.seed_x1_ratio)
-    y0 = int(height * config.seed_y0_ratio)
-    y1 = int(height * config.seed_y1_ratio)
 
-    features = color_features(rgb, config.brightness_weight)
-    seed = features[y0:y1, x0:x1].reshape(-1, features.shape[-1])
+def _seed_rect(width: int, height: int, config: FloorPlaneConfig) -> tuple[int, int, int, int]:
+    return (
+        int(width * config.seed_x0_ratio),
+        int(height * config.seed_y0_ratio),
+        int(width * config.seed_x1_ratio),
+        int(height * config.seed_y1_ratio),
+    )
+
+
+def _seed_center_and_spread(
+    features: np.ndarray,
+    seed_rect: tuple[int, int, int, int],
+) -> tuple[np.ndarray, np.ndarray]:
+    x0, y0, x1, y1 = seed_rect
+    seed = features[y0:y1, x0:x1].reshape(-1, 4)
     seed_luma = seed[:, -1]
     low, high = np.quantile(seed_luma, [0.08, 0.92])
     seed = seed[(seed_luma >= low) & (seed_luma <= high)]
-
     center = np.median(seed, axis=0)
     spread = np.median(np.abs(seed - center), axis=0) * 1.4826
-    spread = np.maximum(spread, np.array([0.025, 0.025, 0.025, 0.04], dtype=np.float32))
+    return center, np.maximum(spread, np.array([0.025, 0.025, 0.025, 0.04], dtype=np.float32))
 
-    dist = np.sqrt(np.sum(((features - center) / spread) ** 2, axis=-1))
+
+def _opened_floor_mask(floor_mask: np.ndarray, config: FloorPlaneConfig) -> np.ndarray:
+    side = 2 * int(config.morph_radius) + 1
+    counts = cv2.boxFilter(
+        floor_mask.astype(np.uint8),
+        cv2.CV_32S,
+        (side, side),
+        normalize=False,
+        borderType=cv2.BORDER_CONSTANT,
+    )
+    return counts >= side * side * config.morph_threshold
+
+
+def estimate_floor_mask(rgb: np.ndarray, config: FloorPlaneConfig) -> tuple[np.ndarray, np.ndarray, dict[str, Any]]:
+    height, width = rgb.shape[:2]
+    roi_mask = np.broadcast_to(
+        np.arange(height)[:, None] >= int(height * config.horizon_ratio),
+        (height, width),
+    )
+    features = _floor_color_features(rgb, config.brightness_weight)
+    seed_rect = _seed_rect(width, height, config)
+    center, spread = _seed_center_and_spread(features, seed_rect)
+    square = ((features - center) / spread) ** 2
+    dist = np.sqrt(square[..., 0] + square[..., 1] + square[..., 2] + square[..., 3])
     floor_mask = (dist <= config.floor_threshold) & roi_mask
-    floor_mask = majority_filter(floor_mask, config.morph_radius, config.morph_threshold) & roi_mask
-
+    if config.morph_radius > 0:
+        floor_mask = _opened_floor_mask(floor_mask, config)
     model_info = {
-        "seed_rect": [x0, y0, x1, y1],
+        "seed_rect": [seed_rect[0], seed_rect[1], seed_rect[2], seed_rect[3]],
         "feature_center": center.round(5).tolist(),
         "feature_spread": spread.round(5).tolist(),
     }
-    return floor_mask, roi_mask, model_info
-
-
-def color_features(rgb: np.ndarray, brightness_weight: float) -> np.ndarray:
-    total = np.maximum(rgb.sum(axis=-1, keepdims=True), 1e-4)
-    chroma = rgb / total
-    luma = (
-        0.299 * rgb[..., 0] +
-        0.587 * rgb[..., 1] +
-        0.114 * rgb[..., 2]
-    )[..., None] * brightness_weight
-    return np.concatenate([chroma, luma], axis=-1)
-
-
-def majority_filter(mask: np.ndarray, radius: int, threshold: float) -> np.ndarray:
-    if radius <= 0:
-        return mask
-    counts = window_sum(mask, radius)
-    area = (radius * 2 + 1) ** 2
-    return counts >= area * threshold
-
-
-def window_sum(mask: np.ndarray, radius: int) -> np.ndarray:
-    padded = np.pad(mask.astype(np.uint8), radius, mode="constant")
-    integral = padded.cumsum(axis=0).cumsum(axis=1)
-    integral = np.pad(integral, ((1, 0), (1, 0)), mode="constant")
-    size = radius * 2 + 1
-    return (
-        integral[size:, size:]
-        - integral[:-size, size:]
-        - integral[size:, :-size]
-        + integral[:-size, :-size]
-    )
+    return floor_mask & roi_mask, roi_mask, model_info
 
 
 def make_overlay(image: Image.Image, floor_mask: np.ndarray, occupied_mask: np.ndarray,
@@ -277,47 +294,79 @@ def raycast_source_occupancy(floor_mask: np.ndarray, occupied_mask: np.ndarray,
     return np.asarray(occupancy_img, dtype=np.uint8)
 
 
+def _first_hits(
+    bottom_floor: np.ndarray,
+    bottom_valid: np.ndarray,
+    floor_minimum: int,
+    run_minimum: int,
+    *,
+    reset_at_gaps: bool,
+) -> tuple[np.ndarray, np.ndarray, np.ndarray]:
+    """First bottom-up run of occupied pixels after enough floor support."""
+
+    height = bottom_floor.shape[0]
+    if height < run_minimum:
+        empty = np.empty(0, dtype=np.intp)
+        return empty, empty, empty
+    floor_prefix = np.cumsum(bottom_floor & bottom_valid, axis=0, dtype=np.int32)
+    if reset_at_gaps:
+        rows = np.arange(height, dtype=np.int32)[:, None]
+        last_gap = np.maximum.accumulate(np.where(bottom_valid, -1, rows), axis=0)
+        previous_floor = np.take_along_axis(floor_prefix, last_gap.clip(min=0), axis=0)
+        floor_prefix -= np.where(last_gap == -1, 0, previous_floor)
+    occupied = bottom_valid & ~bottom_floor
+    occupied_prefix = np.empty((height + 1, occupied.shape[1]), dtype=np.int32)
+    occupied_prefix[0] = 0
+    np.cumsum(occupied, axis=0, dtype=np.int32, out=occupied_prefix[1:])
+    eligible = occupied_prefix[run_minimum:] - occupied_prefix[:-run_minimum] == run_minimum
+    eligible &= floor_prefix[: height - run_minimum + 1] >= floor_minimum
+    columns = np.flatnonzero(eligible.any(axis=0))
+    starts = np.argmax(eligible[:, columns], axis=0) if columns.size else np.empty(0, dtype=np.intp)
+    return columns, starts, floor_prefix[starts, columns] if columns.size else np.empty(0, dtype=np.int32)
+
+
+@lru_cache(maxsize=8)
+def _cached_source_mask(
+    width: int,
+    height: int,
+    horizon_ratio: float,
+    near_width_ratio: float,
+    far_width_ratio: float,
+) -> np.ndarray:
+    config = FloorPlaneConfig(
+        horizon_ratio=horizon_ratio,
+        near_width_ratio=near_width_ratio,
+        far_width_ratio=far_width_ratio,
+    )
+    return polygon_mask(width, height, source_quad(width, height, config))
+
+
 def source_obstacle_hits(floor_mask: np.ndarray, config: FloorPlaneConfig) -> np.ndarray:
     """Locate the first sustained non-floor boundary after supported visible floor."""
 
     height, width = floor_mask.shape
-    source_mask = polygon_mask(width, height, source_quad(width, height, config))
-    horizon_y = int(height * config.horizon_ratio)
-    min_obstacle_run = max(1, int(config.obstacle_run_length))
-    min_floor_support = max(1, int(config.min_floor_support))
-    hit_mask = np.zeros_like(floor_mask, dtype=bool)
-
-    for x in range(width):
-        floor_support = 0
-        non_floor_run = 0
-        run_start_y = -1
-        for y in range(height - 1, horizon_y - 1, -1):
-            if not source_mask[y, x]:
-                floor_support = 0
-                non_floor_run = 0
-                continue
-            if floor_mask[y, x]:
-                floor_support += 1
-                non_floor_run = 0
-                continue
-            if floor_support < min_floor_support:
-                non_floor_run = 0
-                continue
-            if non_floor_run == 0:
-                run_start_y = y
-            non_floor_run += 1
-            if non_floor_run >= min_obstacle_run:
-                hit_mask[run_start_y, x] = True
-                break
-
+    horizon = int(height * config.horizon_ratio)
+    if horizon >= height:
+        return np.zeros_like(floor_mask, dtype=bool)
+    # A negative horizon still walks every row; a negative slice would not.
+    scan_from = max(0, horizon)
+    columns, starts, _supports = _first_hits(
+        floor_mask[scan_from:][::-1],
+        _cached_source_mask(
+            width, height, config.horizon_ratio, config.near_width_ratio, config.far_width_ratio,
+        )[scan_from:][::-1],
+        max(1, int(config.min_floor_support)),
+        max(1, int(config.obstacle_run_length)),
+        reset_at_gaps=True,
+    )
+    hits = np.zeros_like(floor_mask, dtype=bool)
+    if columns.size:
+        hits[height - 1 - starts, columns] = True
     radius = max(0, int(config.boundary_dilate_radius))
     if radius:
-        from PIL import ImageFilter
-
-        image = Image.fromarray(hit_mask.astype(np.uint8) * 255, mode="L")
         size = radius * 2 + 1
-        hit_mask = np.asarray(image.filter(ImageFilter.MaxFilter(size)), dtype=np.uint8) > 0
-    return hit_mask
+        hits = cv2.dilate(hits.astype(np.uint8), np.ones((size, size), dtype=np.uint8)).astype(bool)
+    return hits
 
 
 def project_point(homography: np.ndarray, x: float, y: float) -> tuple[int, int] | None:

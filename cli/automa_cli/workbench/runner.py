@@ -146,10 +146,6 @@ class ImageReplayRunner:
         self._selection_overrides = set(activations or {}) | set(self.step_factories)
         self._state = self._initial_state()
 
-    @property
-    def server_identity(self) -> str:
-        return self._server_identity
-
     def state(self) -> dict[str, object]:
         with self._lock:
             for step in WORKBENCH_SELECTABLE_STEPS:

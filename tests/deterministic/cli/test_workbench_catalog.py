@@ -101,7 +101,8 @@ class WorkbenchCatalogTests(unittest.TestCase):
                 defaults = DEFAULT_STEP_PLUGINS[step]
                 self.assertEqual(set(catalog.ids), set(step_plugins(step)))
                 self.assertEqual(catalog.ids[: len(defaults)], defaults)
-                self.assertEqual(catalog.default_ids, defaults)
+                outward = tuple(item["id"] for item in catalog.to_dict()["plugins"] if item["default"])
+                self.assertEqual(outward, defaults)
                 self.assertEqual(catalog.digest, packaged_plugin_catalog(step).digest)
                 listed = state[f"{step}_plugin_catalog"]
                 self.assertEqual(listed["digest"], catalog.digest)

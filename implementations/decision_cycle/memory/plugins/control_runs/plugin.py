@@ -1,4 +1,8 @@
-"""Retain applied controls; arm by name with memory/control_runs."""
+"""Retain applied control receipts; arm by name with memory/control_runs.
+
+Observe-only produces no applied runs, so this plugin appends nothing until
+the host publishes applied control receipts.
+"""
 
 from autonomy.decision_cycle.context import DecisionFrameContext
 from autonomy.decision_cycle.memory.plugin import MemoryPluginContract
@@ -11,8 +15,8 @@ from implementations.decision_cycle.shared.control_runs import (
 class ControlRuns:
     plugin_id = "control_runs"
     contract = MemoryPluginContract(
-        description="Keep the last 40 runs of attributed applied autonomy controls.",
-        assumptions=("The host publishes action.control_applications before each cycle.",),
+        description="Keep the last 40 runs of applied control receipts. Observe-only produces no applied runs.",
+        assumptions=("The host publishes applied control receipts at action.control_applications before each cycle.",),
         belief_ids=(),
         limitations=("Lost application windows are counted as gaps; unknown windows retain prior runs.",),
     )

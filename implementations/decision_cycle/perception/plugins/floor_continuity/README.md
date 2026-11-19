@@ -32,6 +32,24 @@ Apply it to one archived image or a whole capture directory:
 
 Its default config is the `floor_continuity` entry in
 `implementations/decision_cycle/perception/catalog.json`.
+Centre-column floor support is measured on `center_support_x0`..`center_support_x1`
+(0.40..0.60). A band with the low end above the high end is rejected.
+
+The `capture_floor` preset selects this plugin with
+`minimum_boundary_width_ratio` 0.03 and `minimum_boundary_confidence` 0.7.
+Those settings were calibrated against the archived
+`chase-stream-depth-obstacles-decision-30s-20260829-0436-retry` image stream.
+They retain boundaries with at least 0.70 confidence and 0.03 image-width.
+Reports use the `floor_continuity` plugin id. Results are representation
+evidence, not semantic accuracy.
+
+```sh
+./cli/automa plugins inspect perception path/to/chase_frame_000019_front_camera.jpg \
+  --preset capture_floor
+
+./cli/automa plugins inspect perception path/to/frames \
+  --preset capture_floor
+```
 
 Apply another strategy to the same recorded frames before comparing
 behavior. Simulator success validates the integration shape and controlled

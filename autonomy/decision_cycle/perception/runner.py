@@ -15,7 +15,7 @@ from copy import deepcopy
 from dataclasses import dataclass, replace
 from typing import ClassVar
 
-from autonomy.decision_cycle.activation import StepActivation, step_activation
+from autonomy.decision_cycle.activation import StepActivation
 from autonomy.decision_cycle.perception.inputs import build_perception_request
 from autonomy.decision_cycle.runner import (
     StepRunner,
@@ -76,17 +76,6 @@ class PerceptionRunner(StepRunner[object]):
         self.last_frame_index: int | None = None
         self._feed_providers: dict[str, FeedProvider] = {}
         super().__init__(definitions, activation=activation, provided=provided)
-
-    @classmethod
-    def from_selection(
-        cls,
-        plugins: list[str] | tuple[str, ...],
-        plugin_specs: dict[str, str],
-        plugin_configs: dict[str, dict[str, object]] | None = None,
-    ) -> "PerceptionRunner":
-        return cls.from_activation(
-            step_activation(cls.step, plugins, plugin_specs, plugin_configs)
-        )
 
     def __call__(self, context) -> PerceptionText | None:
         """Perceive the context's sensor frame; without one, reset and return None."""
@@ -244,8 +233,6 @@ class PerceptionRunner(StepRunner[object]):
                     if not callable(provider):
                         raise TypeError(f"feed provider {spec!r} is not callable")
                     providers[spec] = provider
-                # Specs that name the same provider (a legacy and a canonical
-                # path) agree.
                 existing = provider_specs.get(item.feed_id)
                 if existing is None:
                     provider_specs[item.feed_id] = spec

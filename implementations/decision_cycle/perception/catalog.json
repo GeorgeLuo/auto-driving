@@ -1,29 +1,52 @@
 {
-  "default": {"preset": "lightweight_observer"},
+  "default": {
+    "preset": "lightweight_observer"
+  },
   "presets": {
     "lightweight_observer": {
       "description": "Lightweight perception: frame facts, visible floor, and first-hit floor boundaries.",
-      "plugins": ["frame", "floor_plane"]
+      "plugins": [
+        "frame",
+        "floor_plane"
+      ]
     },
     "sim_debug": {
-      "description": "Simulator-only debug control: frame facts plus known Chase color-target signals.",
-      "plugins": ["frame", "sim_color_targets"]
+      "description": "Diagnostic, simulator-only: frame facts plus known Chase color-target signals. Not a driving preset.",
+      "plugins": [
+        "frame",
+        "sim_color_targets"
+      ]
     },
     "chase-v1-detect-by-color": {
       "description": "Chase simulator cardboard: color-based obstacle boxes, then identities kept across frames in shared memory.",
-      "plugins": ["sim_cardboard_obstacle", "sim_cardboard_permanence"]
+      "plugins": [
+        "sim_cardboard_obstacle",
+        "sim_cardboard_permanence"
+      ]
     },
     "visual_observer": {
-      "description": "Generic visual observer: frame facts, floor/traversability, and bounded scene tracks.",
-      "plugins": ["frame", "floor_plane", "motion_tracks"]
+      "description": "Diagnostic visual observer: frame facts, floor and traversability, and bounded scene-motion tracks. Not a driving preset.",
+      "plugins": [
+        "frame",
+        "floor_plane",
+        "motion_tracks"
+      ]
     },
     "multi_obstruction": {
       "description": "Multi-obstruction tracks across frames, with floor continuity and classical color regions.",
-      "plugins": ["multi_obstruction_tracks", "floor_continuity", "classical_regions"]
+      "plugins": [
+        "multi_obstruction_tracks",
+        "floor_continuity",
+        "classical_regions"
+      ]
     },
     "obstruction_observer": {
-      "description": "Generic obstruction observer: frame facts, floor suppression, and bounded multi-region temporal tracks.",
-      "plugins": ["frame", "floor_plane", "multi_obstruction_tracks"],
+      "description": "Generic obstruction observer: frame facts, a fixed image cut-off on tracks, and bounded multi-region temporal tracks.",
+      "plugins": [
+        "frame",
+        "floor_plane",
+        "multi_obstruction_tracks"
+      ],
       "plugin_configs": {
         "multi_obstruction_tracks": {
           "max_tracks": 4,
@@ -44,13 +67,137 @@
           "contour_merge_gap": 0.16
         }
       }
+    },
+    "capture_floor": {
+      "description": "Stricter floor-boundary settings calibrated against the archived chase-stream-depth-obstacles-decision-30s-20260829-0436-retry capture. Retains boundaries with at least 0.70 confidence and 0.03 image width. Results are representation evidence, not semantic accuracy.",
+      "plugins": [
+        "floor_continuity"
+      ],
+      "plugin_configs": {
+        "floor_continuity": {
+          "minimum_boundary_width_ratio": 0.03,
+          "minimum_boundary_confidence": 0.7
+        }
+      }
+    },
+    "object_separated_fusion": {
+      "description": "Composite box fusion with recursive spatial-mode separation between objects.",
+      "plugins": [
+        "composite_box_fusion"
+      ],
+      "plugin_configs": {
+        "composite_box_fusion": {
+          "enabled_substrategies": [
+            "edge_contours",
+            "partial_faces",
+            "photometric_regions",
+            "floor_context",
+            "line_junction_support"
+          ],
+          "max_tracks": 4,
+          "floor_cutoff_y": 0.72,
+          "minimum_object_height": 0.1,
+          "minimum_object_area_fraction": 0.002,
+          "maximum_object_area_fraction": 0.6,
+          "association_distance": 0.35,
+          "minimum_association_score": 0.12,
+          "smoothing_alpha": 0.65,
+          "max_missed_frames": 1,
+          "reacquire_window_frames": 4,
+          "minimum_feature_points": 6,
+          "canny_low": 30,
+          "canny_high": 45,
+          "minimum_contour_area_fraction": 0.0005,
+          "maximum_contour_area_fraction": 0.6,
+          "contour_merge_gap": 0.08,
+          "contrast_normalization": "none",
+          "contrast_clip_limit": 2.0,
+          "contrast_tile_size": 8,
+          "contrast_gamma": 1.0,
+          "shared_blur_kernel": 0,
+          "shared_close_kernel": 0,
+          "shared_min_width_px": 0,
+          "shared_min_height_px": 0,
+          "shared_max_vertices": 0,
+          "preserve_separate_proposals": false,
+          "duplicate_suppression_iou": 0.08,
+          "output_bbox_shrink_x": 1.0,
+          "output_bbox_shrink_y": 1.0,
+          "minimum_output_confidence": 0.0,
+          "issue_working_width": 640,
+          "classical_working_width": 320,
+          "canny_morph_max_boxes": 18,
+          "quad_rectangularity_max_boxes": 18,
+          "partial_contour_max_boxes": 18,
+          "photometric_windows_max_boxes": 18,
+          "hough_fragments_max_boxes": 12,
+          "corner_junctions_max_boxes": 12,
+          "adaptive_contours_max_boxes": 12,
+          "floor_working_width": 320,
+          "floor_horizon_ratio": 0.4,
+          "floor_edge_margin_ratio": 0.03,
+          "floor_seed_x0_ratio": 0.3,
+          "floor_seed_x1_ratio": 0.7,
+          "floor_seed_y0_ratio": 0.78,
+          "floor_seed_y1_ratio": 0.96,
+          "floor_color_distance_limit": 4.5,
+          "floor_texture_distance_limit": 4.0,
+          "floor_edge_quantile": 0.92,
+          "floor_minimum_edge_strength": 0.24,
+          "floor_minimum_floor_fraction": 0.08,
+          "floor_minimum_floor_support_px": 8,
+          "floor_minimum_interruption_run_px": 6,
+          "floor_minimum_boundary_width_ratio": 0.025,
+          "floor_minimum_boundary_confidence": 0.65,
+          "floor_max_boundaries": 8,
+          "raw_proposal_budget": 120,
+          "geometry_max_clusters": 12,
+          "geometry_cluster_iou_threshold": 0.12,
+          "geometry_cluster_center_distance": 0.07,
+          "geometry_split_spatial_modes": true,
+          "geometry_split_center_gap": 0.14,
+          "geometry_max_hypotheses_per_cluster": 10,
+          "robust_extent_low_quantile": 0.1,
+          "robust_extent_high_quantile": 0.9,
+          "robust_extent_padding": 0.014,
+          "geometry_selector": "context_aware_heuristic",
+          "manual_annotations_runtime_input": false,
+          "jev_enabled": true,
+          "jev_model": "jev-latest",
+          "jev_api_url": "https://api.typesafe.ai/v1/systemone",
+          "jev_timeout_s": 30.0,
+          "cache_responses": true,
+          "object_separated_geometry": true
+        }
+      }
     }
   },
   "plugins": [
     {
       "spec": "implementations.decision_cycle.perception.plugins.floor_plane.plugin:FloorPlanePlugin",
       "description": "",
-      "default_config": {}
+      "default_config": {
+        "horizon_ratio": 0.4,
+        "seed_x0_ratio": 0.25,
+        "seed_x1_ratio": 0.75,
+        "seed_y0_ratio": 0.72,
+        "seed_y1_ratio": 0.96,
+        "floor_threshold": 3.8,
+        "brightness_weight": 0.55,
+        "morph_radius": 2,
+        "morph_threshold": 0.42,
+        "topdown_width": 320,
+        "topdown_height": 420,
+        "topdown_margin": 18,
+        "topdown_near_width_ratio": 0.1,
+        "topdown_far_width_ratio": 0.96,
+        "obstacle_run_length": 12,
+        "min_floor_support": 12,
+        "boundary_dilate_radius": 2,
+        "min_boundary_width_ratio": 0.02,
+        "near_width_ratio": 1.0,
+        "far_width_ratio": 0.34
+      }
     },
     {
       "spec": "implementations.decision_cycle.perception.plugins.frame.plugin:FrameObservationPlugin",
@@ -59,18 +206,44 @@
     },
     {
       "spec": "implementations.decision_cycle.perception.plugins.motion_tracks.plugin:MotionTracksPlugin",
-      "description": "",
+      "description": "Diagnostic scene-motion tracks from feature grouping. Not a driving preset.",
       "default_config": {}
     },
     {
       "spec": "implementations.decision_cycle.perception.plugins.sim_color_targets.plugin:SimColorTargetsPlugin",
-      "description": "",
-      "default_config": {}
+      "description": "Diagnostic Chase color-target signals for the simulator. Not a driving preset.",
+      "default_config": {
+        "evader_red_minimum": 0.45,
+        "evader_red_lead": 0.12,
+        "evader_red_green_ratio": 1.25,
+        "evader_red_blue_ratio": 1.1,
+        "neutral_chroma_maximum": 0.055,
+        "neutral_luma_minimum": 0.18,
+        "neutral_luma_maximum": 0.92,
+        "beige_red_blue_minimum": 0.035,
+        "beige_row_minimum": 0.35,
+        "dark_luma_maximum": 0.12
+      }
     },
     {
       "spec": "implementations.decision_cycle.perception.plugins.sim_cardboard_obstacle.plugin:SimCardboardObstaclePlugin",
       "description": "Image-space bounding boxes for visible Chase cardboard obstacles.",
-      "default_config": {}
+      "default_config": {
+        "red_minimum": 0.28,
+        "red_maximum": 0.86,
+        "green_minimum": 0.12,
+        "green_maximum": 0.66,
+        "blue_maximum": 0.48,
+        "red_green_lead": 0.08,
+        "green_blue_lead": 0.04,
+        "chroma_minimum": 0.2,
+        "brightness_minimum": 0.16,
+        "brightness_maximum": 0.72,
+        "split_width_ratio": 0.1,
+        "split_step_ratio": 0.04,
+        "split_width_floor_px": 5,
+        "split_step_floor_px": 3.0
+      }
     },
     {
       "spec": "implementations.decision_cycle.perception.plugins.sim_cardboard_permanence.plugin:SimCardboardPermanencePlugin",
@@ -138,6 +311,10 @@
         "photometric_windows_max_boxes": 18,
         "hough_fragments_max_boxes": 12,
         "corner_junctions_max_boxes": 12,
+        "corner_max_corners": 600,
+        "corner_radius_px": 96,
+        "corner_pair_min_px": 24,
+        "corner_pair_max_px": 360,
         "adaptive_contours_max_boxes": 12,
         "floor_working_width": 320,
         "floor_horizon_ratio": 0.4,
@@ -176,93 +353,6 @@
       }
     },
     {
-      "spec": "implementations.decision_cycle.perception.plugins.composite_box_fusion_object_separated.plugin:CompositeBoxFusionPlugin",
-      "description": "Composite box fusion with recursive spatial-mode separation between objects.",
-      "default_config": {
-        "enabled_substrategies": [
-          "edge_contours",
-          "partial_faces",
-          "photometric_regions",
-          "floor_context",
-          "line_junction_support"
-        ],
-        "max_tracks": 4,
-        "floor_cutoff_y": 0.72,
-        "minimum_object_height": 0.1,
-        "minimum_object_area_fraction": 0.002,
-        "maximum_object_area_fraction": 0.6,
-        "association_distance": 0.35,
-        "minimum_association_score": 0.12,
-        "smoothing_alpha": 0.65,
-        "max_missed_frames": 1,
-        "reacquire_window_frames": 4,
-        "minimum_feature_points": 6,
-        "canny_low": 30,
-        "canny_high": 45,
-        "minimum_contour_area_fraction": 0.0005,
-        "maximum_contour_area_fraction": 0.6,
-        "contour_merge_gap": 0.08,
-        "contrast_normalization": "none",
-        "contrast_clip_limit": 2.0,
-        "contrast_tile_size": 8,
-        "contrast_gamma": 1.0,
-        "shared_blur_kernel": 0,
-        "shared_close_kernel": 0,
-        "shared_min_width_px": 0,
-        "shared_min_height_px": 0,
-        "shared_max_vertices": 0,
-        "preserve_separate_proposals": false,
-        "duplicate_suppression_iou": 0.08,
-        "output_bbox_shrink_x": 1.0,
-        "output_bbox_shrink_y": 1.0,
-        "minimum_output_confidence": 0.0,
-        "issue_working_width": 640,
-        "classical_working_width": 320,
-        "canny_morph_max_boxes": 18,
-        "quad_rectangularity_max_boxes": 18,
-        "partial_contour_max_boxes": 18,
-        "photometric_windows_max_boxes": 18,
-        "hough_fragments_max_boxes": 12,
-        "corner_junctions_max_boxes": 12,
-        "adaptive_contours_max_boxes": 12,
-        "floor_working_width": 320,
-        "floor_horizon_ratio": 0.4,
-        "floor_edge_margin_ratio": 0.03,
-        "floor_seed_x0_ratio": 0.3,
-        "floor_seed_x1_ratio": 0.7,
-        "floor_seed_y0_ratio": 0.78,
-        "floor_seed_y1_ratio": 0.96,
-        "floor_color_distance_limit": 4.5,
-        "floor_texture_distance_limit": 4.0,
-        "floor_edge_quantile": 0.92,
-        "floor_minimum_edge_strength": 0.24,
-        "floor_minimum_floor_fraction": 0.08,
-        "floor_minimum_floor_support_px": 8,
-        "floor_minimum_interruption_run_px": 6,
-        "floor_minimum_boundary_width_ratio": 0.025,
-        "floor_minimum_boundary_confidence": 0.65,
-        "floor_max_boundaries": 8,
-        "raw_proposal_budget": 120,
-        "geometry_max_clusters": 12,
-        "geometry_cluster_iou_threshold": 0.12,
-        "geometry_cluster_center_distance": 0.07,
-        "geometry_split_spatial_modes": true,
-        "geometry_split_center_gap": 0.14,
-        "geometry_max_hypotheses_per_cluster": 10,
-        "robust_extent_low_quantile": 0.1,
-        "robust_extent_high_quantile": 0.9,
-        "robust_extent_padding": 0.014,
-        "geometry_selector": "context_aware_heuristic",
-        "manual_annotations_runtime_input": false,
-        "jev_enabled": true,
-        "jev_model": "jev-latest",
-        "jev_api_url": "https://api.typesafe.ai/v1/systemone",
-        "jev_timeout_s": 30.0,
-        "cache_responses": true,
-        "object_separated_geometry": true
-      }
-    },
-    {
       "spec": "implementations.decision_cycle.perception.plugins.floor_continuity.plugin:FloorContinuityPlugin",
       "description": "Stateless multi-cue bottom-connected floor support and interruption evidence.",
       "default_config": {
@@ -282,13 +372,10 @@
         "minimum_interruption_run_px": 6,
         "minimum_boundary_width_ratio": 0.025,
         "minimum_boundary_confidence": 0.65,
-        "max_boundaries": 8
+        "max_boundaries": 8,
+        "center_support_x0": 0.4,
+        "center_support_x1": 0.6
       }
-    },
-    {
-      "spec": "implementations.decision_cycle.perception.plugins.floor_continuity_capture.plugin:CaptureFloorContinuityPlugin",
-      "description": "Stricter floor-boundary variant calibrated against the archived Chaser depth-obstacle capture.",
-      "default_config": {"minimum_boundary_width_ratio": 0.03, "minimum_boundary_confidence": 0.7}
     },
     {
       "spec": "implementations.decision_cycle.perception.plugins.floor_continuity_temporal.plugin:TemporalFloorContinuityPlugin",
@@ -314,12 +401,18 @@
         "smoothing_alpha": 0.45,
         "association_distance": 0.3,
         "minimum_association_score": 0.18,
-        "max_hold_frames": 2
+        "max_hold_frames": 2,
+        "center_support_x0": 0.4,
+        "center_support_x1": 0.6,
+        "held_confidence_decay": 0.82,
+        "overlap_weight": 0.55,
+        "distance_weight": 0.3,
+        "confidence_weight": 0.15
       }
     },
     {
       "spec": "implementations.decision_cycle.perception.plugins.multi_obstruction_tracks.plugin:MultiObstructionTracksPlugin",
-      "description": "Floor-suppressed obstruction candidates associated into tracks across frames, with optical-flow support.",
+      "description": "Obstruction candidates with a fixed image cut-off, associated into tracks across frames, with optical-flow support. The cut-off does not read floor-plugin output.",
       "default_config": {
         "max_tracks": 2,
         "floor_cutoff_y": 0.5,
@@ -345,7 +438,21 @@
         "duplicate_suppression_iou": 0.08,
         "output_bbox_shrink_x": 1.0,
         "output_bbox_shrink_y": 1.0,
-        "minimum_output_confidence": 0.0
+        "minimum_output_confidence": 0.0,
+        "contour_min_vertices": 4,
+        "contour_max_vertices": 15,
+        "contour_min_width": 0.04,
+        "contour_max_width": 0.85,
+        "contour_min_height": 0.08,
+        "contour_max_height": 0.6,
+        "reject_bottom_y": 0.95,
+        "reject_above_y": 0.28,
+        "reject_top_edge_y": 0.03,
+        "reject_top_edge_height": 0.25,
+        "flow_window": 21,
+        "flow_levels": 3,
+        "flow_forward_backward_px": 1.5,
+        "feature_seed_cap": 80
       }
     }
   ]

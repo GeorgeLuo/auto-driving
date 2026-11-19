@@ -1,11 +1,12 @@
 """Obstruction tracks for the Workbench obstruction pipeline.
 
-Detects floor-suppressed region candidates in the current frame and associates
-them into tracks across frames, with optical-flow support. Track history (the
-previous grayscale image, track records, and the next track id) lives in the
-host map at ``perception.<plugin_id>.history``. The tracked things are the
-plugin's evidence; the memory step retains them for the
-``avoid_recent_obstruction`` proposal plugin.
+Detects region candidates in the current frame, rejects boxes against a fixed
+image cut-off, and associates the rest into tracks with optical-flow support.
+The cut-off is an image-row threshold. This plugin does not read floor-plugin
+output. Track history (the previous grayscale image, track records, and the
+next track id) lives in the host map at ``perception.<plugin_id>.history``.
+The tracked things are the plugin's evidence; the memory step retains them
+for the ``avoid_recent_obstruction`` proposal plugin.
 """
 
 from __future__ import annotations
@@ -16,6 +17,7 @@ import cv2
 import numpy as np
 
 from autonomy.decision_cycle.confidence import confidence_rank
+from autonomy.fields import FieldError, require_number, require_safe_int
 from autonomy.decision_cycle.perception.evidence.values import (
     PerceivedThing,
     PerceptionEvidenceBatch,
@@ -50,11 +52,15 @@ TRACKING_CONFIG_FIELDS = (
     "output_bbox_shrink_y",
     "minimum_output_confidence",
     "floor_cutoff_y",
+    "flow_window",
+    "flow_levels",
+    "flow_forward_backward_px",
+    "feature_seed_cap",
 )
 
 
 class MultiObstructionTracksPlugin:
-    """Detect floor-suppressed candidates and associate them into tracks."""
+    """Detect image-cutoff candidates and associate them into tracks."""
 
     plugin_id = "multi_obstruction_tracks"
     contract = PerceptionPluginContract(
@@ -62,13 +68,13 @@ class MultiObstructionTracksPlugin:
         state_mode="windowed",
         memory_required=True,
         description=(
-            "Detect floor-suppressed obstruction candidates and associate them "
-            "into tracks across frames, with optical-flow support."
+            "Detect obstruction candidates, drop boxes below a fixed image "
+            "cut-off, and associate the rest into tracks with optical-flow support."
         ),
         assumptions=(
             "obstruction regions have enough rectangular edge and shape support",
             "adjacent-frame image geometry changes within the association window",
-            "lower-frame floor/background regions are not themselves obstructions",
+            "boxes below the fixed image cut-off are background, not floor-plugin output",
         ),
         emits=(
             "signal multi_obstruction_tracks_available",
@@ -114,6 +120,20 @@ class MultiObstructionTracksPlugin:
         output_bbox_shrink_x: float = 1.0,
         output_bbox_shrink_y: float = 1.0,
         minimum_output_confidence: float = 0.0,
+        contour_min_vertices: int = 4,
+        contour_max_vertices: int = 15,
+        contour_min_width: float = 0.04,
+        contour_max_width: float = 0.85,
+        contour_min_height: float = 0.08,
+        contour_max_height: float = 0.60,
+        reject_bottom_y: float = 0.95,
+        reject_above_y: float = 0.28,
+        reject_top_edge_y: float = 0.03,
+        reject_top_edge_height: float = 0.25,
+        flow_window: int = 21,
+        flow_levels: int = 3,
+        flow_forward_backward_px: float = 1.5,
+        feature_seed_cap: int = 80,
         **_unused_config: Any,
     ) -> None:
         self.max_tracks = max(1, int(max_tracks))
@@ -164,7 +184,91 @@ class MultiObstructionTracksPlugin:
         self.output_bbox_shrink_x = clamp(float(output_bbox_shrink_x), 0.25, 1.0)
         self.output_bbox_shrink_y = clamp(float(output_bbox_shrink_y), 0.25, 1.0)
         self.minimum_output_confidence = clamp(float(minimum_output_confidence), 0.0, 1.0)
+        self._assign_shape_and_flow_limits(
+            contour_min_vertices=contour_min_vertices,
+            contour_max_vertices=contour_max_vertices,
+            contour_min_width=contour_min_width,
+            contour_max_width=contour_max_width,
+            contour_min_height=contour_min_height,
+            contour_max_height=contour_max_height,
+            reject_bottom_y=reject_bottom_y,
+            reject_above_y=reject_above_y,
+            reject_top_edge_y=reject_top_edge_y,
+            reject_top_edge_height=reject_top_edge_height,
+            flow_window=flow_window,
+            flow_levels=flow_levels,
+            flow_forward_backward_px=flow_forward_backward_px,
+            feature_seed_cap=feature_seed_cap,
+        )
 
+    def _assign_shape_and_flow_limits(
+        self,
+        *,
+        contour_min_vertices: int,
+        contour_max_vertices: int,
+        contour_min_width: float,
+        contour_max_width: float,
+        contour_min_height: float,
+        contour_max_height: float,
+        reject_bottom_y: float,
+        reject_above_y: float,
+        reject_top_edge_y: float,
+        reject_top_edge_height: float,
+        flow_window: int,
+        flow_levels: int,
+        flow_forward_backward_px: float,
+        feature_seed_cap: int,
+    ) -> None:
+        self.contour_min_vertices = require_safe_int(
+            contour_min_vertices, field_name="contour_min_vertices"
+        )
+        self.contour_max_vertices = require_safe_int(
+            contour_max_vertices, field_name="contour_max_vertices"
+        )
+        if self.contour_min_vertices > self.contour_max_vertices:
+            raise FieldError("contour_min_vertices", "must be <= contour_max_vertices")
+        self.contour_min_width = require_number(
+            contour_min_width, field_name="contour_min_width", bounds=(0, 1)
+        )
+        self.contour_max_width = require_number(
+            contour_max_width, field_name="contour_max_width", bounds=(0, 1)
+        )
+        if self.contour_min_width > self.contour_max_width:
+            raise FieldError("contour_min_width", "must be <= contour_max_width")
+        self.contour_min_height = require_number(
+            contour_min_height, field_name="contour_min_height", bounds=(0, 1)
+        )
+        self.contour_max_height = require_number(
+            contour_max_height, field_name="contour_max_height", bounds=(0, 1)
+        )
+        if self.contour_min_height > self.contour_max_height:
+            raise FieldError("contour_min_height", "must be <= contour_max_height")
+        self.reject_bottom_y = require_number(
+            reject_bottom_y, field_name="reject_bottom_y", bounds=(0, 1)
+        )
+        self.reject_above_y = require_number(
+            reject_above_y, field_name="reject_above_y", bounds=(0, 1)
+        )
+        self.reject_top_edge_y = require_number(
+            reject_top_edge_y, field_name="reject_top_edge_y", bounds=(0, 1)
+        )
+        self.reject_top_edge_height = require_number(
+            reject_top_edge_height, field_name="reject_top_edge_height", bounds=(0, 1)
+        )
+        self.flow_window = require_safe_int(flow_window, field_name="flow_window")
+        if self.flow_window < 1:
+            raise FieldError("flow_window", "must be >= 1")
+        self.flow_levels = require_safe_int(flow_levels, field_name="flow_levels")
+        self.flow_forward_backward_px = require_number(
+            flow_forward_backward_px,
+            field_name="flow_forward_backward_px",
+            bounds=(0, float("inf")),
+        )
+        self.feature_seed_cap = require_safe_int(
+            feature_seed_cap, field_name="feature_seed_cap"
+        )
+        if self.feature_seed_cap < 1:
+            raise FieldError("feature_seed_cap", "must be >= 1")
 
     @property
     def _memory_key(self) -> str:
@@ -264,7 +368,7 @@ class MultiObstructionTracksPlugin:
             x2, y2 = (x + component_width) / width, (y + component_height) / height
             width_fraction = x2 - x1
             height_fraction = y2 - y1
-            if not (4 <= len(approximation) <= 15):
+            if not (self.contour_min_vertices <= len(approximation) <= self.contour_max_vertices):
                 continue
             if not (
                 self.minimum_contour_area_fraction
@@ -272,13 +376,16 @@ class MultiObstructionTracksPlugin:
                 <= self.maximum_contour_area_fraction
             ):
                 continue
-            if not (0.08 <= height_fraction <= 0.60 and 0.04 <= width_fraction <= 0.85):
+            if not (
+                self.contour_min_height <= height_fraction <= self.contour_max_height
+                and self.contour_min_width <= width_fraction <= self.contour_max_width
+            ):
                 continue
-            if y1 >= 0.95 or y2 <= 0.28:
+            if y1 >= self.reject_bottom_y or y2 <= self.reject_above_y:
                 continue
             # Small top-edge rectangles are usually window/wall details. Keep
             # large rising regions because a near obstacle may fill the frame.
-            if y1 < 0.03 and height_fraction < 0.25:
+            if y1 < self.reject_top_edge_y and height_fraction < self.reject_top_edge_height:
                 continue
             edge_density = float(edges[y : y + component_height, x : x + component_width].mean() / 255.0)
             rectangularity = clamp(

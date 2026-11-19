@@ -48,12 +48,8 @@ class FloorPlanePlugin:
         ),
     )
 
-    def __init__(
-        self,
-        *,
-        config: FloorPlaneConfig | None = None,
-    ) -> None:
-        self.config = config or FloorPlaneConfig()
+    def __init__(self, **config: float | int) -> None:
+        self.config = FloorPlaneConfig(**config)
 
     def perceive(self, inputs: PerceptionPluginInputs) -> PerceptionEvidenceBatch:
         frame = inputs.require("frame", CameraFrame)

@@ -17,7 +17,7 @@ import cv2
 import numpy as np
 
 from autonomy.decision_cycle.confidence import confidence_rank
-from autonomy.fields import FieldError, require_number, require_safe_int
+from autonomy.fields import FieldError, require_number, require_ordered_numbers, require_safe_int
 from autonomy.decision_cycle.perception.evidence.values import (
     PerceivedThing,
     PerceptionEvidenceBatch,
@@ -227,22 +227,14 @@ class MultiObstructionTracksPlugin:
         )
         if self.contour_min_vertices > self.contour_max_vertices:
             raise FieldError("contour_min_vertices", "must be <= contour_max_vertices")
-        self.contour_min_width = require_number(
-            contour_min_width, field_name="contour_min_width", bounds=(0, 1)
+        self.contour_min_width, self.contour_max_width = require_ordered_numbers(
+            contour_min_width, contour_max_width,
+            low_name="contour_min_width", high_name="contour_max_width", bounds=(0, 1),
         )
-        self.contour_max_width = require_number(
-            contour_max_width, field_name="contour_max_width", bounds=(0, 1)
+        self.contour_min_height, self.contour_max_height = require_ordered_numbers(
+            contour_min_height, contour_max_height,
+            low_name="contour_min_height", high_name="contour_max_height", bounds=(0, 1),
         )
-        if self.contour_min_width > self.contour_max_width:
-            raise FieldError("contour_min_width", "must be <= contour_max_width")
-        self.contour_min_height = require_number(
-            contour_min_height, field_name="contour_min_height", bounds=(0, 1)
-        )
-        self.contour_max_height = require_number(
-            contour_max_height, field_name="contour_max_height", bounds=(0, 1)
-        )
-        if self.contour_min_height > self.contour_max_height:
-            raise FieldError("contour_min_height", "must be <= contour_max_height")
         self.reject_bottom_y = require_number(
             reject_bottom_y, field_name="reject_bottom_y", bounds=(0, 1)
         )

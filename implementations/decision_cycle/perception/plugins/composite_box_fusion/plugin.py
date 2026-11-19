@@ -10,7 +10,7 @@ from typing import Any, NamedTuple
 import cv2
 import numpy as np
 
-from autonomy.fields import FieldError, require_number, require_safe_int
+from autonomy.fields import FieldError, require_number, require_ordered_numbers, require_safe_int
 from autonomy.decision_cycle.perception.evidence.values import (
     PerceivedThing,
     PerceptionEvidenceBatch,
@@ -223,14 +223,10 @@ class CompositeBoxFusionPlugin(MultiObstructionTracksPlugin):
         self.corner_radius_px = require_number(
             corner_radius_px, field_name="corner_radius_px", bounds=(0, float("inf"))
         )
-        self.corner_pair_min_px = require_number(
-            corner_pair_min_px, field_name="corner_pair_min_px", bounds=(0, float("inf"))
+        self.corner_pair_min_px, self.corner_pair_max_px = require_ordered_numbers(
+            corner_pair_min_px, corner_pair_max_px,
+            low_name="corner_pair_min_px", high_name="corner_pair_max_px", bounds=(0, float("inf")),
         )
-        self.corner_pair_max_px = require_number(
-            corner_pair_max_px, field_name="corner_pair_max_px", bounds=(0, float("inf"))
-        )
-        if self.corner_pair_min_px > self.corner_pair_max_px:
-            raise FieldError("corner_pair_min_px", "must be <= corner_pair_max_px")
         self.adaptive_contours_max_boxes = max(1, int(adaptive_contours_max_boxes))
         self.raw_proposal_budget = max(1, int(raw_proposal_budget))
         self.geometry_max_clusters = max(1, int(geometry_max_clusters))

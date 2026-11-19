@@ -7,7 +7,7 @@ import cv2
 import numpy as np
 from PIL import Image
 
-from autonomy.fields import FieldError, require_number
+from autonomy.fields import require_number, require_ordered_numbers
 
 from autonomy.decision_cycle.perception.evidence.values import (
     PerceivedThing,
@@ -76,9 +76,9 @@ class SimColorTargetsPlugin:
         self.evader_red_lead = require_number(evader_red_lead, field_name="evader_red_lead", bounds=(0, 1))
         self.evader_red_green_ratio = require_number(evader_red_green_ratio, field_name="evader_red_green_ratio", bounds=(0, 1e6))
         self.evader_red_blue_ratio = require_number(evader_red_blue_ratio, field_name="evader_red_blue_ratio", bounds=(0, 1e6))
-        self.neutral_luma_minimum, self.neutral_luma_maximum = _ordered_pair(
-            "neutral_luma_minimum", neutral_luma_minimum,
-            "neutral_luma_maximum", neutral_luma_maximum,
+        self.neutral_luma_minimum, self.neutral_luma_maximum = require_ordered_numbers(
+            neutral_luma_minimum, neutral_luma_maximum,
+            low_name="neutral_luma_minimum", high_name="neutral_luma_maximum", bounds=(0, 1),
         )
         self.neutral_chroma_maximum = require_number(
             neutral_chroma_maximum, field_name="neutral_chroma_maximum", bounds=(0, 1),
@@ -140,14 +140,6 @@ def _resize_rgb(rgb: np.ndarray, thumbnail_width: int) -> np.ndarray:
         height = max(1, round(image.height * (thumbnail_width / image.width)))
         image = image.resize((thumbnail_width, height), Image.Resampling.BILINEAR)
     return np.asarray(image).astype(np.float32) / 255.0
-
-
-def _ordered_pair(low_name: str, low: object, high_name: str, high: object) -> tuple[float, float]:
-    low_value = require_number(low, field_name=low_name, bounds=(0, 1))
-    high_value = require_number(high, field_name=high_name, bounds=(0, 1))
-    if low_value > high_value:
-        raise FieldError(low_name, f"must be <= {high_name}")
-    return low_value, high_value
 
 
 def _evader_mask(rgb: np.ndarray, plugin: SimColorTargetsPlugin) -> np.ndarray:

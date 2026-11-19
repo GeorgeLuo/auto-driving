@@ -21,7 +21,7 @@ from implementations.decision_cycle.perception.feeds.camera import (
     CameraFrame,
     FRONT_CAMERA_RGB_INPUT,
 )
-from autonomy.fields import FieldError, require_number, require_safe_int
+from autonomy.fields import require_number, require_ordered_numbers, require_safe_int
 from implementations.decision_cycle.perception.shared.obstructions.boxes import zone
 
 
@@ -86,16 +86,19 @@ class SimCardboardObstaclePlugin:
         self.max_area_fraction = max(self.min_area_fraction, min(1.0, float(max_area_fraction)))
         self.close_px = max(0, int(close_px))
         self.open_px = max(0, int(open_px))
-        self.red_minimum, self.red_maximum = _ordered_unit("red_minimum", red_minimum, "red_maximum", red_maximum)
-        self.green_minimum, self.green_maximum = _ordered_unit(
-            "green_minimum", green_minimum, "green_maximum", green_maximum,
+        self.red_minimum, self.red_maximum = require_ordered_numbers(
+            red_minimum, red_maximum, low_name="red_minimum", high_name="red_maximum", bounds=(0, 1),
+        )
+        self.green_minimum, self.green_maximum = require_ordered_numbers(
+            green_minimum, green_maximum, low_name="green_minimum", high_name="green_maximum", bounds=(0, 1),
         )
         self.blue_maximum = require_number(blue_maximum, field_name="blue_maximum", bounds=(0, 1))
         self.red_green_lead = require_number(red_green_lead, field_name="red_green_lead", bounds=(0, 1))
         self.green_blue_lead = require_number(green_blue_lead, field_name="green_blue_lead", bounds=(0, 1))
         self.chroma_minimum = require_number(chroma_minimum, field_name="chroma_minimum", bounds=(0, 1))
-        self.brightness_minimum, self.brightness_maximum = _ordered_unit(
-            "brightness_minimum", brightness_minimum, "brightness_maximum", brightness_maximum,
+        self.brightness_minimum, self.brightness_maximum = require_ordered_numbers(
+            brightness_minimum, brightness_maximum,
+            low_name="brightness_minimum", high_name="brightness_maximum", bounds=(0, 1),
         )
         self.split_width_ratio = require_number(split_width_ratio, field_name="split_width_ratio", bounds=(0, 1))
         self.split_step_ratio = require_number(split_step_ratio, field_name="split_step_ratio", bounds=(0, 1))
@@ -134,14 +137,6 @@ def _resize_rgb(rgb: np.ndarray, working_width: int) -> np.ndarray:
         interpolation=cv2.INTER_AREA,
     )
     return np.ascontiguousarray(resized)
-
-
-def _ordered_unit(low_name: str, low: object, high_name: str, high: object) -> tuple[float, float]:
-    low_value = require_number(low, field_name=low_name, bounds=(0, 1))
-    high_value = require_number(high, field_name=high_name, bounds=(0, 1))
-    if low_value > high_value:
-        raise FieldError(low_name, f"must be <= {high_name}")
-    return low_value, high_value
 
 
 def _detect(

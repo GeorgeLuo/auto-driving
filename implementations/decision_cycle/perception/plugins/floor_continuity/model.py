@@ -6,7 +6,7 @@ from typing import Any
 import cv2
 import numpy as np
 
-from autonomy.fields import FieldError, require_number
+from autonomy.fields import require_ordered_numbers
 
 
 @dataclass(frozen=True)
@@ -32,10 +32,13 @@ class FloorContinuityConfig:
     center_support_x1: float = 0.60
 
     def __post_init__(self) -> None:
-        low = require_number(self.center_support_x0, field_name="center_support_x0", bounds=(0, 1))
-        high = require_number(self.center_support_x1, field_name="center_support_x1", bounds=(0, 1))
-        if low > high:
-            raise FieldError("center_support_x0", "must be <= center_support_x1")
+        require_ordered_numbers(
+            self.center_support_x0,
+            self.center_support_x1,
+            low_name="center_support_x0",
+            high_name="center_support_x1",
+            bounds=(0, 1),
+        )
 
 
 @dataclass(frozen=True)

@@ -101,6 +101,13 @@ const Captures = (() => {
     return loadFrame();
   }
 
+  // Why the list is empty: the viewer refused it, or no host has recorded yet.
+  function emptyText() {
+    const fault = api.faults["/api/captures"];
+    if (fault) return `The viewer did not list captures: ${fault}. A viewer started before the Captures window was added needs a restart.`;
+    return listing().length ? "" : "No recordings yet. A host started with recording on writes one.";
+  }
+
   function view() {
     const c = find(W.selected);
     if (W.mode === "view" && c) {
@@ -124,7 +131,7 @@ const Captures = (() => {
     return {
       mode: "",
       rows: listing().map((x) => ({ name: rowName(x), selected: W.selected === x.capture, marked: x.state === "active", action: () => select(x.capture) })),
-      status: c ? metadataText(W.meta) : "",
+      status: c ? metadataText(W.meta) : emptyText(),
       keys: viewable ? [{ label: "VIEW", action: openView }] : [],
       fromTop: true,
     };

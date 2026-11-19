@@ -25,6 +25,8 @@ const routes = {
 
 const api = (() => {
   const docs = {};
+  // The error of each route's last failed read; a later read that succeeds clears it.
+  const faults = {};
   const mocked = (method, route) => typeof mock !== "undefined" && mock.answers(method, route);
 
   const refused = (error) => ({ ok: false, error });
@@ -41,11 +43,12 @@ const api = (() => {
   async function read(route, { keep = true } = {}) {
     const doc = mocked("GET", route) ? await mock.answer("GET", route) : await fetchJson(route);
     if (keep && doc.ok !== false) docs[route] = doc;
+    if (doc.ok === false) faults[route] = doc.error || "refused"; else delete faults[route];
     return doc;
   }
   function write(route, body, { onLine } = {}) {
     if (mocked("POST", route)) return mock.answer("POST", route, body, onLine);
     return fetchJson(route, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(body) });
   }
-  return { docs, read, write };
+  return { docs, faults, read, write };
 })();

@@ -152,8 +152,26 @@ def _create(body: dict[str, object]) -> dict[str, object]:
 
 
 def _delete(body: dict[str, object]) -> dict[str, object]:
-    result = delete_simulator(url=_text(body, "url"))
-    return _answer(result, render_simulator_result(result))
+    url = _text(body, "url")
+    with_hosts = _flag(body, "with_hosts")
+    result = delete_simulator(url=url)
+    if not with_hosts or result.kind != "blocked":
+        return _answer(result, render_simulator_result(result))
+
+    printed = _Printed()
+    try:
+        for name in result.hosts:
+            target = f"host {name}"
+            host = delete_host(host_name=name, emit=printed)
+            detail = render_delete(host)
+            if host.exit_code:
+                return _answer(host, printed.text(f"Could not delete {target}: {detail}"))
+            printed.lines.append(detail)
+        target = f"simulator at {url}"
+        result = delete_simulator(url=url)
+    except (OSError, ValueError, TypeError, RuntimeError) as exc:
+        return {"ok": False, "error": str(exc), "text": printed.text(f"Could not delete {target}: {exc}")}
+    return _answer(result, printed.text(render_simulator_result(result)))
 
 
 def _create_host(body: dict[str, object]) -> dict[str, object]:
@@ -351,7 +369,7 @@ VIEWER_WRITES = {
         ("/api/vehicles/discover", _discover, ("provider", "url", "force")),
         ("/api/vehicles/remove", _remove, ("url",)),
         ("/api/simulators/create", _create, ("backend", "config")),
-        ("/api/simulators/delete", _delete, ("url",)),
+        ("/api/simulators/delete", _delete, ("url", "with_hosts")),
         ("/api/hosts/create", _create_host,
          ("name", "provider", "url", "ssh_target", "pi_home", "drive_args", "dry_run", "verbose")),
         ("/api/hosts/update", _update_host, ("name", "dry_run", "restart", "drive_args", "verbose")),

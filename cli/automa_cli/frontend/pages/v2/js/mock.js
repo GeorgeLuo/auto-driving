@@ -269,21 +269,30 @@ const mock = (() => {
                             startedAt: Date.now(), logTail: null, backend, config });
     return { ok: true, kind: "created", text: `Created ${heading("chase-sim", url)}` };
   }
-  // simulators delete: refused while a host was created at it; a running one is stopped first.
-  async function deleteSimulator({ url }) {
+  // simulators delete: attached hosts are removed first when requested.
+  async function deleteSimulator({ url, with_hosts = false }, onLine) {
     const s = store.simulators.find((x) => x.url === url);
     if (!s) {
       const urls = store.simulators.map((x) => x.url).join(", ");
       return { ok: false, kind: "missing", text: `No created simulator at ${url}. ${urls ? `Created: ${urls}.` : "None created."}` };
     }
     const users = store.hosts.filter((h) => h.vehicleUrl === url).map((h) => h.name);
-    if (users.length) {
+    if (users.length && !with_hosts) {
       const subject = users.length === 1 ? `Host ${users[0]} uses` : `Hosts ${users.join(", ")} use`;
       return { ok: false, kind: "blocked", text: `${subject} the simulator at ${url}; delete ${users.length === 1 ? "it" : "them"} first.` };
     }
+    const lines = [];
+    for (const name of users) {
+      const result = await deleteHost({ name }, onLine);
+      if (!result.ok) {
+        return { ...result, text: [...lines, `Could not delete host ${name}: ${result.text}`].join("\n") };
+      }
+      lines.push(result.text);
+    }
     await after(s.state === "exited" ? 150 : 400);
     store.simulators.splice(store.simulators.indexOf(s), 1);
-    return { ok: true, kind: "deleted", text: `Deleted ${heading("chase-sim", url)}${s.state === "exited" ? ", which had exited" : ""}` };
+    lines.push(`Deleted ${heading("chase-sim", url)}${s.state === "exited" ? ", which had exited" : ""}`);
+    return { ok: true, kind: "deleted", text: lines.join("\n") };
   }
 
   function createHost({ name, provider, url }, onLine) {

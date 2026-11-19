@@ -39,16 +39,18 @@ const Simulators = (() => {
     W.mode = "rows";
     command(W, "/api/simulators/create", { backend: field("backend").value, config: field("config").value.trim() || null });
   }
-  // A refused delete (a host uses it) keeps the simulator selected.
+  // A failed delete keeps the simulator selected.
   async function remove(s) {
-    const result = await command(W, "/api/simulators/delete", { url: s.url });
+    const body = s.hosts.length ? { url: s.url, with_hosts: true } : { url: s.url };
+    const result = await command(W, "/api/simulators/delete", body);
     if (result.ok && W.selected === s.url) { W.selected = null; render(); }
   }
 
   function view() {
     const s = listing().find((x) => x.url === W.selected);
+    const confirming = W.ask && s;
     const keys = W.busy || W.reading ? []
-      : W.ask ? [{ label: "YES", action: () => remove(s) }, { label: "NO", action: () => { W.ask = null; render(); } }]
+      : confirming ? [{ label: "YES", action: () => remove(s) }, { label: "NO", action: () => { W.ask = null; render(); } }]
       : W.mode === "create" ? [{ label: "NEW", action: create }, { label: "CANCEL", action: back }]
       : s ? [
           // An exited simulator is no vehicle: there is nothing to show or discover.
@@ -63,9 +65,15 @@ const Simulators = (() => {
                                     disabled: W.busy, action: () => select(x.url) })),
       form: W.mode === "create" ? "create" : null,
       // An open form shows only the error it answers.
-      status: W.ask ? "Delete?" : W.log.length ? W.log.join("\n") : W.mode !== "rows" ? "" : W.reading ? "..." : s ? lines(s).join("\n") : "",
+      status: confirming ? deleteQuestion(s) : W.log.length ? W.log.join("\n") : W.mode !== "rows" ? "" : W.reading ? "..." : s ? lines(s).join("\n") : "",
       keys,
     };
+  }
+
+  function deleteQuestion(s) {
+    if (!s.hosts.length) return "Delete?";
+    const hosts = s.hosts.length === 1 ? "host" : "hosts";
+    return `Delete ${new URL(s.url).host} and ${hosts} ${s.hosts.join(", ")}?`;
   }
 
   const w = deskWindow(root, view);

@@ -52,7 +52,7 @@ class VisualYawEstimate:
 
 @dataclass(frozen=True)
 class TurnObservation:
-    """One constant-control turning observation in Automa sign conventions (+right, +forward)."""
+    """One turning observation with interval-average controls (+right, +forward)."""
 
     signed_throttle: float
     steering: float
@@ -439,7 +439,7 @@ def _filter_per_bin_outliers(
     for steer_bin in np.unique(abs_bins):
         idx = np.flatnonzero(abs_bins == steer_bin)
         if len(idx) >= 3:
-            sub_mask = _upper_consensus_mask(linear_gains[idx], rel_tol=0.20)
+            sub_mask = _upper_consensus_mask(linear_gains[idx], rel_tol=0.22)
             keep[idx[~sub_mask]] = False
     if int(np.sum(keep)) < 2:
         return st, us, omega, linear_gains
@@ -467,20 +467,23 @@ def _dominant_turn_sign(st: np.ndarray, us: np.ndarray, omega: np.ndarray) -> fl
 
 
 def _upper_consensus_mask(values: np.ndarray, *, rel_tol: float) -> np.ndarray:
-    """Select the highest-magnitude supported cluster (contact/drag only slows turns down)."""
+    """Prefer upper gain clusters with broad support and keep both tails of timing jitter."""
     n = len(values)
     if n <= 2:
         return np.ones(n, dtype=bool)
-    min_support = max(2, min(4, int(math.ceil(0.25 * n))))
     centers = np.sort(values)[::-1]
-    centers = centers[centers > 0.0]
-    if len(centers) == 0:
-        return np.ones(n, dtype=bool)
     masks = np.abs(values[None, :] - centers[:, None]) <= (rel_tol * centers[:, None])
-    valid = np.flatnonzero(masks.sum(axis=1) >= min_support)
+    support = masks.sum(axis=1)
+    # A few short intervals can inflate gain. Require evidence relative to both the
+    # population and its strongest cluster, while allowing a slower contact cluster to be larger.
+    min_support = max(2, math.ceil(0.25 * n), math.ceil(0.75 * int(support.max())))
+    valid = np.flatnonzero(support >= min_support)
     if len(valid) == 0:
         return np.ones(n, dtype=bool)
-    return masks[int(valid[0])]
+    # Start at the highest supported cluster and prefer the densest center within it.
+    # The top edge alone can exclude the low-rate side of the same cluster.
+    nearby = valid[centers[valid] >= (1.0 - rel_tol) * centers[valid[0]]]
+    return masks[nearby[np.argmax(support[nearby])]]
 
 
 def _fit_linear_response(
@@ -574,7 +577,7 @@ def _bin_weighted_gain_and_score(
     if gain_mag <= 0.0:
         return None
     bin_err = sum(w * abs(v - gain_mag) for w, v in zip(weights, meds, strict=True)) / (w_sum * gain_mag)
-    coverage_penalty = 0.05 * (1.0 - inlier_count / len(implied))
+    coverage_penalty = 0.10 * (1.0 - inlier_count / len(implied))
     return gain_mag, bin_err + coverage_penalty
 
 
@@ -600,7 +603,7 @@ def _grid_search_max_angle(
     best_mask = np.zeros(len(omega), dtype=bool)
     for row_idx, angle in enumerate(grid.tolist()):
         implied = implied_mat[row_idx]
-        mask = _upper_consensus_mask(implied, rel_tol=0.18)
+        mask = _upper_consensus_mask(implied, rel_tol=0.22)
         evaluated = _bin_weighted_gain_and_score(implied, mask, bin_steers, bin_indices)
         if evaluated is None:
             continue

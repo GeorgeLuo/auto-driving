@@ -61,7 +61,7 @@ class VehicleDynamicsPlugin:
         ),
         limitations=(
             "scale-free angular identification only; does not estimate metric speed or turning radius",
-            "turn-response updates require settled autonomous control history and non-stalled visual motion",
+            "turn-response updates require smooth applied autonomous controls and non-stalled visual motion",
             "radians-per-second scale depends on camera vertical FOV and barrel distortion configuration",
         ),
     )
@@ -74,7 +74,7 @@ class VehicleDynamicsPlugin:
         barrel_distortion: float = 0.12,
         min_dt_ms: int = 20,
         max_dt_ms: int = 500,
-        command_settle_ms: int = 250,
+        command_settle_ms: int = 45,
         min_moving_px_shift: float = 1.5,
         max_observations: int = 40,
         min_tracks: int = 15,
@@ -158,7 +158,7 @@ class VehicleDynamicsPlugin:
         assert previous_gray is not None and previous_ms is not None
         dt_ms = int(frame.captured_at_ms) - previous_ms
         estimate = self._estimate_pair(previous_gray, current_gray, dt_ms)
-        applied_control = _settled_autonomous_control(
+        applied_control = _interval_autonomous_control(
             inputs.shared_memory,
             previous_ms,
             int(frame.captured_at_ms),
@@ -302,29 +302,47 @@ def _restore_response(raw: object) -> TurnResponseEstimate | None:
     return TurnResponseEstimate(kind, gain, max_angle, turn_sign, samples, distinct, residual, confidence)
 
 
-def _settled_autonomous_control(
+def _interval_autonomous_control(
     shared_memory: SharedMemory | None,
     start_ms: int,
     end_ms: int,
     *,
     settle_ms: int,
 ) -> tuple[float, float] | None:
+    if end_ms <= start_ms:
+        return None
     window_start = start_ms - settle_ms
     applications = control_applications_over(shared_memory, window_start, end_ms)
-    if not applications:
-        return None
-    return _uniform_command(applications)
+    if applications and _controls_vary_smoothly(applications):
+        return _average_control(applications, start_ms, end_ms)
+    return None
 
 
-def _uniform_command(applications: tuple[ControlApplication, ...]) -> tuple[float, float] | None:
-    first = applications[0].control
-    for app in applications[1:]:
-        if (
-            abs(app.control.throttle - first.throttle) > 1e-6
-            or abs(app.control.steering - first.steering) > 1e-6
-        ):
-            return None
-    return (float(first.throttle), float(first.steering))
+def _controls_vary_smoothly(applications: tuple[ControlApplication, ...]) -> bool:
+    throttles = [app.control.throttle for app in applications]
+    low_throttle, high_throttle = min(throttles), max(throttles)
+    spans_zero = low_throttle <= 0.0 <= high_throttle
+    if spans_zero and low_throttle != high_throttle:
+        return False
+    steers = [app.control.steering for app in applications]
+    return high_throttle <= low_throttle + 0.15 and max(steers) <= min(steers) + 0.12
+
+
+def _average_control(
+    applications: tuple[ControlApplication, ...], start_ms: int, end_ms: int,
+) -> tuple[float, float]:
+    # The lookback guards alignment. Only time inside the image pair contributes to the mean.
+    ends = [app.delivered_at_ms for app in applications[1:]] + [end_ms]
+    throttle_sum = steering_sum = 0.0
+    cursor = start_ms
+    for app, next_ms in zip(applications, ends, strict=True):
+        assert next_ms is not None  # control_applications_over guarantees timed writes.
+        span = max(0, next_ms - cursor)
+        throttle_sum += span * app.control.throttle
+        steering_sum += span * app.control.steering
+        cursor += span
+    duration = end_ms - start_ms
+    return throttle_sum / duration, steering_sum / duration
 
 
 def _build_batch(

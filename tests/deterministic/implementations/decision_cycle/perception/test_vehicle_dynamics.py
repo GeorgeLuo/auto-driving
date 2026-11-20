@@ -219,6 +219,22 @@ class VisualYawTests(unittest.TestCase):
         self.assertEqual(fit.turn_sign, "normal")
         self.assertAlmostEqual(fit.predict_yaw_rate(1.0, 1.0), true_full, delta=0.18)
 
+    def test_fit_turn_response_resists_capture_clock_jitter_and_partial_contacts(self) -> None:
+        gain, angle = 4.826, 0.6458
+        observations: list[TurnObservation] = []
+        for steering in (0.25, 0.50, 0.75, 1.0):
+            free_rate = gain * math.tan(angle * steering)
+            # A frame with a long measured interval reads low and short intervals read high.
+            for wall_dt_ms in (75, 61, 60, 51, 50):
+                observations.append(TurnObservation(1.0, steering, free_rate * 60 / wall_dt_ms))
+            for contact_fraction in (0.0, 0.28, 0.39, 0.56, 0.60):
+                observations.append(TurnObservation(1.0, steering, free_rate * contact_fraction))
+
+        fit = fit_turn_response(observations)
+        self.assertEqual(fit.kind, "ackermann_tan")
+        self.assertEqual(fit.turn_sign, "normal")
+        self.assertAlmostEqual(fit.predict_yaw_rate(1.0, 1.0), gain * math.tan(angle), delta=0.18)
+
     def test_fit_turn_response_falls_back_to_linear_without_four_supported_inliers(self) -> None:
         # Two steering levels with only 2 points total must not fit a 2-parameter nonlinear curve.
         sparse = [
@@ -321,20 +337,74 @@ class VehicleDynamicsPluginTests(unittest.TestCase):
         self.assertEqual(signals["turn_response_available"].properties["turn_sign"], "normal")
         self.assertEqual(signals["turn_response_available"].properties["sample_count"], 4)
 
-    def test_mid_interval_control_change_stall_and_settle_guard(self) -> None:
-        plugin = VehicleDynamicsPlugin(
-            vertical_fov_degrees=70.0, barrel_distortion=0.0, command_settle_ms=250
+    def test_smooth_controls_are_recorded_with_time_weighted_interval_averages(self) -> None:
+        plugin = VehicleDynamicsPlugin(barrel_distortion=0.0)
+        intr = CameraIntrinsics(320, 240, 70.0, 0.0)
+        base = _textured_scene()
+        memory: dict[str, object] = {}
+        with self.assertRaises(PerceptionPluginWarmingUp):
+            plugin.perceive(self._inputs(base, "f0", 1000, memory))
+        apps = (
+            _control_app(delivered_at_ms=930, throttle=0.70, steering=0.30),
+            _control_app(delivered_at_ms=980, throttle=0.72, steering=0.32),
+            _control_app(delivered_at_ms=1010, throttle=0.76, steering=0.35),
+            _control_app(delivered_at_ms=1040, throttle=0.80, steering=0.39),
+            _control_app(delivered_at_ms=1060, throttle=0.82, steering=0.41),
+            _control_app(delivered_at_ms=1080, throttle=0.83, steering=0.43),
+            _control_app(delivered_at_ms=1110, throttle=0.85, steering=0.44),
         )
+        write_host_inputs(memory, mode="autonomy", user_steering=None, user_throttle=None, control_applications=apps)
+
+        first = _warp_pure_yaw(base, 0.06, intr)
+        second = _warp_pure_yaw(first, 0.07, intr)
+        for batch, expected_throttle, expected_steering in (
+            (plugin.perceive(self._inputs(first, "f1", 1060, memory)), 0.7666666667, 0.3583333333),
+            (plugin.perceive(self._inputs(second, "f2", 1110, memory)), 0.826, 0.422),
+        ):
+            self.assertTrue(batch.measurements["control_recorded"])
+            control = batch.measurements["interval_control"]
+            assert isinstance(control, list)
+            self.assertAlmostEqual(control[0], expected_throttle)
+            self.assertAlmostEqual(control[1], expected_steering)
+
+    def test_rejects_large_command_changes_or_reversals_inside_interval(self) -> None:
+        plugin = VehicleDynamicsPlugin(barrel_distortion=0.0)
+        intr = CameraIntrinsics(320, 240, 70.0, 0.0)
+        base = _textured_scene()
+        warped = _warp_pure_yaw(base, 0.08, intr)
+        for label, throttle, steering in (
+            ("steering jump", 0.07, 0.80),
+            ("throttle jump", 0.35, 0.40),
+            ("throttle reversal within magnitude tolerance", -0.06, 0.40),
+        ):
+            with self.subTest(change=label):
+                memory: dict[str, object] = {}
+                apps = (
+                    _control_app(delivered_at_ms=930, throttle=0.07, steering=0.40),
+                    _control_app(delivered_at_ms=1025, throttle=throttle, steering=steering),
+                )
+                write_host_inputs(
+                    memory, mode="autonomy", user_steering=None, user_throttle=None, control_applications=apps
+                )
+                with self.assertRaises(PerceptionPluginWarmingUp):
+                    plugin.perceive(self._inputs(base, "f0", 1000, memory))
+                batch = plugin.perceive(self._inputs(warped, "f1", 1060, memory))
+                self.assertTrue(batch.measurements["visual_yaw"]["confident"])
+                self.assertFalse(batch.measurements["control_recorded"])
+                self.assertIsNone(batch.measurements["interval_control"])
+
+    def test_stall_and_settle_guard(self) -> None:
+        plugin = VehicleDynamicsPlugin(barrel_distortion=0.0)
         intr = CameraIntrinsics(320, 240, 70.0, 0.0)
         base = _textured_scene()
         memory: dict[str, object] = {}
         with self.assertRaises(PerceptionPluginWarmingUp):
             plugin.perceive(self._inputs(base, "f0", 1000, memory))
 
-        # Command changed only 50 ms before prev_ms (< command_settle_ms=250) -> NOT recorded.
+        # The command changed 35 ms before prev_ms, inside the default settle window.
         apps = (
             _control_app(delivered_at_ms=700, throttle=0.0, steering=0.0),
-            _control_app(delivered_at_ms=950, throttle=1.0, steering=0.5),
+            _control_app(delivered_at_ms=965, throttle=1.0, steering=0.5),
         )
         write_host_inputs(memory, mode="autonomy", user_steering=None, user_throttle=None, control_applications=apps)
         warped = _warp_pure_yaw(base, 0.08, intr)
@@ -342,7 +412,7 @@ class VehicleDynamicsPluginTests(unittest.TestCase):
         self.assertFalse(batch_unsettled.measurements["control_recorded"])
         self.assertTrue(batch_unsettled.measurements["visual_yaw"]["confident"])
 
-        # Settled command (>= 250 ms before prev_ms=1100), but frame is identical (stalled against obstacle) -> blocked!
+        # The settled command drives against an obstacle, leaving the next frame identical.
         settled_apps = (
             _control_app(delivered_at_ms=800, throttle=1.0, steering=0.5),
         )

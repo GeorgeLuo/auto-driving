@@ -357,7 +357,7 @@
         "barrel_distortion": 0.12,
         "min_dt_ms": 20,
         "max_dt_ms": 500,
-        "command_settle_ms": 250,
+        "command_settle_ms": 45,
         "min_moving_px_shift": 1.5,
         "max_observations": 40,
         "min_tracks": 15,

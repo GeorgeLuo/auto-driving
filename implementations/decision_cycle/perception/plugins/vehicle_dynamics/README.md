@@ -4,8 +4,9 @@ Windowed perception plugin that estimates scale-free angular yaw rate (`visual_y
 
 ## Contract & conventions
 
-- **Inputs**: `FRONT_CAMERA_RGB_INPUT` + host `shared_memory` (`action.control_applications`).
-- **Sign convention**: Automa convention (`+1` steering = right, `+` yaw rate = right turn, signed throttle `+` forward / `-` reverse). An inverted-steering platform yields negative `gain_per_s` with `turn_sign: "inverted"`.
-- **Observe-only / manual runs**: `visual_yaw_rate_rad_s` still runs purely from camera imagery; turn-response fitting updates only on intervals with a single uniform applied autonomous control settled for at least `command_settle_ms` before the interval (`control_applications_over`) and non-stalled visual motion (`median_px_shift >= min_moving_px_shift`).
-- **Large shifts & blocked contacts**: Primary tracking uses forward-backward `PyrLK` with an automatic ORB descriptor-matching fallback for large 5 Hz shifts (`max_step_yaw_radians = 0.90`). `fit_turn_response` uses one-sided upper-consensus clustering so partial furniture/wall contacts cannot pull the unimpeded curve down.
-- **Calibration**: Scale-free — camera height and pitch are not required inputs; camera intrinsics (`vertical_fov_degrees`, `barrel_distortion`) default to the Chase/RC prior (`70°`, `0.12`). Configure actual vehicle camera intrinsics to avoid focal-length scale bias.
+- `FRONT_CAMERA_RGB_INPUT` supplies the images. The plugin reads applied commands from `action.control_applications` in host shared memory.
+- Positive steering and yaw point right. Positive throttle drives forward and negative throttle drives in reverse. An inverted-steering platform yields negative `gain_per_s` and an `"inverted"` `turn_sign`.
+- Camera-only yaw estimation works in manual and observe-only modes. Learning requires visual motion and a continuous history of applied autonomous commands through the image pair and the preceding `command_settle_ms` lookback. The default 45 ms covers the observed delay from command delivery to visible motion with a margin for render timing.
+- The learning window accepts continuous steering with a maximum steering range of 0.12 and throttle range of 0.15, provided throttle stays in the same direction. Each command contributes to the control average in proportion to the time it was in force between the two captures.
+- Tracking uses forward-backward PyrLK and falls back to ORB descriptor matching for large shifts. The turn-response fit favors well-supported higher gains to reject slowed turns from contact. It selects the densest part of that cluster so short and long capture intervals can both contribute.
+- The angular estimate uses `vertical_fov_degrees` and `barrel_distortion`, which default to 70° and 0.12. Set these to the actual camera intrinsics to avoid focal-length scale bias.

@@ -57,7 +57,7 @@ const mock = (() => {
   // ---- The store: what simulators create started, what vehicles discover listed, the hosts. ----
   const store = { simulators: [], vehicles: [], hosts: [], captures: [
     { capture: "chase/bundle/runtime/automation/host-runs/run-closed", host: "chase", vehicle: "chase-sim",
-      run_id: "run-closed", started_at_ms: 1700000002000, duration_ms: 1500, frame_count: 2, size_bytes: 4096, state: "closed" },
+      run_id: "run-closed", started_at_ms: 1700000002000, duration_ms: 1500, frame_count: CAPTURE.length || 4, size_bytes: 4096, state: "closed" },
     { capture: "chase/bundle/runtime/automation/host-runs/run-active", host: "chase", vehicle: "chase-sim",
       run_id: "run-active", started_at_ms: 1700000001000, duration_ms: 400, frame_count: 1, size_bytes: 1024, state: "active" },
   ] };

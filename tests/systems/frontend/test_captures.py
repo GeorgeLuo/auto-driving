@@ -10,7 +10,7 @@ from tests.support.cli_runner import WORKSPACE_ROOT as ROOT
 
 @unittest.skipUnless(shutil.which("node"), "node is not installed")
 class CaptureWindowTests(unittest.TestCase):
-    def test_list_metadata_viewer_and_step(self) -> None:
+    def test_list_metadata_viewer_step_seek_and_playback(self) -> None:
         result = subprocess.run(
             ["node", str(Path(__file__).with_name("captures.js"))],
             cwd=ROOT,

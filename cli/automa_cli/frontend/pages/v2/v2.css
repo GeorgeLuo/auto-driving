@@ -161,6 +161,20 @@ nav + nav { margin-top: 40px; }
 .captures-frame .list { overflow-y: auto; }
 .captures-frame[data-context="view"] .list-rows { display: none; }
 .captures-frame[data-context="list"] .aside { display: none; }
+.captures-frame[data-context="view"] .pane-keys { left: 6px; align-items: center; }
+.pane-seek {
+  flex: 1 1 48px; min-width: 48px; height: 14px; margin: 0; padding: 0;
+  background: transparent; accent-color: var(--key-bg); cursor: pointer;
+  -webkit-appearance: none; appearance: none;
+}
+.pane-seek:disabled { opacity: .38; cursor: default; }
+.pane-seek::-webkit-slider-runnable-track { height: 2px; background: var(--line); }
+.pane-seek::-webkit-slider-thumb {
+  -webkit-appearance: none; width: 8px; height: 12px; margin-top: -5px;
+  border: 0; border-radius: 0; background: var(--key-bg);
+}
+.pane-seek::-moz-range-track { height: 2px; border: 0; border-radius: 0; background: var(--line); }
+.pane-seek::-moz-range-thumb { width: 8px; height: 12px; border: 0; border-radius: 0; background: var(--key-bg); }
 
 /* ---- Learning ---- */
 /* The charts fill the pane above its keys and scroll; the board is the pane's text. */

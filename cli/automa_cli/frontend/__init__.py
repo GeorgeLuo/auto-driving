@@ -1,10 +1,11 @@
 """The runtime viewer automa serves.
 
-- ``server``: HTTP routes and the viewer process.
+- ``server``: HTTP routes and the viewer process: the v2 page, its command routes and the workbench.
 - ``loopback_http``: the loopback transport those routes share.
-- ``decision_view``, ``perception_view``, and ``workbench_view``: one page's payloads.
+- ``decision_view`` and ``perception_view``: the host frame payloads the v2 page reads;
+  ``workbench_view``: the workbench's.
 - ``workbench_contract``: the workbench action schema. It is not terminal text.
-- ``plugin_catalog``: the catalog route.
+- ``plugin_catalog``: the workbench's catalog route.
 - ``pages``: the HTML, CSS, and JavaScript each route serves. Those assets keep
   the names the pages already request.
 

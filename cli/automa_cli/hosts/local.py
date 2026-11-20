@@ -38,13 +38,20 @@ _CHASE_SERVICE = "implementations.runtime.chase_sim.service"
 def host_record(host_name: str) -> dict[str, object] | None:
     """The running Chase host's record; ``None`` once its process is gone."""
 
+    record = read_host_record(automation_dir(host_name))
+    return record if record is not None and pid_alive(record.get("pid")) else None
+
+
+def read_host_record(directory: Path) -> dict[str, object] | None:
+    """The local Chase process record, even if that process has stopped."""
+
     try:
-        record = json.loads((automation_dir(host_name) / HOST_RECORD).read_text(encoding="utf-8"))
+        record = json.loads((directory / HOST_RECORD).read_text(encoding="utf-8"))
     except (OSError, ValueError):
         return None
     if not isinstance(record, dict) or record.get("schema") != HOST_RECORD_SCHEMA:
         return None
-    return record if pid_alive(record.get("pid")) else None
+    return record
 
 
 def log_tail(path: Path, name: str) -> str:

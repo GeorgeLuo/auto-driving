@@ -2,8 +2,6 @@
 
 from __future__ import annotations
 
-from cli.automa_cli.hosts.runs.models import WorkerProcess
-from cli.automa_cli.hosts.runs.models import RunState
 import json
 import os
 import subprocess
@@ -16,7 +14,6 @@ from typing import Iterator
 from unittest import mock
 
 from autonomy.decision_cycle.activation import step_activation
-from cli.automa_cli.frontend import perception_view
 from cli.automa_cli.releases.paths import controller_bundle_paths
 from cli.automa_cli.hosts.host_formatting import viewer_command
 from cli.automa_cli.hosts.local import HOST_RECORD
@@ -31,7 +28,7 @@ from tests.shared.implementations.runtime.wait import wait_until
 from tests.support.fake_hosts import answering, closed_url, hung_url
 from tests.support.fake_metrics_ui import fake_metrics_ui
 from tests.support.perception_fixtures import local_perception
-from tests.support.runtime_fixtures import write_host_fixture, write_json
+from tests.support.runtime_fixtures import write_host_fixture
 
 
 def _host_blocks(stdout: str) -> list[list[str]]:
@@ -83,6 +80,8 @@ class HostStatusTests(unittest.TestCase):
         self.runtime_root = Path(self.enterContext(tempfile.TemporaryDirectory()))
         self.server = self.enterContext(fake_metrics_ui())
         self.chaser = f"  chaser at {chase_operator_url(self.server.url)}"
+        # Status reports the viewer ./cli/automa serves; none answers here unless a test says so.
+        self.viewer = self.enterContext(mock.patch("cli.automa_cli.hosts.runs.status.running_viewer_url", return_value=None))
 
     def status(self, *args: str) -> subprocess.CompletedProcess[str]:
         return invoke_automa("hosts", "status", *args, runtime_root=self.runtime_root,
@@ -114,7 +113,7 @@ class HostStatusTests(unittest.TestCase):
         self.assertTrue(long.stdout.startswith("\n".join(block[:3]) + "\n"), long.stdout)
         self.assertIn(f"\n  {host.base_url}, pid {os.getpid()}\n  deployment: ", long.stdout)
         viewer = viewer_command("chase-sim-chaser")
-        self.assertIn(f"\n  view: unavailable (start `{viewer}` to host it)\n", long.stdout)
+        self.assertIn(f"\n  view: unavailable (start `{viewer}` to open it)\n", long.stdout)
         self.assertEqual((machine["schema"], machine["host_name"]), ("automa_hosts_status", None))
         [entry] = machine["hosts"]
         self.assertEqual(
@@ -126,86 +125,34 @@ class HostStatusTests(unittest.TestCase):
         )
         self.assertEqual(entry["run"]["host_name"], "chase-sim-chaser")
 
-    def test_a_host_without_a_monitor_reports_its_standalone_view(self) -> None:
-        """A host without a monitor reports the view ``hosts viewer`` or a stream records.
+    def test_a_running_viewer_is_reported_as_the_hosts_page(self) -> None:
+        """While ./cli/automa serves the viewer, each host's view is its v2 page.
 
         The run detail reuses discovery's reads of the host's configuration and record.
         """
 
         host = self.host()
-        health = json.dumps({
-            "schema": perception_view.VIEW_SCHEMA, "available": True, "url": "http://127.0.0.1/",
-            "latest_frame_id": "frame-1",
-        }).encode()
-        with answering(health) as view_url:
-            runtime = self.runtime_root / "chase-sim-chaser/bundle/runtime"
-            # An ended monitor's record is left behind; it is not checked.
-            for directory in ("automation", "view"):
-                write_json(runtime / directory / perception_view.VIEW_RECORD_NAME, {"url": view_url})
-            reads = []
-            read_text = Path.read_text
+        self.viewer.return_value = "http://127.0.0.1:8473/"
+        runtime = self.runtime_root / "chase-sim-chaser/bundle/runtime"
+        reads = []
+        read_text = Path.read_text
 
-            def read(path, *args, **kwargs):
-                reads.append(path)
-                return read_text(path, *args, **kwargs)
+        def read(path, *args, **kwargs):
+            reads.append(path)
+            return read_text(path, *args, **kwargs)
 
-            with mock.patch.object(Path, "read_text", read), mock.patch.object(
-                perception_view, "urlopen", wraps=perception_view.urlopen,
-            ) as health_requests:
-                result = self.status("--json")
+        with mock.patch.object(Path, "read_text", read):
+            result = self.status("--json")
+        long = self.status("--long")
 
         self.assertEqual(result.returncode, 0, result.stderr)
         [entry] = json.loads(result.stdout)["hosts"]
         self.assertEqual(entry["run"]["process"]["process_record"], f"{host.base_url}/host/status")
-        view = entry["run"]["published_view"]
-        self.assertEqual((view["available"], view["latest_frame_id"]), (True, "frame-1"))
-        self.assertEqual(health_requests.call_count, 1)
+        self.assertEqual(entry["run"]["published_view"],
+                         {"available": True, "url": "http://127.0.0.1:8473/v2/?host=chase-sim-chaser"})
+        self.assertIn("\n  view: http://127.0.0.1:8473/v2/?host=chase-sim-chaser\n", long.stdout)
         self.assertEqual(reads.count(self.runtime_root / "chase-sim-chaser/host-configuration.json"), 1)
         self.assertEqual(reads.count(runtime / "automation" / HOST_RECORD), 1)
-
-    def test_a_monitored_run_reports_the_same_standalone_view(self) -> None:
-        """A live worker serves no view; status finds the explicit one without its pid or run id."""
-
-        self.host()
-        health = json.dumps({
-            "schema": perception_view.VIEW_SCHEMA, "available": True, "url": "http://127.0.0.1/",
-            "latest_frame_id": "frame-1",
-        }).encode()
-        with answering(health) as view_url:
-            runtime = self.runtime_root / "chase-sim-chaser/bundle/runtime"
-            write_json(runtime / "view" / perception_view.VIEW_RECORD_NAME, {"url": view_url})
-            write_json(runtime / "automation" / "process.json", WorkerProcess(pid=os.getpid()).to_dict())
-            write_json(runtime / "automation" / "state.json", RunState(pid=os.getpid(), run_id="run-1",
-                                                               status="running").to_dict())
-            result = self.status("--json")
-
-        self.assertEqual(result.returncode, 0, result.stderr)
-        [entry] = json.loads(result.stdout)["hosts"]
-        self.assertEqual(entry["run"]["process"]["pid"], os.getpid())
-        view = entry["run"]["published_view"]
-        self.assertEqual((view["available"], view["latest_frame_id"]), (True, "frame-1"))
-
-    def test_a_hung_view_does_not_hold_up_the_other_hosts(self) -> None:
-        """Each host's view is checked once, side by side with the others'."""
-
-        reply = json.dumps({"ok": True, "session": {"status": "pre_start"}, "host": {"error_count": 0}}).encode()
-        with answering(reply) as host_url, hung_url() as view_url:
-            for name in ("one", "two", "three"):
-                _record(self.runtime_root, name, host_url, self.server.url)
-                write_json(self.runtime_root / name / "bundle/runtime/view" / perception_view.VIEW_RECORD_NAME,
-                           {"url": view_url})
-            with mock.patch.object(perception_view, "urlopen", wraps=perception_view.urlopen) as health_requests:
-                started = time.monotonic()
-                result = self.status("--json", "--timeout-s", "0.2")
-                elapsed = time.monotonic() - started
-
-        self.assertEqual(result.returncode, 0, result.stderr)
-        hosts = json.loads(result.stdout)["hosts"]
-        self.assertEqual(len(hosts), 3)
-        self.assertTrue(all(not host["run"]["published_view"]["available"] for host in hosts))
-        self.assertEqual(health_requests.call_count, 3)
-        # One after another, three hung checks would take 0.75s.
-        self.assertLess(elapsed, 0.6, f"view checks ran one after another: {elapsed:.3f}s")
 
     def picar(self, name: str, url: str) -> dict:
         """``name``'s status entry, a PiCar whose staged connection is ``url``."""

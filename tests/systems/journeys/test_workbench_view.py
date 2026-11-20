@@ -1,4 +1,4 @@
-"""The workbench and runtime home share one viewer and replay session."""
+"""The workbench and the v2 page share one viewer and replay session."""
 
 from __future__ import annotations
 
@@ -16,8 +16,7 @@ class WorkbenchViewTests(unittest.TestCase):
         with image_source(1) as root, sync_playwright() as runtime:
             runner = ImageReplayRunner(root, cadence_ms=250)
             server = RuntimeViewServer(
-                host_name="viewer", automation_dir=None, port=0,
-                connected=False, replay_runner=runner,
+                host_name="viewer", port=0, replay_runner=runner,
             ).start()
             browser = runtime.chromium.launch()
             try:
@@ -31,8 +30,9 @@ class WorkbenchViewTests(unittest.TestCase):
                 expect(page.locator("#pluginSections .plugin-section").first).to_be_visible()
                 run_id = page.request.get(server.workbench_url + "api/state").json()["run_id"]
 
+                # The workbench's home is the v2 page, whose Workbench link opens it again.
                 page.get_by_role("link", name="Automa", exact=True).click()
-                expect(page).to_have_url(server.url)
+                expect(page).to_have_url(server.url + "v2/")
                 page.get_by_role("link", name="Workbench", exact=True).click()
                 expect(page).to_have_url(server.workbench_url)
                 expect(page.locator("#sourceDir")).to_have_value(str(root.resolve()))

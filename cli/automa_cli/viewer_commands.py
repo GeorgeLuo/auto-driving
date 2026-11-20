@@ -10,6 +10,10 @@ the command's flags: ``name`` is hosts' ``--name`` and plugins' ``--name``,
 A plugins stream read is ``plugins stream --once`` for one step, answering the
 probe with the screen it prints as ``text``. A host's latest frame reads as
 the perception page reads it, with its image at ``/api/hosts/frame``.
+A host's learning history is the memory step's beliefs and plugins over the
+run, the rows after the page's ``since`` cursor.
+A capture is one recorded run. The list reads every recording under the runtime
+root, and a closed capture's frame and image are read one at a time.
 """
 
 from __future__ import annotations
@@ -31,7 +35,9 @@ from .hosts.progress import ProgressEvent
 from .hosts.runs.render import render_lifecycle_result
 from .hosts.runs.service import restart_host_automation, start_host_automation_background, stop_host_automation
 from .hosts.runs.status import hosts_status
+from .hosts.captures import capture_frame, capture_image, capture_metadata, list_captures
 from .hosts.views.frames import HostFrames
+from .hosts.views.learning import HostLearning
 from .plugins.catalog.render import render_listing, render_save, render_selection, render_upload
 from .plugins.catalog.service import (
     arm_collection, arm_plugins, arm_preset, disarm_collection, disarm_plugins, list_plugins, save_plugins,
@@ -41,7 +47,7 @@ from .plugins.stream.render import render_stream
 from .plugins.stream.service import STREAM_STEPS, stream_host
 from .providers.registry import PROVIDERS
 from .simulators.render import render_simulator_result
-from .simulators.service import create_simulator, delete_simulator
+from .simulators.service import SIMULATOR_BACKENDS, create_simulator, delete_simulator
 from .simulators.status import simulators_status
 from .vehicles.discovery import discover_vehicle, remove_vehicle
 from .vehicles.render import render_vehicle_result
@@ -132,14 +138,43 @@ def _remove(body: dict[str, object]) -> dict[str, object]:
     return _answer(result, render_vehicle_result(result))
 
 
-def _create(_body: dict[str, object]) -> dict[str, object]:
-    result = create_simulator()
+def _backend(body: dict[str, object]) -> str:
+    """simulators create's --backend; absent or null starts its default."""
+
+    backend = body.get("backend")
+    if backend is None:
+        return SIMULATOR_BACKENDS[0]
+    if not isinstance(backend, str) or backend not in SIMULATOR_BACKENDS:
+        raise ValueError(f"backend must be one of {', '.join(SIMULATOR_BACKENDS)}")
+    return backend
+
+
+def _create(body: dict[str, object]) -> dict[str, object]:
+    result = create_simulator(backend=_backend(body), config=_optional_text(body, "config"))
     return _answer(result, render_simulator_result(result))
 
 
 def _delete(body: dict[str, object]) -> dict[str, object]:
-    result = delete_simulator(url=_text(body, "url"))
-    return _answer(result, render_simulator_result(result))
+    url = _text(body, "url")
+    with_hosts = _flag(body, "with_hosts")
+    result = delete_simulator(url=url)
+    if not with_hosts or result.kind != "blocked":
+        return _answer(result, render_simulator_result(result))
+
+    printed = _Printed()
+    try:
+        for name in result.hosts:
+            target = f"host {name}"
+            host = delete_host(host_name=name, emit=printed)
+            detail = render_delete(host)
+            if host.exit_code:
+                return _answer(host, printed.text(f"Could not delete {target}: {detail}"))
+            printed.lines.append(detail)
+        target = f"simulator at {url}"
+        result = delete_simulator(url=url)
+    except (OSError, ValueError, TypeError, RuntimeError) as exc:
+        return {"ok": False, "error": str(exc), "text": printed.text(f"Could not delete {target}: {exc}")}
+    return _answer(result, printed.text(render_simulator_result(result)))
 
 
 def _create_host(body: dict[str, object]) -> dict[str, object]:
@@ -225,7 +260,7 @@ def _plugins_stream(query: dict[str, str]) -> dict[str, object]:
         raise ValueError(f"step must be one of {', '.join(STREAM_STEPS)}")
     events = []
     result = stream_host(step, host_name=_text(query, "host_name"), refresh_s=0.0, once=True, timeout_s=3.0,
-                         serve_view=False, include_publication=True, emit=events.append)
+                         show_view=False, include_publication=True, emit=events.append)
     if result.preflight or not events:
         return {**(result.live or {}), "text": result.message}
     return {**json.loads(render_stream(events[-1], json_output=True)),
@@ -305,7 +340,17 @@ def _save(body: dict[str, object]) -> dict[str, object]:
     return _answer(result, render_save(result, json_output=False))
 
 
+def _since(query: dict[str, str]) -> int:
+    """A learning read's cursor: the last row's seq the page has, 0 for all of them."""
+
+    since = query.get("since", "0")
+    if not since.isascii() or not since.isdigit():
+        raise ValueError("since must be a non-negative integer")
+    return int(since)
+
+
 HOST_FRAMES = HostFrames(frame_route="/api/hosts/frame")
+HOST_LEARNING = HostLearning()
 
 # /api/hosts is the v1 home page's host list, so hosts status reads at /api/hosts/status.
 VIEWER_READS = {
@@ -314,8 +359,13 @@ VIEWER_READS = {
     "/api/hosts/status": lambda _query: hosts_status(include_runs=True)[1],
     "/api/hosts/latest": lambda query: HOST_FRAMES.latest(_text(query, "host_name")),
     "/api/hosts/frame": lambda query: HOST_FRAMES.image(_text(query, "host_name"), _text(query, "v")),
+    "/api/hosts/learning": lambda query: HOST_LEARNING.history(_text(query, "host_name"), _since(query)),
     "/api/plugins/list": _plugins_list,
     "/api/plugins/stream": _plugins_stream,
+    "/api/captures": lambda _query: list_captures(),
+    "/api/captures/metadata": lambda query: capture_metadata(_text(query, "capture")),
+    "/api/captures/frame": lambda query: capture_frame(_text(query, "capture"), _text(query, "index")),
+    "/api/captures/image": lambda query: capture_image(_text(query, "capture"), _text(query, "index")),
 }
 _RUN_FIELDS = ("name", "observe_only", "num_decisions", "unbounded", "record")
 _UPLOAD_COLLECTION_FIELDS = frozenset({"host_name", "manifest", "arm"})
@@ -325,8 +375,8 @@ VIEWER_WRITES = {
     for route, command, fields in [
         ("/api/vehicles/discover", _discover, ("provider", "url", "force")),
         ("/api/vehicles/remove", _remove, ("url",)),
-        ("/api/simulators/create", _create, ()),
-        ("/api/simulators/delete", _delete, ("url",)),
+        ("/api/simulators/create", _create, ("backend", "config")),
+        ("/api/simulators/delete", _delete, ("url", "with_hosts")),
         ("/api/hosts/create", _create_host,
          ("name", "provider", "url", "ssh_target", "pi_home", "drive_args", "dry_run", "verbose")),
         ("/api/hosts/update", _update_host, ("name", "dry_run", "restart", "drive_args", "verbose")),

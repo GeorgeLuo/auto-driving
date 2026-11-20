@@ -2,22 +2,19 @@ from __future__ import annotations
 
 import json
 import os
+import re
 import tempfile
 import unittest
 from pathlib import Path
 from unittest import mock
 from urllib.error import HTTPError
-from urllib.parse import urlencode
-from urllib.request import Request, urlopen
+from urllib.parse import urlencode, urljoin
+from urllib.request import urlopen
 
 from cli.automa_cli import app
-from cli.automa_cli.frontend.server import (
-    NOT_CONNECTED_ERROR,
-    RUNTIME_HOST_ROUTES,
-    RuntimeViewServer,
-)
+from cli.automa_cli.frontend.server import RuntimeViewServer
 from cli.automa_cli.frontend.workbench_view import WORKBENCH_CONTENT_SECURITY_POLICY
-from cli.automa_cli.hosts.views import view_feed
+from cli.automa_cli.hosts.views import runtime_view
 from cli.automa_cli.hosts.views.runtime_view import runtime_view_server
 from implementations.vehicle.chase_sim.defaults import CHASE_UI_WS_URL_ENV
 from implementations.vehicle.chase_sim.metrics_ws import MetricsUiWsClient
@@ -31,7 +28,7 @@ from tests.support.fake_metrics_ui import fake_metrics_ui
 
 class RuntimeViewStartupTests(unittest.TestCase):
     def test_failed_serving_thread_start_closes_the_bound_socket_without_shutdown(self):
-        server = runtime_view_server(host_name="viewer", automation_dir=None, port=0)
+        server = runtime_view_server(host_name="viewer", port=0)
         with mock.patch("cli.automa_cli.frontend.server.start_server_thread",
                         side_effect=RuntimeError("thread could not start")):
             with self.assertRaisesRegex(RuntimeError, "thread could not start"):
@@ -44,61 +41,40 @@ class RuntimeViewStartupTests(unittest.TestCase):
         self.assertEqual(httpd.socket.fileno(), -1)
         self.assertIsNone(server.url)
 
-    def test_a_view_feed_whose_cleanup_also_fails_reports_the_start_failure(self):
-        server = mock.Mock(spec_set=RuntimeViewServer, url=None)
-        server.start.side_effect = OSError("record not written")
-        server.stop.side_effect = OSError("record not written again")
-        with tempfile.TemporaryDirectory() as tmp, \
-             mock.patch.object(view_feed, "runtime_view_dir", return_value=Path(tmp)), \
-             mock.patch.object(view_feed, "runtime_view_server", return_value=server):
-            feed = view_feed.ViewFeed("car", base_url="http://127.0.0.1:9", timeout_s=0.1)
-        self.assertEqual(feed.error, "OSError: record not written")
-        self.assertIsNone(feed.url)
-        server.stop.assert_called_once_with()
+    def test_a_non_loopback_binding_is_refused_before_start(self) -> None:
+        for host in ("0.0.0.0", "192.0.2.1"):
+            with self.subTest(host=host), self.assertRaisesRegex(ValueError, "loopback"):
+                RuntimeViewServer(host_name="viewer", host=host, port=0, replay_runner_factory=ImageReplayRunner)
 
 
 class ViewerWithoutHostTests(unittest.TestCase):
     def setUp(self) -> None:
         self.server = runtime_view_server(
             host_name="viewer",
-            automation_dir=None,
             port=0,
-            connected=False,
-        ).start()
+            ).start()
         self.addCleanup(self.server.stop)
 
-    def test_pages_are_served_without_a_host(self) -> None:
-        for route in ("", "perception", "memory", "plugins", "api/health"):
+    def test_the_root_opens_the_v2_page(self) -> None:
+        for route in ("", "index.html"):
             with self.subTest(route=route):
                 with urlopen(f"{self.server.url}{route}", timeout=1.0) as response:
-                    self.assertEqual(response.status, 200)
+                    self.assertEqual(response.url, f"{self.server.url}v2/")
+                    self.assertIn('id="workbenchLink"', response.read().decode("utf-8"))
 
-    def test_runtime_host_routes_say_not_connected(self) -> None:
-        for route in sorted(RUNTIME_HOST_ROUTES):
+    def test_the_v1_pages_and_their_routes_are_gone(self) -> None:
+        for route in ("perception", "memory", "decision", "plugins", "api/latest", "frame", "api/plugins"):
             with self.subTest(route=route):
-                self.assertNotConnected(Request(f"{self.server.url}{route.lstrip('/')}"))
-        self.assertNotConnected(
-            Request(f"{self.server.url}api/plugins", data=b"{}", method="POST")
-        )
+                with self.assertRaises(HTTPError) as caught:
+                    urlopen(f"{self.server.url}{route}", timeout=1.0)
+                self.assertEqual(caught.exception.code, 404)
 
-    def test_splash_marks_every_page_unavailable(self) -> None:
-        html = _read_text(self.server.url)
-        self.assertIn(f'class="status-dot error" title="{NOT_CONNECTED_ERROR}"', html)
-        for label in ("Perception", "Memory", "Action", "Plugins"):
-            self.assertIn(
-                f'<span class="nav unavailable" title="{NOT_CONNECTED_ERROR}">{label}</span>',
-                html,
-            )
-        self.assertEqual(html.count('<a class="nav"'), 1)
-        self.assertIn('<a class="nav" href="/workbench/">Workbench</a>', html)
-
-    def test_connect_window_has_a_status_box(self) -> None:
-        html = _read_text(self.server.url)
-        self.assertIn('<p class="float-frame-status-text" role="status"></p>', html)
-        self.assertIn('<div class="float-frame-status-actions"></div>', html)
+    def test_health_names_the_viewer(self) -> None:
+        health = json.loads(_read_text(f"{self.server.url}api/health"))
+        self.assertEqual((health["host_name"], health["url"], health["pid"]), ("viewer", self.server.url, os.getpid()))
 
     def test_shared_page_files_are_served(self) -> None:
-        for name, content_type in (("float.js", "javascript"), ("float.css", "css"), ("metrics.js", "javascript")):
+        for name, content_type in (("float.js", "javascript"), ("float.css", "css")):
             with self.subTest(name=name):
                 with urlopen(f"{self.server.url}static/shared/{name}", timeout=1.0) as response:
                     self.assertEqual(response.status, 200)
@@ -106,6 +82,26 @@ class ViewerWithoutHostTests(unittest.TestCase):
         with self.assertRaises(HTTPError) as caught:
             urlopen(f"{self.server.url}static/shared/missing.js", timeout=1.0)
         self.assertEqual(caught.exception.code, 404)
+
+    def test_every_file_the_v2_page_loads_resolves_from_its_url(self) -> None:
+        page_url = f"{self.server.url}v2/"
+        with urlopen(page_url, timeout=1.0) as response:
+            self.assertEqual(response.headers["Content-Security-Policy"], WORKBENCH_CONTENT_SECURITY_POLICY)
+            page = response.read().decode("utf-8")
+        loads = re.findall(r'<(?:script src|link rel="stylesheet" href)="([^"]+)"', page)
+        self.assertIn("../shared/float.js", loads)
+        workbench = re.search(r'<a class="nav" href="([^"]+)" id="workbenchLink"', page).group(1)
+        with urlopen(urljoin(page_url, workbench), timeout=1.0) as response:
+            self.assertIn('<span class="brand">Workbench</span>', response.read().decode("utf-8"))
+        for link in loads:
+            with self.subTest(link=link):
+                with urlopen(urljoin(page_url, link), timeout=1.0) as response:
+                    self.assertEqual(response.status, 200)
+        for route in ("v2", "v2/index.html", "v2/shots/0-start.png", "v2/js/missing.js", "shared/missing.js"):
+            with self.subTest(route=route):
+                with self.assertRaises(HTTPError) as caught:
+                    urlopen(f"{self.server.url}{route}", timeout=1.0)
+                self.assertEqual(caught.exception.code, 404)
 
     def test_only_created_hosts_are_listed_with_their_status_state(self) -> None:
         runner = {"kind": "host", "host_name": "chase-sim-runner", "url": closed_url(), "pid": os.getpid()}
@@ -123,38 +119,12 @@ class ViewerWithoutHostTests(unittest.TestCase):
             {"host_name": "chase-sim-chaser", "state": "not started"},
         ])
 
-    def test_viewer_publishes_no_discovery_record(self) -> None:
-        self.assertIsNone(self.server.record_path)
-        self.assertIsNone(self.server.describe()["record_path"])
-
-    def assertNotConnected(self, request: Request) -> None:
-        with self.assertRaises(HTTPError) as caught:
-            urlopen(request, timeout=1.0)
-        self.assertEqual(caught.exception.code, 503)
-        self.assertEqual(
-            json.loads(caught.exception.read()),
-            {"ok": False, "error": NOT_CONNECTED_ERROR},
-        )
-
-
-class ConnectedSplashTests(unittest.TestCase):
-    def test_splash_links_runtime_pages_while_connected(self) -> None:
-        server = RuntimeViewServer(
-            host_name="test-vehicle", automation_dir=None, port=0, replay_runner_factory=ImageReplayRunner,
-        ).start()
-        self.addCleanup(server.stop)
-
-        html = _read_text(server.url)
-
-        self.assertIn('class="status-dot live"', html)
-        for href in ("/perception", "/memory", "/plugins", "/workbench/"):
-            self.assertIn(f'<a class="nav" href="{href}">', html)
-
+class ViewerServerTests(unittest.TestCase):
     def test_workbench_is_created_on_first_visit_and_closed_with_the_viewer(self) -> None:
         runner = ImageReplayRunner(cadence_ms=0, step_factories={"perception": FixtureMapper})
         self.addCleanup(runner.close)
         with mock.patch("cli.automa_cli.hosts.views.runtime_view.ImageReplayRunner", return_value=runner) as build:
-            server = runtime_view_server(host_name="test-vehicle", automation_dir=None, port=0).start()
+            server = runtime_view_server(host_name="test-vehicle", port=0).start()
             self.addCleanup(server.stop)
             _read_text(server.url)
             _read_text(f"{server.url}api/health")
@@ -171,8 +141,7 @@ class ConnectedSplashTests(unittest.TestCase):
 
     def test_server_without_a_host_list_lists_no_hosts(self) -> None:
         server = RuntimeViewServer(
-            host_name="viewer", automation_dir=None, port=0, connected=False,
-            replay_runner_factory=ImageReplayRunner,
+            host_name="viewer", port=0, replay_runner_factory=ImageReplayRunner,
         ).start()
         self.addCleanup(server.stop)
 
@@ -181,13 +150,11 @@ class ConnectedSplashTests(unittest.TestCase):
     def test_a_read_route_is_served_only_by_a_view_built_with_it(self) -> None:
         document = {"schema": "automa_simulators_status", "simulators": [{"url": "http://127.0.0.1:5050/"}]}
         served = RuntimeViewServer(
-            host_name="viewer", automation_dir=None, port=0, connected=False,
-            reads={"/api/simulators": lambda query: document}, replay_runner_factory=ImageReplayRunner,
+            host_name="viewer", port=0, reads={"/api/simulators": lambda query: document}, replay_runner_factory=ImageReplayRunner,
         ).start()
         self.addCleanup(served.stop)
         unserved = RuntimeViewServer(
-            host_name="viewer", automation_dir=None, port=0, connected=False,
-            replay_runner_factory=ImageReplayRunner,
+            host_name="viewer", port=0, replay_runner_factory=ImageReplayRunner,
         ).start()
         self.addCleanup(unserved.stop)
 
@@ -205,8 +172,7 @@ class ConnectedSplashTests(unittest.TestCase):
             raise ValueError("v must be a non-empty string")
 
         served = RuntimeViewServer(
-            host_name="viewer", automation_dir=None, port=0, connected=False,
-            reads={"/api/query": lambda query: {"query": dict(query)}, "/api/frame": frame},
+            host_name="viewer", port=0, reads={"/api/query": lambda query: {"query": dict(query)}, "/api/frame": frame},
             replay_runner_factory=ImageReplayRunner,
         ).start()
         self.addCleanup(served.stop)
@@ -224,7 +190,7 @@ class ConnectedSplashTests(unittest.TestCase):
 
     def test_server_refuses_to_start_without_a_workbench_runner(self) -> None:
         with self.assertRaisesRegex(TypeError, "replay_runner or replay_runner_factory"):
-            RuntimeViewServer(host_name="viewer", automation_dir=None, port=0, connected=False)
+            RuntimeViewServer(host_name="viewer", port=0)
 
 
 class ViewerWorkbenchTests(unittest.TestCase):
@@ -233,29 +199,20 @@ class ViewerWorkbenchTests(unittest.TestCase):
         self.addCleanup(self.runner.close)
         self.server = RuntimeViewServer(
             host_name="viewer",
-            automation_dir=None,
             port=0,
-            connected=False,
             replay_runner=self.runner,
         ).start()
         self.addCleanup(self.server.stop)
         self.base = self.server.workbench_url
-
-    def test_splash_links_the_workbench_apart_from_the_host_pages_while_disconnected(self) -> None:
-        html = _read_text(self.server.url)
-
-        workbench = '<nav aria-label="Workbench"><a class="nav" href="/workbench/">Workbench</a></nav>'
-        self.assertIn(workbench, html)
-        runtime_views = html.index('<nav aria-label="Runtime views">')
-        self.assertLess(html.index(f'title="{NOT_CONNECTED_ERROR}">Plugins</span>'), html.index("</nav>", runtime_views))
-        self.assertLess(html.index("</nav>", runtime_views), html.index(workbench))
 
     def test_workbench_page_and_its_files_are_served_under_the_prefix(self) -> None:
         with urlopen(self.base, timeout=1.0) as response:
             self.assertEqual(response.headers["Content-Security-Policy"], WORKBENCH_CONTENT_SECURITY_POLICY)
             page = response.read().decode("utf-8")
         self.assertIn("no source selected", page)
-        self.assertIn('<a class="automa-home" href="/"', page)
+        home = re.search(r'<a class="automa-home" href="([^"]+)"', page).group(1)
+        with urlopen(urljoin(self.base, home), timeout=1.0) as response:
+            self.assertIn('id="workbenchLink"', response.read().decode("utf-8"))  # the v2 page, which links back
         for route in ("workbench", "workbench/api/health", "workbench/static/missing.js"):
             with self.subTest(route=route):
                 with self.assertRaises(HTTPError) as caught:
@@ -283,11 +240,34 @@ class OpenViewerCommandTests(unittest.TestCase):
         serve_viewer.assert_called_once()
         self.assertTrue(callable(serve_viewer.call_args.kwargs["emit"]))
 
+    def test_the_viewer_opens_the_v2_page(self) -> None:
+        server = mock.Mock(url="http://127.0.0.1:8473/")
+        with (mock.patch.object(runtime_view, "running_viewer_url", return_value=None),
+              mock.patch.object(runtime_view, "runtime_view_server", return_value=mock.Mock(start=lambda: server)),
+              mock.patch.object(runtime_view, "launch_browser") as launch,
+              mock.patch.object(runtime_view.time, "sleep", side_effect=KeyboardInterrupt)):
+            self.assertEqual(runtime_view.serve_viewer(), 130)
+            self.assertEqual(runtime_view.serve_viewer(page="/v2/?host=car"), 130)
+        self.assertEqual([call.args[0] for call in launch.call_args_list],
+                         ["http://127.0.0.1:8473/v2/", "http://127.0.0.1:8473/v2/?host=car"])
+        self.assertEqual(server.stop.call_count, 2)
+
+    def test_a_viewer_already_serving_is_opened_rather_than_served_again(self) -> None:
+        running = runtime_view_server(host_name="viewer", port=0).start()
+        self.addCleanup(running.stop)
+        with (mock.patch("cli.automa_cli.frontend.server.VIEWER_PORT", int(running.url.rsplit(":", 1)[1].rstrip("/"))),
+              mock.patch.object(runtime_view, "runtime_view_server") as build,
+              mock.patch.object(runtime_view, "launch_browser") as launch):
+            self.assertEqual(runtime_view.serve_viewer(page="/v2/?host=car"), 0)
+        build.assert_not_called()
+        launch.assert_called_once_with(f"{running.url}v2/?host=car")
+
     def test_the_viewer_answers_the_vehicles_simulators_hosts_and_plugins_commands(self) -> None:
         with mock.patch.object(app, "serve_viewer", return_value=130) as serve_viewer:
             app.main([])
         self.assertEqual(sorted(serve_viewer.call_args.kwargs["reads"]), [
-            "/api/hosts/frame", "/api/hosts/latest", "/api/hosts/status", "/api/plugins/list", "/api/plugins/stream",
+            "/api/captures", "/api/captures/frame", "/api/captures/image", "/api/captures/metadata",
+            "/api/hosts/frame", "/api/hosts/latest", "/api/hosts/learning", "/api/hosts/status", "/api/plugins/list", "/api/plugins/stream",
             "/api/simulators", "/api/vehicles",
         ])
         self.assertEqual(sorted(serve_viewer.call_args.kwargs["writes"]), [

@@ -17,7 +17,7 @@ def vehicle_label(configuration: dict[str, Any]) -> str:
 
 
 def viewer_command(host_name: str) -> str:
-    """The command that serves a host's runtime pages until interrupted."""
+    """The command that opens the runtime viewer on a host's stream."""
 
     return automa_command("hosts", "viewer", "--name", host_name)
 

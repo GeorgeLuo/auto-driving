@@ -2,8 +2,6 @@ from __future__ import annotations
 
 import unittest
 from copy import deepcopy
-from urllib.error import HTTPError
-from urllib.request import urlopen
 from unittest.mock import patch
 
 from autonomy.runtime.frame_loop import FRAME_PUBLICATION_SCHEMA, FramePublication
@@ -28,13 +26,11 @@ class LiveRuntimeDecisionViewTests(LiveRuntimeDecisionViewFixture, unittest.Test
 
     def test_invalidation_does_not_serve_a_cached_success(self):
         self._publish_exact_transaction()
-        self.server.perception.invalidate_latest("offline")
-        with self.assertRaises(HTTPError) as caught:
-            urlopen(f"{self.server.url}api/latest", timeout=1)
-        self.assertEqual(caught.exception.code, 503)
-        self.assertIn("offline", caught.exception.read().decode())
+        self.view.invalidate_latest("offline")
+        self.assertIsNone(self.view.latest_json())
+        self.assertEqual(self.view.unavailable_reason, "offline")
 
-    def test_published_report_is_detached_from_http_readers(self):
+    def test_published_report_is_detached_from_its_readers(self):
         report, _image = self._publish_exact_transaction()
         payload = self._latest_payload()
         payload["report"]["cycle"]["proposal"] = None
@@ -44,7 +40,7 @@ class LiveRuntimeDecisionViewTests(LiveRuntimeDecisionViewFixture, unittest.Test
         self._publish_exact_transaction()
         report = deepcopy(self._accepted_frame())
         report["frame_id"] = "missing-image"
-        self.server.perception.publish(
+        self.view.publish(
             publication=FramePublication.from_dict({
                 "schema": FRAME_PUBLICATION_SCHEMA,
                 "ok": True,
@@ -68,5 +64,4 @@ class LiveRuntimeDecisionViewTests(LiveRuntimeDecisionViewFixture, unittest.Test
         second_url = self._latest_payload()["image"]["url"]
         self.assertNotEqual(first_url, second_url)
         for path, expected in ((first_url, first), (second_url, second)):
-            with urlopen(self.server.url.rstrip("/") + path, timeout=1) as response:
-                self.assertEqual(response.read(), expected)
+            self.assertEqual(self._image(path), (expected, "image/jpeg"))

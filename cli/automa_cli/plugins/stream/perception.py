@@ -20,7 +20,7 @@ from ...hosts.errors import RuntimeHostError
 from ...shared.timestamps import timestamp_ms
 from .models import PerceptionPublication, StreamEvent, StreamResult
 from .polling import poll_events, preflight_failure, unavailable_probe
-from .session import StreamView, with_view
+from .session import with_view
 
 PERCEPTION_LIVE_SCHEMA = "host_perception_live"
 
@@ -38,7 +38,7 @@ def stream_perception(
     refresh_s: float,
     once: bool,
     timeout_s: float,
-    serve_view: bool,
+    show_view: bool,
     emit: Callable[[StreamEvent], None],
 ) -> StreamResult:
     """Poll the latest perception the host publishes.
@@ -55,28 +55,20 @@ def stream_perception(
             message=str(exc),
             live=unavailable_probe(PERCEPTION_LIVE_SCHEMA, host_name, str(exc)),
         )
-    view = StreamView(host_name, base_url=base_url, timeout_s=timeout_s) if serve_view else None
 
     def probe() -> tuple[dict[str, object], PerceptionPublication]:
-        publication, fetch_error = (view.read_observation() if view is not None
-                                    else read_publication(base_url, timeout_s=timeout_s))
-        if view is not None:
-            view.publish(publication)
+        publication, fetch_error = read_publication(base_url, timeout_s=timeout_s)
         live = _probe_perception(
             host_name=host_name, base_url=base_url, publication=publication, fetch_error=fetch_error,
         )
         return live, perception_publication(publication)
 
     def outbound(event: StreamEvent) -> None:
-        emit(with_view(view, event, host_name=host_name, base_url=base_url))
+        emit(with_view(show_view, event, host_name=host_name, base_url=base_url))
 
-    try:
-        return poll_events(
-            step="perception", probe=probe, refresh_s=refresh_s, once=once, emit=outbound,
-        )
-    finally:
-        if view is not None:
-            view.close()
+    return poll_events(
+        step="perception", probe=probe, refresh_s=refresh_s, once=once, emit=outbound,
+    )
 
 
 def _perception_record(report: HostReport | None) -> PerceptionText | None:

@@ -127,12 +127,13 @@ canonical directory contract is
 
 The command groups intentionally distinguish different kinds of state:
 
-A host's local browser entrypoint is **Automa**, with links to
-**Perception** at `/perception` and **Memory** at `/memory`. `hosts viewer
---name <host>` serves and opens it until interrupted; `hosts still --name <host>`
-saves and opens one JPEG of that host's latest processed frame. `plugins stream`
-serves the same pages beside its terminal output. A run serves no pages, so ending a
-viewer or stream leaves the run going. Perception owns its image buffer, while
+The local browser entrypoint is the runtime viewer's v2 page, `/v2/`, which
+`./cli/automa` serves on port 8473 and `/` redirects to. `hosts viewer --name
+<host>` opens it on that host's stream, serving the viewer until interrupted
+unless one is already running; `hosts still --name <host>` saves and opens one
+JPEG of that host's latest processed frame. A running `plugins stream` prints
+the `hosts viewer` command beside its terminal output and serves no page. A run
+serves no pages, so ending a viewer or stream leaves the run going.
 `RuntimeViewServer` owns the listener, routes, and shutdown.
 
 | Command | Reads or changes |
@@ -141,7 +142,7 @@ viewer or stream leaves the run going. Perception owns its image buffer, while
 | `vehicles status` | Shows each simulator that `simulators create` started and `vehicles remove` has not stopped listing, then each vehicle that `vehicles discover` listed, with their reachability, endpoints, and the hosts created at each. `--url` shows only that vehicle, in either URL form. Prints `None listed.` when nothing is listed. Exits 1 when a vehicle is listed and none is reachable, or the `--url` vehicle is not listed. |
 | `vehicles discover` | Lists the vehicle given by `--provider` (`chase-sim` or `picar`) and `--url` in `vehicles status` once it can take a host; `--force` lists it regardless. A simulator that `simulators create` started is already listed; after `vehicles remove`, discovering it lists it again without writing a second record. |
 | `vehicles remove` | Stops listing the vehicle at `--url`. A simulator that `simulators create` started keeps running until `simulators delete`, and `vehicles discover` lists it again. |
-| `hosts viewer` | Serves the runtime viewer (Perception, Memory, Action and Plugins) fed from the host named by `--name`, or at `--host-url` (the URL `hosts status` shows for it), and opens it in the browser until interrupted. Exits 2 when no such host exists, it is not running, or it does not answer. |
+| `hosts viewer` | Opens the v2 page on the stream of the host named by `--name`, or at `--host-url` (the URL `hosts status` shows for it). When no viewer is running it serves one until interrupted; otherwise it opens the running one and returns. Exits 2 when no such host exists, it is not running, or it does not answer. |
 | `hosts still` | Saves a JPEG of the latest processed frame from the host named by `--name`, prints its frame id, age and health, and opens it. An idle Chase host has no frame until a run is started. A PiCar with no frame has a camera that is not ready. Exits 2 when no such host exists, it is not running, it does not answer, or it has no frame. |
 | `hosts status` | Shows each host's state and whether its simulator lists it. When that simulator does not answer, the attachment line says it is not answering. `--long` adds its deployment and the release `hosts update` last packaged, then each step's staged selection, `saved` when `plugins save` saved it and otherwise the step's `default`, beside the selection the running host applied with its runs, failures and last error, then the run and its view. A step reads `as staged` only when the host runs the staged plugins with their staged configs; restaged configs wait for a restart, so until then status names the plugins whose configs differ. An invalid staged step and an unavailable host are each reported without hiding the other. `--json` carries the same under each host's `run`. With `--name`, exits 1 when that host is missing, stopped, not answering, or reports an error. |
 | `plugins list` | Offline: lists the packaged catalog, each step's `implementations/decision_cycle/<step>/catalog.json`, by step, defaults first and marked, then each step's presets and their plugins, its default marked; `--step` filters and `--json` adds each definition's entrypoint, default config and description, and `step_presets`, each preset as its catalog file lists it with `default` marking the step's. With `--host-name` (or a runtime `--url`), lists what that host has armed instead; `--long` lists the host's whole catalog, packaged and uploaded, with its version and the armed plugins marked. A workbench `--url` arms nothing and lists only with `--long`. Exits 2 while the host's last arming failed. See the [simulator prototype flow](docs/reference/cli-simulator-perception-journey.md#arm-on-an-existing-runtime-host). |
@@ -149,7 +150,7 @@ viewer or stream leaves the run going. Perception owns its image buffer, while
 | `plugins arm` | With `--host-name` (or a runtime `--url`), loads the plugins named by `--name <step>/<plugin>`, as `plugins list --long` names them, and applies them at the host's next cycle without restarting automation. Repeat `--name` to arm several plugins, across steps, together and in order. On observation, plan and action, which run one plugin, the armed plugin replaces the current one. `--preset <step>/<preset>`, as `plugins list` names it, instead replaces what the step has armed with the preset's plugins, in its order, and the step then reports the preset. The host refuses a preset unless its catalog holds each of those plugins as the preset configures it, so a preset that configures a plugin unlike the catalog, or names a plugin an upload replaced, exits 2. An import or construction error fails the command (exit 2) and keeps the previous selection. |
 | `plugins disarm` | With `--host-name` (or a runtime `--url`), deselects the plugins named by `--name <step>/<plugin>`; repeat `--name` to disarm several, across steps, together. `--step <step>` clears perception, memory or proposal, and `--all` clears all three. Observation, plan and action keep their one plugin (arm a replacement instead). A changed selection replaces every step's runner and starts an empty shared-memory map at the next cycle; catalog entries remain available. |
 | `plugins save` | With `--host-name`, stages what the running host has armed, in every step or the `--step` given, as the plugins it starts with; it does not change what the host runs now. `hosts update` keeps a saved step, with the catalog's current specs and configs, instead of staging its default, and saving a step's default makes it follow the default again. A Chase host loads the saved plugins each time it starts; a PiCar once `hosts update` ships them. Refuses (exit 2), saving nothing, while the host's last arming has failed, for uploaded plugins, which last until the host restarts, and for plugins its staged release does not package. |
-| `plugins stream` | With `--host-name`, polls the `--step` (perception, memory, proposal, plan or action) on a running host, redrawing the terminal as it updates. Perception shows the latest perception from the host's `/host/observation/latest`; memory shows each applied plugin's health and counts; proposal, plan and action print that step's record from the latest cycle the host published, with its age, generation, plugins, and the step's and each plugin's time, and action also shows how the host applied control. A running terminal stream serves the local runtime view: a frame-matched `/perception` page, a `/memory` map whose keys are `record_id`s (click a key to see the retained value), and the action view below. |
+| `plugins stream` | With `--host-name`, polls the `--step` (perception, memory, proposal, plan or action) on a running host, redrawing the terminal as it updates. Perception shows the latest perception from the host's `/host/observation/latest`; memory shows each applied plugin's health and counts; proposal, plan and action print that step's record from the latest cycle the host published, with its age, generation, plugins, and the step's and each plugin's time, and action also shows how the host applied control. A running terminal stream prints `viewer: ./cli/automa hosts viewer --name <host>`, the command that opens the host on the v2 page. |
 | `plugins inspect <step>` | Offline: replays an image, image directory, or recorded run through the whole cycle and reports perception, memory, proposal, plan, or action. Restores recorded selections; `--preset` or `--plugin` overrides the inspected step. `--frame N` reports one frame after replaying its history. `--record` saves `report.json` and copied frames under `runtime/<step>-inspections/`. See [Plugin inspection](#plugin-inspection). |
 | `hosts create` | Creates a named host for the vehicle given by `--provider` (`chase-sim` or `picar`) and `--url`, installs its release, and starts it. `vehicles status` names each vehicle's provider and URL. |
 | `hosts delete` | Stops the run and host, then removes its local files. PiCar harness files remain onboard. `--force` removes a PiCar's local record when the Pi cannot be stopped. |
@@ -276,12 +277,9 @@ starts one. Terminal streams show the same probe verdict and reason, and
 perception labels the publication's health separately from that verdict.
 
 Every running terminal stream (perception, memory, proposal, plan, action)
-also serves a `/decision` page and prints its URL as `action view:`. The page
-pairs the host's latest accepted cycle with its frame, the retained evidence its
-proposals read, the candidates, the plan's selection, the action's authorized
-command and how the host applied it. When no matched cycle can be read, the
-line gives the reason, and the `/perception` and `/memory` pages still follow
-the observation.
+ends with `viewer: ./cli/automa hosts viewer --name <host>`. That command opens
+the v2 page on the host, which pairs the host's latest frame with its decision
+and the evidence its proposals read.
 
 Every vehicle's runtime host serves the same routes; the CLI finds a Chase
 host from its host record and a PiCar's from its staged `base_url`.
@@ -387,9 +385,9 @@ starts, or records fewer decisions than it completed; a spawned PID alone is not
 reported as success. The run serves no pages and
 prints the viewing command, `hosts viewer --name <host>`.
 
-While `hosts viewer` or `plugins stream` serves a host's view, `hosts status
---long` reports its loopback URL, with or without a run; with both, it reports
-the one that started first. The page polls the
+While the viewer is running, `hosts status --long` reports the host's v2 page
+on it, `/v2/?host=<host>`, with or without a run; otherwise it names the
+`hosts viewer` command that opens it. The page polls the
 host's latest publication. Camera capture runs independently from perception, so a
 slow plugin consumes the newest available frame instead of accumulating a
 backlog. The page displays the latest camera frame with the findings perception
@@ -653,7 +651,7 @@ running worker applies a changed plugin list at its next frame and changed
 plugin configs when it restarts; a stopped one uses the selection the next time
 it starts. Proposals are part of the decision generation: once the worker runs
 the new selection it publishes under the restaged generation, and an open
-action view follows it. The generation changes after the cycle confirms
+v2 page follows it. The generation changes after the cycle confirms
 which plugins were applied. A plugin load or removal-reset failure keeps the
 old applied selection and generation, and publishing is refused while they
 differ from the staged decision. After a config restage it publishes no

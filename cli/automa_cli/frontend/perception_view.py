@@ -6,9 +6,7 @@ import time
 from collections import OrderedDict
 from copy import deepcopy
 from io import BytesIO
-from pathlib import Path
-from urllib.parse import quote, urljoin, urlparse
-from urllib.request import urlopen
+from urllib.parse import quote
 
 from PIL import Image
 
@@ -16,8 +14,6 @@ from autonomy.runtime.frame_loop import FRAME_PUBLICATION_SCHEMA, FramePublicati
 
 from .decision_view import report_evidence
 
-VIEW_SCHEMA = "automa_perception_view"
-VIEW_RECORD_NAME = "perception_view.json"
 MAX_BUFFERED_FRAMES = 8
 NO_FRAME_ERROR = "no camera frame has been published yet"
 _CONTENT_TYPE = "image/jpeg"
@@ -86,10 +82,6 @@ class PerceptionView:
             self.unavailable_reason = reason or NO_FRAME_ERROR
             self._latest = None
 
-    def health_payload(self) -> dict[str, object]:
-        with self._lock:
-            return {"latest_frame_id": self._latest_frame_id()}
-
     def latest_json(self) -> bytes | None:
         with self._lock:
             if self._latest is None:
@@ -109,85 +101,6 @@ class PerceptionView:
         with self._lock:
             image_id = frame_id if frame_id is not None else (None if self._latest is None else self._latest[4])
             return self._frames.get(image_id)
-
-    def _latest_frame_id(self) -> str | None:
-        return None if self._latest is None else self._latest[0]["frame_id"]
-
-
-def get_perception_view_status(
-    automation_dir: Path,
-    *,
-    timeout_s: float = 0.25,
-) -> dict[str, object]:
-    record_path = automation_dir / VIEW_RECORD_NAME
-    record = _read_json(record_path)
-    if not isinstance(record, dict):
-        return {
-            "schema": VIEW_SCHEMA,
-            "available": False,
-            "status": "unavailable",
-            "url": None,
-            "reason": "automation has not published a perception view",
-            "record_path": str(record_path),
-        }
-    url = record.get("url") if isinstance(record.get("url"), str) else None
-    if url is None or not _is_loopback_url(url):
-        return {
-            **record,
-            "available": False,
-            "status": "unavailable",
-            "reason": "perception view record has no valid loopback URL",
-        }
-    try:
-        with urlopen(urljoin(url, "api/health"), timeout=timeout_s) as response:
-            health: object = json.loads(response.read().decode("utf-8"))
-    except (OSError, ValueError, json.JSONDecodeError) as exc:
-        return {
-            **record,
-            "available": False,
-            "status": "unavailable",
-            "reason": f"perception view is not responding: {exc}",
-        }
-    if not isinstance(health, dict) or health.get("schema") != VIEW_SCHEMA:
-        return {
-            **record,
-            "available": False,
-            "status": "unavailable",
-            "reason": "perception view returned an invalid health response",
-        }
-    # A view that ended without a trace can leave its port to another host's view.
-    if health.get("host_name") != record.get("host_name"):
-        return {
-            **record,
-            "available": False,
-            "status": "unavailable",
-            "reason": f"the recorded view's port now serves host {health.get('host_name')!r}",
-        }
-    if not perception_view_ready(health):
-        return {
-            **record,
-            **health,
-            "available": False,
-            "status": "warming",
-            "reason": (
-                "perception view has not published one correlated camera and "
-                "perception frame"
-            ),
-        }
-    return {
-        **record,
-        **health,
-        "available": True,
-        "status": "running",
-        "reason": None,
-    }
-
-
-def perception_view_ready(payload: dict[str, object]) -> bool:
-    """True when the view has published one camera image and its findings."""
-
-    return bool(payload.get("available") and payload.get("url") and payload.get("latest_frame_id"))
-
 
 def _publication_payload(
     *,
@@ -225,19 +138,5 @@ def _nonnegative_difference(newer: int, older: int | None) -> int | None:
     return max(0, newer - older)
 
 
-def _is_loopback_url(url: str) -> bool:
-    parsed = urlparse(url)
-    return parsed.scheme == "http" and parsed.hostname in {"127.0.0.1", "localhost", "::1"}
-
-
 def _timestamp_ms() -> int:
     return int(time.time() * 1000)
-
-
-def _read_json(path: Path) -> object | None:
-    if not path.exists():
-        return None
-    try:
-        return json.loads(path.read_text(encoding="utf-8"))
-    except (OSError, json.JSONDecodeError):
-        return None

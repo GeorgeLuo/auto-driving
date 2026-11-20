@@ -5,13 +5,12 @@ import tempfile
 import time
 from copy import deepcopy
 from pathlib import Path
-from urllib.request import urlopen
+from urllib.parse import parse_qs, urlsplit
 from PIL import Image
 
 from autonomy.runtime.frame_loop import FRAME_PUBLICATION_SCHEMA, FramePublication
 from cli.automa_cli.hosts.publications.decision_records import DecisionRunners
-from cli.automa_cli.frontend.server import RuntimeViewServer
-from cli.automa_cli.workbench.runner import ImageReplayRunner
+from cli.automa_cli.frontend.perception_view import PerceptionView
 from cli.automa_cli.hosts.step_activations import decision_identity
 from cli.automa_cli.releases.paths import bundle_paths
 from tests.shared.cli.decision.decision_surfaces_fixtures import (
@@ -52,13 +51,8 @@ class LiveRuntimeDecisionViewFixture:
         cls.activation = decision_identity(bundle_paths("chase-sim-chaser"), host_name="chase-sim-chaser")
 
     def setUp(self) -> None:
-        self.server = RuntimeViewServer(
-            host_name="chase-sim-chaser",
-            automation_dir=self.automation_dir,
-            port=0,
-            replay_runner_factory=ImageReplayRunner,
-        ).start()
-        self.addCleanup(self.server.stop)
+        # The view v2's host frame routes read a host's latest frame through.
+        self.view = PerceptionView(host_name="chase-sim-chaser")
 
     def _accepted_frame(
         self,
@@ -112,15 +106,15 @@ class LiveRuntimeDecisionViewFixture:
     def _publish_exact_transaction(
         self,
         *,
-        server: RuntimeViewServer | None = None,
+        view: PerceptionView | None = None,
         run_id: str = "run-live",
         image_color: tuple[int, int, int] = (20, 80, 150),
         stream_frame: dict | None = None,
     ) -> tuple[dict, bytes]:
-        target = self.server if server is None else server
+        target = self.view if view is None else view
         stream_frame = stream_frame or self._accepted_frame(run_id=run_id)
         frame_bytes = _jpeg_bytes(image_color)
-        target.perception.publish(
+        target.publish(
             publication=FramePublication.from_dict({
                 "schema": FRAME_PUBLICATION_SCHEMA,
                 "ok": True,
@@ -135,5 +129,9 @@ class LiveRuntimeDecisionViewFixture:
         return stream_frame, frame_bytes
 
     def _latest_payload(self) -> dict:
-        with urlopen(f"{self.server.url}api/latest", timeout=1.0) as response:
-            return json.loads(response.read())
+        return json.loads(self.view.latest_json())
+
+    def _image(self, url: str) -> tuple[bytes, str]:
+        """The buffered image a payload's ``image.url`` names."""
+
+        return self.view.frame(parse_qs(urlsplit(url).query)["v"][0])

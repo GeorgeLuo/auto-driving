@@ -22,7 +22,7 @@ from ...hosts.errors import RuntimeHostError
 from ...releases.paths import bundle_paths
 from .models import StreamEvent, StreamResult
 from .polling import poll_events, preflight_failure, unavailable_probe
-from .session import StreamView, with_view
+from .session import with_view
 
 
 def stream_decision(
@@ -32,7 +32,7 @@ def stream_decision(
     refresh_s: float,
     once: bool,
     timeout_s: float,
-    serve_view: bool,
+    show_view: bool,
     emit: Callable[[StreamEvent], None],
 ) -> StreamResult:
     """Poll one decision step in the latest cycle the host published.
@@ -41,8 +41,7 @@ def stream_decision(
     same frame with ``status: stale`` or ``error`` and its reason when the frame
     is past its ceiling or the cycle raised before ``step`` recorded; or the
     decision error that kept it from one with ``status: error``.
-    ``serve_view`` hosts the runtime view and shares one observation read
-    with that view's decision page.
+    ``show_view`` names the viewer command on each screen.
     """
 
     timeout_s = max(0.1, float(timeout_s))
@@ -58,18 +57,11 @@ def stream_decision(
             live=unavailable_probe(f"host_{step}_stream", host_name, str(exc)),
         )
 
-    view = StreamView(host_name, base_url=base_url, timeout_s=timeout_s) if serve_view else None
-    try:
-        return poll_events(
-            step=step,
-            probe=lambda: _probe_decision(
-                step, view=view, host_name=host_name, base_url=base_url, timeout_s=timeout_s,
-            ),
-            refresh_s=refresh_s, once=once, emit=lambda event: emit(with_view(view, event)),
-        )
-    finally:
-        if view is not None:
-            view.close()
+    return poll_events(
+        step=step,
+        probe=lambda: _probe_decision(step, host_name=host_name, base_url=base_url, timeout_s=timeout_s),
+        refresh_s=refresh_s, once=once, emit=lambda event: emit(with_view(show_view, event, host_name=host_name)),
+    )
 
 
 def _unreadable(base_url: str, host_name: str, detail: str) -> DecisionSurfaceError:
@@ -126,21 +118,12 @@ def _read_decision_frame(
 def _probe_decision(
     step: str,
     *,
-    view: StreamView | None,
     host_name: str,
     base_url: str,
     timeout_s: float,
 ) -> tuple[dict[str, object], HostReport | None]:
-    publication = None
     try:
-        if view is not None:
-            publication, error = view.read_observation()
-            view.publish(publication)
-            if error is not None:
-                raise _unreadable(base_url, host_name, error)
-        return _read_decision_frame(
-            step, publication, host_name=host_name, base_url=base_url, timeout_s=timeout_s,
-        )
+        return _read_decision_frame(step, None, host_name=host_name, base_url=base_url, timeout_s=timeout_s)
     except DecisionSurfaceError as exc:
         return _error_probe(exc), None
 

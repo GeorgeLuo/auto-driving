@@ -12,11 +12,13 @@ from __future__ import annotations
 from collections.abc import Mapping
 from concurrent.futures import ThreadPoolExecutor
 from pathlib import Path
+from urllib.parse import urlencode, urljoin
 
 from autonomy.fields import require_nested
 from autonomy.runtime.session import RunConfiguration
 
-from ...frontend.perception_view import get_perception_view_status
+from ...frontend.server import running_viewer_url
+from ...frontend.v2_page import V2_PAGE_PATH
 from ...providers.models import DEFAULT_READINESS_TIMEOUT_S
 from ...releases.errors import ReleaseError
 from ...releases.paths import bundle_paths
@@ -32,7 +34,6 @@ from ..step_activations import (
     decision_identity,
     staged_selections,
 )
-from ..views.view_discovery import runtime_view_dir
 from .models import AppliedStep, ComparedSteps, HostRun, RunRelease, RunSection, RunState, UnreadableRun, WorkerProcess, status_reason
 from .store import RunRecordError, latest_frame, read_process_record, read_run_state
 
@@ -230,12 +231,12 @@ def _host_run(
 
 
 def _published_view(host_name: str) -> Mapping[str, object]:
-    """The standalone view ``hosts viewer`` or ``plugins stream`` records, with or without a monitor."""
+    """The runtime viewer's page on the host, when ``./cli/automa`` or ``hosts viewer`` serves it."""
 
-    view = get_perception_view_status(runtime_view_dir(host_name))
-    if view.get("url") is None:  # No view is recorded here.
-        view["reason"] = f"start `{viewer_command(host_name)}` to host it"
-    return view
+    url = running_viewer_url()
+    if url is None:
+        return {"available": False, "url": None, "reason": f"start `{viewer_command(host_name)}` to open it"}
+    return {"available": True, "url": urljoin(url, f"{V2_PAGE_PATH}?{urlencode({'host': host_name})}")}
 
 
 def _compared_steps(

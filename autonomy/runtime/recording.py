@@ -32,7 +32,8 @@ import json
 import os
 import secrets
 import threading
-from collections.abc import Callable, Mapping
+from collections.abc import Callable, Iterator, Mapping
+from functools import lru_cache
 from pathlib import Path
 
 from autonomy.decision_cycle.activation import (
@@ -209,37 +210,78 @@ def _entries_path(root: Path, name: object) -> Path:
     if type(name) is not str or not name or name != Path(name).name or name in {".", ".."}:
         raise ValueError("recording entries must name a file beside the manifest")
     path = Path(root) / name
-    if path.is_symlink():
+    if path.is_symlink() or (path.exists() and not path.is_file()):
         raise ValueError("recording entries must be a regular file")
     return path
 
 
-def _read_appended_entries(path: Path) -> list[object]:
+def _entry_object(line: bytes, index: int) -> dict[str, object]:
     try:
-        data = path.read_bytes()
+        item = json.loads(line)
+    except (UnicodeError, json.JSONDecodeError) as exc:
+        raise ValueError(f"recording entry {index} is not a JSON object") from exc
+    if not isinstance(item, dict):
+        raise ValueError(f"recording entry {index} must be an object")
+    return item
+
+
+def iter_recording_entries(root: Path, manifest: Mapping[str, object]) -> Iterator[dict[str, object]]:
+    """Read the entries committed when this read starts, one line at a time."""
+
+    path = _entries_path(root, manifest.get(RECORDING_ENTRIES_FIELD))
+    try:
+        with path.open("rb") as stream:
+            remaining = os.fstat(stream.fileno()).st_size
+            index = 0
+            while remaining:
+                line = stream.readline(remaining)
+                if not line.endswith(b"\n"):
+                    break
+                yield _entry_object(line, index)
+                remaining -= len(line)
+                index += 1
     except FileNotFoundError:
-        return []
+        return
     except OSError as exc:
         raise ValueError(f"recording entries could not be read: {exc}") from exc
-    if not data.endswith(b"\n"):
-        cut = data.rfind(b"\n")
-        data = b"" if cut < 0 else data[:cut + 1]
-    entries: list[object] = []
-    for index, line in enumerate(data.splitlines()):
-        try:
-            item = json.loads(line)
-        except json.JSONDecodeError as exc:
-            raise ValueError(f"recording entry {index} is not a JSON object") from exc
-        if not isinstance(item, dict):
-            raise ValueError(f"recording entry {index} must be an object")
-        entries.append(item)
-    return entries
+
+
+@lru_cache(maxsize=16)
+def _entry_offsets(path: Path, identity: tuple[int, ...]) -> tuple[int, ...]:
+    """Index a closed recording without keeping any frame bodies in memory."""
+
+    with path.open("rb") as stream:
+        size = identity[-1]
+        offsets = []
+        offset = 0
+        while offset < size:
+            line = stream.readline(size - offset)
+            if not line.endswith(b"\n"):
+                break
+            offsets.append(offset)
+            offset += len(line)
+    return tuple(offsets)
+
+
+def recording_entry(root: Path, manifest: Mapping[str, object], index: int) -> dict[str, object]:
+    """Read one frame of a closed entry file by its zero-based position."""
+
+    path = _entries_path(root, manifest.get(RECORDING_ENTRIES_FIELD))
+    info = path.stat() if path.exists() else None
+    offsets = () if info is None else _entry_offsets(path, (
+        info.st_dev, info.st_ino, info.st_mtime_ns, info.st_size,
+    ))
+    if not 0 <= index < len(offsets):
+        raise ValueError("frame index is outside the capture")
+    with path.open("rb") as stream:
+        stream.seek(offsets[index])
+        return _entry_object(stream.readline(), index)
 
 
 def recording_entries(root: Path, manifest: Mapping[str, object]) -> list[object]:
     """Committed entries of an append-only run recording, in record order."""
 
-    return _read_appended_entries(_entries_path(root, manifest.get(RECORDING_ENTRIES_FIELD)))
+    return list(iter_recording_entries(root, manifest))
 
 
 def uploaded_sources(steps: Mapping[str, object]) -> set[str]:
@@ -275,13 +317,26 @@ def entry_selections(
     return selections
 
 
-def _stored_generation(root: Path, generation_id: object) -> dict[str, StepActivation | None]:
+def recording_generation(root: Path, generation_id: object) -> dict[str, object]:
+    """Read a generation's stored selections without loading its plugins."""
+
     if type(generation_id) is not str or Path(generation_id).name != generation_id:
         raise ValueError("a recorded frame must name its generation")
+    directory = root / GENERATIONS_DIR
+    path = directory / f"{generation_id}.json"
+    if directory.is_symlink() or path.is_symlink() or not path.is_file():
+        raise ValueError(f"recorded generation {generation_id} must be a regular file")
     try:
-        steps = json.loads((root / GENERATIONS_DIR / f"{generation_id}.json").read_text(encoding="utf-8"))
+        steps = json.loads(path.read_text(encoding="utf-8"))
     except (OSError, ValueError) as exc:
         raise ValueError(f"recorded generation {generation_id} could not be read: {exc}") from exc
+    if not isinstance(steps, dict):
+        raise ValueError("recorded steps must be an object")
+    return steps
+
+
+def _stored_generation(root: Path, generation_id: object) -> dict[str, StepActivation | None]:
+    steps = recording_generation(root, generation_id)
     return recorded_selections({"steps": steps, "generation_id": generation_id})
 
 

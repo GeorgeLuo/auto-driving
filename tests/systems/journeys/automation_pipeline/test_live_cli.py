@@ -12,8 +12,6 @@ import threading
 import unittest
 import uuid
 from unittest.mock import patch
-from urllib.error import HTTPError
-from urllib.request import urlopen
 
 from cli.automa_cli.hosts.publications.host_publications import fetch_frame_publication
 from cli.automa_cli.shared.paths import ROOT
@@ -53,9 +51,9 @@ class LiveCommandsTests(LiveHostTestCase):
         self.assertEqual(frame["plugins"], ["highest_confidence"])
         self.assertEqual(frame["record"]["selector_id"], "highest_confidence")
 
-    def test_a_running_step_stream_hosts_the_decision_view(self) -> None:
-        # How each proposal arose is on the decision page: the host's latest
-        # decision beside its frame and the evidence its proposals read.
+    def test_a_running_step_stream_names_the_viewer_that_shows_its_decision(self) -> None:
+        # How each proposal arose is on the v2 page: a running stream names the
+        # command that opens it rather than serving a page itself.
         self.observe()
         stream = start_automa(
             "plugins", "stream", "--step", "proposal", "--host-name", HOST_NAME, "--no-clear",
@@ -71,25 +69,12 @@ class LiveCommandsTests(LiveHostTestCase):
                 lines.append(line.rstrip("\n"))
 
         threading.Thread(target=collect, daemon=True).start()
-        page = _wait(
-            lambda: next((line.split()[2] for line in lines if line.startswith("action view: http")), None),
-            timeout_s=20, message="the proposal stream printed no action view",
+        viewer = _wait(
+            lambda: next((line for line in lines if line.startswith("viewer: ")), None),
+            timeout_s=20, message="the proposal stream named no viewer",
         )
-        with urlopen(page, timeout=5) as response:
-            self.assertEqual(response.headers.get_content_type(), "text/html")
-        view_url = page.split("/decision")[0]
-
-        def latest():
-            try:
-                with urlopen(f"{view_url}/api/latest", timeout=5) as response:
-                    return json.load(response)
-            except HTTPError:  # warming, or the newest cycle expired between refreshes
-                return None
-
-        decision = _wait(latest, message="the decision view never served a current decision")
-        self.assertEqual(decision["report"]["frame_id"], decision["image"]["frame_id"])
-        self.assertIsNotNone(decision["report"]["cycle"]["proposal"])
-        self.assertIn("evidence", decision)
+        self.assertEqual(viewer, f"viewer: ./cli/automa hosts viewer --name {HOST_NAME}")
+        self.assertFalse(any("http://127.0.0.1" in line and "view" in line for line in lines), lines)
 
     def test_a_stream_poll_during_cycle_publication_receives_the_previous_decision(self) -> None:
         # The host builds a cycle's report outside the frame lock and swaps it

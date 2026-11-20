@@ -1,28 +1,20 @@
 from __future__ import annotations
 
-import io
 import json
 import threading
 import time
 import unittest
 from copy import deepcopy
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
-from unittest.mock import patch
-from urllib.request import urlopen
 
 import numpy as np
-from PIL import Image
 
 from autonomy.decision_cycle.activation import STEPS, step_activation_path, write_step_activation
 from autonomy.runtime.frame_loop import FramePublication
 from autonomy.decision_cycle.steps import decision_steps
 from cli.automa_cli.releases.paths import controller_bundle_paths
 from cli.automa_cli.hosts.publications.decision import accept_decision_publication
-from cli.automa_cli.hosts.views.decision_live import DecisionViewAdapter
-from cli.automa_cli.hosts.views.observation import ObservationPublisher
 from cli.automa_cli.hosts.publications.decision_records import activations_from_payloads
-from cli.automa_cli.frontend.server import RuntimeViewServer
-from cli.automa_cli.workbench.runner import ImageReplayRunner
 from cli.automa_cli.hosts.step_activations import replace_metadata
 from implementations.decision_cycle.catalog import packaged_activation
 from implementations.runtime.picar import AutonomyPilotPart, create_host
@@ -35,31 +27,6 @@ from tests.shared.cli.invoke import invoke_automa
 
 
 class DecisionSurfaceTests(DecisionSurfaceFixture, unittest.TestCase):
-    def test_decision_adapter_publishes_the_same_record_for_every_page(self) -> None:
-        now = int(time.time() * 1000)
-        publication = FramePublication.from_dict(self._physical_publication(published_at_ms=now))
-        report = accept_decision_publication(publication, host_name="piracer")
-        server = RuntimeViewServer(host_name="piracer", automation_dir=None, port=0, replay_runner_factory=ImageReplayRunner).start()
-        self.addCleanup(server.stop)
-        buffer = io.BytesIO()
-        Image.new("RGB", (4, 4)).save(buffer, "JPEG")
-        jpeg = buffer.getvalue()
-        adapter = DecisionViewAdapter(
-            host_name="piracer", base_url="http://host.invalid",
-            publisher=ObservationPublisher(server.perception), timeout_s=0.1,
-        )
-        with patch("cli.automa_cli.hosts.views.decision_live.read_host_telemetry_panel", return_value={"status": "unavailable"}):
-            adapter.publish_frame(publication, report, jpeg)
-        with urlopen(f"{server.url}api/latest", timeout=1) as response:
-            payload = json.loads(response.read())
-        self.assertEqual(payload["report"], report.to_dict())
-        self.assertEqual(payload["host_telemetry"], {"status": "unavailable"})
-        with urlopen(f"{server.url.rstrip('/')}{payload['image']['url']}", timeout=1) as response:
-            self.assertEqual(response.read(), jpeg)
-        for page in ("perception", "memory", "decision"):
-            with urlopen(f"{server.url}{page}", timeout=1) as response:
-                self.assertEqual(response.status, 200)
-
     def test_physical_decision_acceptance_rejects_bounded_unavailable_cases(
         self,
     ) -> None:

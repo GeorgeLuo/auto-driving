@@ -1,0 +1,726 @@
+// Mock only. The viewer's routes, answered from an in-page store on timers, so the page runs
+// with nothing behind it. A read answers the document its command's --json prints; a write does
+// what its command does to the store and answers what it prints, line by line. ROUTES marks the
+// routes the viewer has (viewer_commands.py); the rest are the ones the page needs next.
+// Opened from disk, the mock answers every route. Served by the viewer (at /v2/), it answers
+// only the routes the viewer lacks; every route the page reads and writes is the viewer's now.
+// A new route: add it here, its answers shaped as the command's, then mark it viewer once the
+// viewer has it. plugins upload --manifest cannot read a path from the page, so any .json path
+// uploads MANIFEST, a stand-in for an external collection.
+"use strict";
+
+const mock = (() => {
+  const FAST = new URLSearchParams(location.search).has("fast");
+  const SERVED = location.protocol !== "file:";
+  const ms = (n) => (FAST ? Math.round(n / 25) : n);
+  const after = (wait) => new Promise((done) => setTimeout(done, ms(wait)));
+  const copy = (value) => JSON.parse(JSON.stringify(value));
+  const hex = (n) => Array.from({ length: n }, () => "0123456789abcdef"[Math.floor(Math.random() * 16)]).join("");
+  const same = (a, b) => a.length === b.length && a.every((x, i) => x === b[i]);
+  const CAPTURE = window.CAPTURE || [];  // a recorded chase-sim run stands in for each host's publications
+
+  // The collection an uploaded manifest names, its plugins in manifest order with their source files.
+  const MANIFEST = { name: "chase-413", plugins: [
+    "perception/sim_cardboard_obstacle", "perception/sim_cardboard_permanence", "perception/sim_wall", "perception/view_stagnation",
+    "perception/clearance", "perception/closeness", "memory/stop_row", "memory/turn_model", "memory/approach_model",
+    "proposal/drive_forward", "proposal/drive_backwards", "proposal/avoid_obstacle", "plan/select_proposal",
+  ].map((key) => { const [step, id] = key.split("/"); return { step, id, filename: `chase/${step}/plugins/${id}/plugin.py` }; }) };
+
+  // implementations/decision_cycle/<step>/catalog.json, as plugins list prints them.
+  const STEPS = {
+    perception: { defaults: ["frame", "floor_plane"],
+                  ids: ["frame", "floor_plane", "classical_regions", "composite_box_fusion", "composite_box_fusion_object_separated",
+                        "floor_continuity", "floor_continuity_capture", "floor_continuity_temporal", "motion_tracks",
+                        "multi_obstruction_tracks", "sim_cardboard_obstacle", "sim_cardboard_permanence", "sim_color_targets"],
+                  presets: { lightweight_observer: ["frame", "floor_plane"], sim_debug: ["frame", "sim_color_targets"],
+                             "chase-v1-detect-by-color": ["sim_cardboard_obstacle", "sim_cardboard_permanence"],
+                             visual_observer: ["frame", "floor_plane", "motion_tracks"],
+                             multi_obstruction: ["multi_obstruction_tracks", "floor_continuity", "classical_regions"],
+                             obstruction_observer: ["frame", "floor_plane", "multi_obstruction_tracks"] } },
+    observation: { one: true, defaults: ["perception_summary"], ids: ["perception_summary"] },
+    memory: { defaults: ["bounded_evidence"], ids: ["bounded_evidence"], presets: { recency_ledger: ["bounded_evidence"] } },
+    proposal: { defaults: ["avoid_recent_obstruction"], ids: ["avoid_recent_obstruction"], presets: { obstruction_avoidance: ["avoid_recent_obstruction"] } },
+    plan: { one: true, defaults: ["highest_confidence"], ids: ["highest_confidence"], presets: { most_confident: ["highest_confidence"] } },
+    action: { one: true, defaults: ["selected"], ids: ["selected", "hold", "mode"] },
+  };
+  const STEP_NAMES = Object.keys(STEPS);
+  const CLEARABLE = ["perception", "memory", "proposal"];  // disarm --all leaves the one-plugin steps
+  const defaultSelection = () => Object.fromEntries(STEP_NAMES.map((step) => [step, [...STEPS[step].defaults]]));
+  // The step's defaults are its preset of the same plugins.
+  const defaultPreset = (step) => Object.keys(STEPS[step].presets || {}).find((name) => same(STEPS[step].presets[name], STEPS[step].defaults));
+  function selectionLabel(step, ids) {
+    if (!ids.length) return "(none)";
+    const preset = defaultPreset(step);
+    return preset && same(ids, STEPS[step].defaults) ? `${preset} (${ids.join(", ")})` : ids.join(", ");
+  }
+
+  // ---- The store: what simulators create started, what vehicles discover listed, the hosts. ----
+  const store = { simulators: [], vehicles: [], hosts: [], captures: [
+    { capture: "chase/bundle/runtime/automation/host-runs/run-closed", host: "chase", vehicle: "chase-sim",
+      run_id: "run-closed", started_at_ms: 1700000002000, duration_ms: 1500, frame_count: CAPTURE.length || 4, size_bytes: 4096, state: "closed" },
+    { capture: "chase/bundle/runtime/automation/host-runs/run-active", host: "chase", vehicle: "chase-sim",
+      run_id: "run-active", started_at_ms: 1700000001000, duration_ms: 400, frame_count: 1, size_bytes: 1024, state: "active" },
+  ] };
+  const findHost = (name) => store.hosts.find((h) => h.name === name);
+  // The endpoints vehicles discover can reach; anything else refuses the connection.
+  const REACHABLE = {
+    "http://piracer.local:8887": { provider: "picar", state: "reachable, no host listening" },
+    "http://127.0.0.1:5060/": { provider: "chase-sim", state: "running" },
+  };
+  const HEADINGS = { picar: "PiCar (picar)", "chase-sim": "Simulator (chase-sim)" };
+  // What discover prints for a URL nothing in REACHABLE answers: a PiCar that does not answer in
+  // time (one that refuses the connection is reachable and listed), a simulator that is not there.
+  // The simulator's names its control URL, as the CLI prints it.
+  const UNREADY = {
+    picar: (url) => `No PiCar can take a host at ${url}: GET ${url}/host/status did not answer within 5 s`,
+    "chase-sim": (url) => `No Chase simulator can take a host at ws://${new URL(url).host}/ws/control: Passive capture `
+      + "could not complete state_before after 3ms: [Errno 61] Connection refused Recovery: No simulator answers here. "
+      + "./cli/automa simulators create starts a headless one.",
+  };
+  const heading = (provider, url) => `${HEADINGS[provider]} at ${url}`;
+  function normalizedUrl(provider, url) {
+    const u = new URL(url);
+    if (!/^https?:$/.test(u.protocol)) throw new TypeError("not http(s)");
+    return provider === "chase-sim" ? `${u.protocol}//${u.host}/` : `${u.protocol}//${u.host}`;
+  }
+  const refused = (error) => ({ ok: false, error });
+  const missingHost = (name) => ({ ok: false, kind: "missing", text: `No host named ${name}.` });
+
+  // ---- Reads ----
+  // vehicles status: each created simulator still listed and running, then each discovered vehicle.
+  function vehicles() {
+    const chase = (state) => ({ frontend: state === "running" ? "connected" : null, game: state === "running" ? "chase" : null });
+    return { schema: "automa_vehicles_status", vehicles: [
+      ...store.simulators.filter((s) => s.listed && s.state === "running")
+        .map((s) => ({ provider: "chase-sim", url: s.url, state: s.state, error: null, ...chase(s.state), pid: s.pid })),
+      ...store.vehicles.map((v) => ({ provider: v.provider, url: v.url, state: v.state, error: null,
+                                      ...(v.provider === "chase-sim" ? { ...chase(v.state), pid: null } : {}) })),
+    ] };
+  }
+  // simulators status: every created simulator, an exited one with its log's tail.
+  function simulators() {
+    return { schema: "automa_simulators_status", simulators: store.simulators.map((s) => ({
+      url: s.url, port: s.port, pid: s.pid, state: s.state,
+      frontend: s.state === "running" ? "connected" : null, game: s.state === "running" ? "chase" : null, error: null,
+      hosts: store.hosts.filter((h) => h.vehicleUrl === s.url).map((h) => h.name),
+      started_at_ms: s.startedAt, metrics_ui_dir: s.backend === "native" ? null : "~/Projects/metrics-ui", config: s.config || "default",
+      log: `runtime/simulators/${s.port}/simulator.log`, log_tail: s.state === "exited" ? s.logTail : null,
+      ...(s.backend === "native" ? { backend: "native", executable: "~/Projects/auto-driving/simulator/native/build/automa-native-sim" } : {}),
+    })) };
+  }
+  // hosts status --json.
+  function hosts() {
+    return { schema: "automa_hosts_status", host_name: null, hosts: store.hosts.map((h) => ({
+      host_name: h.name, url: h.url, pid: h.pid, attached: true, attached_since: h.since, local: "host record", simulator: null,
+      provider: h.provider, vehicle_url: h.vehicleUrl, state: h.state, mode: h.mode, decision_count: h.decisions,
+      error_count: 0, last_frame_at_ms: h.lastFrameAt, error: null,
+    })) };
+  }
+  // A catalog's definitions: the packaged plugins, then what was uploaded to the host.
+  function definitions(h) {
+    const metadata = (step, id) => { const u = h && h.uploads[`${step}/${id}`]; return u ? { revision: u.revision, filename: u.filename } : {}; };
+    const packaged = STEP_NAMES.flatMap((step) => STEPS[step].ids.map((id) => ({ step, id, metadata: metadata(step, id) })));
+    const uploaded = h ? Object.keys(h.uploads).map((key) => key.split("/")).filter(([step, id]) => !STEPS[step].ids.includes(id))
+      .map(([step, id]) => ({ step, id, metadata: metadata(step, id) })) : [];
+    return [...packaged, ...uploaded];
+  }
+  const noHost = (name) => refused(`No host '${name}'. ${store.hosts.length ? `Hosts: ${store.hosts.map((h) => h.name).join(", ")}.` : "No hosts exist."}`);
+  // plugins list --json: the packaged catalog with each step's defaults and presets, or with a
+  // host (--long) its whole catalog and what it armed.
+  function plugins({ host_name: name }) {
+    if (!name) return { schema: "automa_plugin_list", ok: true, host_name: null, url: null, step: null,
+      defaults: Object.fromEntries(STEP_NAMES.map((step) => [step, [...STEPS[step].defaults]])),
+      step_presets: Object.fromEntries(STEP_NAMES.map((step) => [step, Object.fromEntries(Object.entries(STEPS[step].presets || {})
+        .map(([preset, ids]) => [preset, { plugins: [...ids], default: preset === defaultPreset(step) }]))])),
+      catalog: { source: "implementations/decision_cycle/*/catalog.json", plugins: definitions(null) } };
+    const h = findHost(name);
+    if (!h) return { ...noHost(name), schema: "automa_plugin_list", host_name: name, armed: null, arming_error: null };
+    return { schema: "automa_plugin_list", ok: true, host_name: h.name, url: h.url, step: null, arming_error: null,
+      armed: STEP_NAMES.flatMap((step) => h.armed[step].map((id) => ({ step, id, metadata: {} }))),
+      catalog: { source: h.url, version: h.catalogVersion, host_run_id: h.runId, plugins: definitions(h), collections: copy(h.collections) } };
+  }
+  // A running host's frame: the capture's frame at its decision count, keeping only what the
+  // perception plugins it has armed found.
+  function captured(h) {
+    if (!(h.state === "running" || h.decisions > 0) || !CAPTURE.length) return null;
+    const frame = CAPTURE[h.decisions % CAPTURE.length];
+    const armed = h.armed.perception;
+    const recorded = frame.perception.plugin_runs || [];
+    const runs = armed.map((id) => recorded.find((run) => run.plugin_id === id)
+      || { plugin_id: id, status: "ok", duration_ms: 1 + (id.length % 4), signal_count: 0, thing_count: 0, error: null });
+    const things = (frame.perception.things || []).filter((t) => armed.includes(t.source_plugin_id));
+    // A host whose run ended keeps its last frame, older than its 1000 ms ceiling.
+    const age = h.state === "running" ? 4 : Date.now() - h.lastFrameAt;
+    const stale = age > 1000 ? `The latest frame is ${age} ms old, past its 1000 ms ceiling.` : null;
+    return { frame, index: h.decisions, age, stale, perception: { ...frame.perception, plugin_runs: runs, things } };
+  }
+  // A host's latest frame, as the perception page reads it; the image is the capture's.
+  function latest({ host_name: name }) {
+    const h = findHost(name);
+    if (!h) return noHost(name);
+    const c = captured(h);
+    if (!c) return refused("The frame publication health is 'unavailable'.");
+    const { frame, index, age, stale, perception } = c, id = frame.frame.frame_id;
+    return { schema: "host_frame_publication", host_name: h.name, health: stale ? "stale" : "healthy", ok: true, read_at_ms: Date.now(),
+      result_age_ms: age, stale_after_ms: 1000, host_telemetry: null,
+      image: { frame_id: id, frame_index: index, captured_at_ms: frame.frame.captured_at_ms, content_type: "image/jpeg",
+               width_px: frame.frame.width_px, height_px: frame.frame.height_px, url: frame.image },
+      report: { schema: "host_frame_report", host_name: h.name, frame_id: id, frame_index: index, run_id: h.runId,
+        generation_id: frame.stream.generation_id, status: "ok", error: null, cycle: { perception, memory: frame.memory },
+        values: { timing: { duration_ms: frame.cycle.cycle_duration_ms, steps: [{ step: "perception", duration_ms: frame.cycle.perception_ms }] } } } };
+  }
+  // The preset each step's armed plugins are, as the perception stream names them.
+  const presetsOf = (h) => Object.fromEntries(STEP_NAMES.filter((step) => STEPS[step].presets)
+    .map((step) => [step, Object.keys(STEPS[step].presets).find((name) => same(STEPS[step].presets[name], h.armed[step])) || "custom"]));
+  // plugins stream --once --step: the probe, and as text the screen it prints.
+  function stream({ host_name: name, step }) {
+    const schema = ["perception", "memory"].includes(step) ? `host_${step}_live` : `host_${step}_stream`;
+    const h = findHost(name);
+    if (!h) return { schema, status: "unavailable", host_name: name, text: noHost(name).error };
+    const c = captured(h);
+    if (!c) return { schema, status: "waiting", host_name: h.name, text: `Host ${h.name} has no fresh ${step} record yet.` };
+    const { frame, index, age, stale, perception } = c, st = frame.stream, id = frame.frame.frame_id, endpoint = `${h.url}/host/observation/latest`;
+    const status = stale ? "stale" : "live", mode = h.mode || "manual";
+    if (step === "perception") {
+      const armed = h.armed.perception;
+      const text = st.perception_text.split("\n").filter((line) => {
+        const m = line.match(/^(?:plugin_run id|signal id=\S+ plugin|thing id=\S+ plugin)=(\S+)/);
+        return !m || armed.includes(m[1]);
+      }).map((line) => (line.startsWith("plugins=") ? `plugins=${armed.join(",")}` : line)).join("\n");
+      const presets = presetsOf(h);
+      return { schema, status, host_name: h.name, endpoint, frame_id: id, frame_index: index, captured_at_ms: frame.frame.captured_at_ms,
+        age_ms: age, signal_count: st.signal_count, thing_count: perception.things.length, mode, presets, perception_duration_ms: frame.cycle.perception_ms,
+        ...(stale ? { error: stale } : {}),
+        text: ["automa perception stream", "", `host: ${h.name}`, `url: ${h.url}`, `status: ${status}`, ...(stale ? [`error: ${stale}`] : []),
+          `presets: ${Object.entries(presets).sort().map(([k, v]) => `${k}=${v}`).join(" ")}  mode: ${mode}`,
+          `control: steering=${st.control.steering}  throttle=${st.control.throttle}  reason=${st.control.reason}`,
+          `cadence: cycle_ms=${st.cycle_ms}  age_ms=${age}`,
+          `latest: frame=${id}  captured_at_ms=${frame.frame.captured_at_ms}  signals=${st.signal_count}  things=${perception.things.length}`,
+          "publication: healthy  json: /host/observation/latest", "", "latest perception", "-----------------", text].join("\n") };
+    }
+    if (step === "memory") {
+      const m = st.memory, line = (x) => `  ${x.plugin_id}: health=${x.health} epoch=${x.epoch_id} records=${x.record_count} max_records=32 max_age_ms=10000 eviction=oldest_first`;
+      if (stale) return { schema, status, host_name: h.name, endpoint, frame_id: id, generation_id: st.generation_id, mode, error: stale,
+        text: [`Live memory: ${h.name} [stale]`, `Endpoint: ${endpoint}`, `Mode: ${mode}`, `Detail: ${stale}`, "", `publication memory: ${stale}`].join("\n") };
+      return { schema, status, host_name: h.name, endpoint, frame_id: id, generation_id: st.generation_id, mode,
+        plugin_ids: h.armed.memory, evidence_publisher: m.publisher, last_duration_ms: 0.6, health: "healthy",
+        text: [`Live memory: ${h.name} [live]`, `Endpoint: ${endpoint}`, `Mode: ${h.mode || "-"}`,
+          `Applied plugins: ${h.armed.memory.join(", ") || "(none)"}`, ...m.plugins.map(line), `Evidence publisher: ${m.publisher || "none"}`,
+          "Last duration: 0.600 ms", "", `publication memory: evidence publisher ${m.publisher || "none"}`, ...m.plugins.map(line)].join("\n") };
+    }
+    return { schema, status, host_name: h.name, frame_id: id, frame_index: index, run_id: h.runId, generation_id: st.generation_id,
+      plugins: h.armed[step], freshness: { age_ms: age, max_age_ms: 1000 }, timing: { duration_ms: st.cycle_ms }, ...(stale ? { error: stale } : {}),
+      text: [...(stale ? [stale] : []), `${titleCase(step)} stream: ${h.name} frame=${id} run=${h.runId} age_ms=${age} max_age_ms=1000`, `Generation: ${st.generation_id}`,
+        `Plugins: ${h.armed[step].join(", ") || "none"}`, ...st[step], ...(step === "action" ? [st.application] : []),
+        `Timing: ${step} 0.040 ms; cycle ${st.cycle_ms} ms`].join("\n") };
+  }
+
+  // ---- Writes ----
+  // A command's output on a timer: strings are printed, numbers wait, functions are its effects.
+  function play(kind, lines, onLine, pace = 260) {
+    return new Promise((done) => {
+      const out = [];
+      const next = (i) => {
+        if (i >= lines.length) { done({ ok: true, kind, text: out.join("\n") }); return; }
+        const line = lines[i];
+        if (typeof line === "function") line();
+        else if (typeof line === "string") { out.push(line); onLine(line); }
+        setTimeout(() => next(i + 1), ms(typeof line === "number" ? line : pace));
+      };
+      next(0);
+    });
+  }
+
+  // vehicles discover: probes the URL (up to 5 s) and lists what answers.
+  async function discover({ provider, url }) {
+    if (!(provider in HEADINGS)) return refused("provider must be one of chase-sim, picar");
+    let normal;
+    try { normal = normalizedUrl(provider, String(url || "").trim()); }
+    catch { return { ok: false, kind: "error", text: "The URL must be an http(s) URL." }; }
+    if (vehicles().vehicles.some((v) => v.url === normal)) return { ok: false, kind: "listed", text: `Already listed: ${heading(provider, normal)}` };
+    await after(900);
+    const created = store.simulators.find((s) => s.url === normal && s.state === "running");
+    const found = REACHABLE[normal];
+    if (created && provider === "chase-sim") created.listed = true;
+    else if (found && found.provider === provider) store.vehicles.push({ provider, url: normal, state: found.state });
+    else return { ok: false, kind: "unready", text: UNREADY[provider](normal) };
+    return { ok: true, kind: "discovered", text: `Discovered ${heading(provider, normal)}` };
+  }
+  // vehicles remove: forgets a discovered vehicle; a created simulator keeps running, unlisted.
+  async function untrack({ url }) {
+    const discovered = store.vehicles.find((v) => v.url === url);
+    const created = store.simulators.find((s) => s.url === url && s.listed && s.state === "running");
+    if (!discovered && !created) {
+      const names = vehicles().vehicles.map((v) => heading(v.provider, v.url)).join(", ");
+      return { ok: false, kind: "missing", text: `No listed vehicle at ${url}. ${names ? `Listed: ${names}.` : "None listed."}` };
+    }
+    if (discovered) store.vehicles.splice(store.vehicles.indexOf(discovered), 1);
+    if (created) created.listed = false;
+    await after(150);
+    return { ok: true, kind: "removed", text: `Removed ${heading(discovered ? discovered.provider : "chase-sim", url)}` };
+  }
+  // simulators create: prints nothing until its launcher answers (up to 45 s). Only a configuration
+  // file that exists starts, so a path the page cannot see refuses as a missing one does.
+  async function createSimulator({ backend = "metrics-ui", config = null } = {}) {
+    if (config && !config.endsWith(".json")) {
+      return { ok: false, kind: "create_error", text: `Cannot create a simulator: Configuration file not found: ${config}` };
+    }
+    const used = new Set([...store.simulators, ...store.vehicles].map((v) => Number(new URL(v.url).port)));
+    let port = 5051;
+    while (used.has(port)) port += 1;
+    const url = `http://127.0.0.1:${port}/`;
+    await after(1800);
+    store.simulators.push({ url, port, pid: 48000 + Math.floor(Math.random() * 999), state: "running", listed: true,
+                            startedAt: Date.now(), logTail: null, backend, config });
+    return { ok: true, kind: "created", text: `Created ${heading("chase-sim", url)}` };
+  }
+  // simulators delete: attached hosts are removed first when requested.
+  async function deleteSimulator({ url, with_hosts = false }, onLine) {
+    const s = store.simulators.find((x) => x.url === url);
+    if (!s) {
+      const urls = store.simulators.map((x) => x.url).join(", ");
+      return { ok: false, kind: "missing", text: `No created simulator at ${url}. ${urls ? `Created: ${urls}.` : "None created."}` };
+    }
+    const users = store.hosts.filter((h) => h.vehicleUrl === url).map((h) => h.name);
+    if (users.length && !with_hosts) {
+      const subject = users.length === 1 ? `Host ${users[0]} uses` : `Hosts ${users.join(", ")} use`;
+      return { ok: false, kind: "blocked", text: `${subject} the simulator at ${url}; delete ${users.length === 1 ? "it" : "them"} first.` };
+    }
+    const lines = [];
+    for (const name of users) {
+      const result = await deleteHost({ name }, onLine);
+      if (!result.ok) {
+        return { ...result, text: [...lines, `Could not delete host ${name}: ${result.text}`].join("\n") };
+      }
+      lines.push(result.text);
+    }
+    await after(s.state === "exited" ? 150 : 400);
+    store.simulators.splice(store.simulators.indexOf(s), 1);
+    lines.push(`Deleted ${heading("chase-sim", url)}${s.state === "exited" ? ", which had exited" : ""}`);
+    return { ok: true, kind: "deleted", text: lines.join("\n") };
+  }
+
+  function createHost({ name, provider, url }, onLine) {
+    if (!name) return { ok: false, kind: "error", text: "Name the host." };
+    if (findHost(name)) return { ok: false, kind: "error", text: `Host ${name} already exists.` };
+    const tree = hex(64), archiveHash = hex(64);
+    const release = `autonomy-${tree.slice(0, 12)}-${Date.now()}.tar.gz`;
+    const hostUrl = `http://127.0.0.1:${59000 + Math.floor(Math.random() * 999)}`;
+    const pid = 51000 + Math.floor(Math.random() * 999);
+    const armed = defaultSelection();
+    return play("created", [
+      "==> Package local controller bundle",
+      `Archive: runtime/hosts/${name}/bundle/releases/${release}`,
+      `Tree SHA-256: ${tree}`,
+      `Archive SHA-256: ${archiveHash}`,
+      "==> Extract controller bundle release",
+      `Extracted release -> runtime/hosts/${name}/bundle`,
+      () => store.hosts.push({ name, provider, vehicleUrl: url, url: hostUrl, pid, since: new Date().toISOString(), state: "pre_start", mode: null, lastFrameAt: null,
+                               decisions: 0, count: null, runPid: null, runId: null, request: 0, armed, uploads: {}, collections: {},
+                               catalogVersion: 1 }),
+      `Host ${name} created for the chaser at ${url}`,
+      `Release: ${release}`,
+      `Archive SHA-256: ${archiveHash}`,
+      ...STEP_NAMES.map((step) => `${titleCase(step)}: ${selectionLabel(step, armed[step])}`),
+      "Decision generation: decision-da86a44eb2557b69",
+      `Host ${name}  not started`,
+      `  chaser at ${url}`,
+      "  0 decisions, 0 errors",
+      "  attached",
+    ], onLine);
+  }
+  function startLines(h, flags) {
+    const record = flags.includes("--record");
+    const observe = flags.includes("--observe-only");
+    const countIndex = flags.indexOf("--num-decisions");
+    const count = countIndex >= 0 ? Number(flags[countIndex + 1]) : null;
+    return [
+      1500,  // hosts run prints nothing until a camera frame, its perception and a healthy view arrive, up to 20 s
+      () => Object.assign(h, { state: "running", mode: observe ? "observe_only" : "autonomy", count, decisions: 0,
+                               runPid: 52000 + Math.floor(Math.random() * 999), runId: `chase_sim-run-${hex(24)}` }),
+      `Run started on host ${h.name}.`,
+      ...STEP_NAMES.map((step) => `${titleCase(step)}: ${selectionLabel(step, h.armed[step])}`),
+      record ? `Recording: runtime/hosts/${h.name}/bundle/runtime/automation/runs/chase_sim-run-${hex(24)}`
+             : "Recording: off; latest frame and perception are overwritten each iteration",
+      "Control source: runtime host",
+      `Action policy: ${observe ? "observe_only" : "autonomy"}`,
+      "Decision generation: decision-da86a44eb2557b69",
+      "Runtime view: http://127.0.0.1:8996/",
+      count === null ? "Decisions: unbounded" : `Decisions: ${count}`,
+    ];
+  }
+  const stopLines = (h) => [() => Object.assign(h, { state: "stopped", mode: null }),
+                            `Stopped the run on host ${h.name}.`, `PID: ${h.runPid}`,
+                            `State: runtime/hosts/${h.name}/bundle/runtime/automation/state.json`];
+  // hosts run's flags, from the body's fields of the same names.
+  const runFlags = (body) => [...(body.observe_only ? ["--observe-only"] : []),
+                              ...(body.num_decisions ? ["--num-decisions", String(body.num_decisions)] : []),
+                              ...(body.unbounded ? ["--unbounded"] : []), ...(body.record ? ["--record"] : [])];
+  function runHost(body, onLine) {
+    const h = findHost(body.name);
+    return h ? play("started", startLines(h, runFlags(body)), onLine) : missingHost(body.name);
+  }
+  function stopHost({ name }, onLine) {
+    const h = findHost(name);
+    return h ? play("stopped", stopLines(h), onLine) : missingHost(name);
+  }
+  // hosts restart takes run's flags again; it does not keep the last run's.
+  function restartHost(body, onLine) {
+    const h = findHost(body.name);
+    return h ? play("started", [...stopLines(h), ...startLines(h, runFlags(body)).slice(1)], onLine) : missingHost(body.name);
+  }
+  function updateHost({ name }, onLine) {
+    const h = findHost(name);
+    if (!h) return missingHost(name);
+    const tree = hex(64);
+    return play("updated", ["==> Package local controller bundle",
+      `Archive: runtime/hosts/${h.name}/bundle/releases/autonomy-${tree.slice(0, 12)}-${Date.now()}.tar.gz`,
+      `Tree SHA-256: ${tree}`, `Archive SHA-256: ${hex(64)}`, `Host updated: ${h.name}`], onLine);
+  }
+  function deleteHost({ name }, onLine) {
+    const h = findHost(name);
+    if (!h) return missingHost(name);
+    return play("deleted", [`${h.state === "running" ? "Stopped the run. " : ""}Stopped host ${h.name}. Removed runtime/hosts/${h.name}.`,
+                            () => store.hosts.splice(store.hosts.indexOf(h), 1)], onLine);
+  }
+
+  const sourceOf = (h, step, id) => { const u = h.uploads[`${step}/${id}`]; return u ? `revision ${u.revision}` : "packaged"; };
+  const listed = (h, step, ids) => ids.map((id) => `${id} (${sourceOf(h, step, id)})`).join(", ") || "(none)";
+  // A selection change: the request, every step's requested plugins, then what the host applied.
+  function selection(h, label, heading, next, onLine) {
+    h.request += 1;
+    const requested = { ...h.armed, ...next }, steps = [...STEP_NAMES].sort();
+    return play("selection", [`Host: ${h.name}`, `Endpoint: ${h.url}`, ...heading, `${label}: requested`, `Request: ${h.request}`,
+      ...steps.map((step) => `Requested ${step}: ${listed(h, step, requested[step])}`),
+      () => Object.assign(h.armed, next), ...steps.map((step) => `Applied ${step}: ${listed(h, step, requested[step])}`)], onLine);
+  }
+  // A plugin armed into its step; a one-plugin step's replaces it.
+  const withPlugin = (h, step, id) => (STEPS[step].one ? [id] : [...h.armed[step].filter((x) => x !== id), id]);
+  const stepItem = (value) => { const [step, id] = String(value || "").split("/"); return STEPS[step] && id ? [step, id] : null; };
+  // A collection's members by step, each step's in manifest order; refused when the host has none by that name.
+  const members = (h, collection) => h.collections[collection];
+  const unknownCollection = (h, label, collection) => ({ ok: false, kind: "error", text: [`Host: ${h.name}`, `Endpoint: ${h.url}`,
+    `Collection: ${collection}`, `${label}: failed`, `Reason: unknown plugin collection '${collection}'`,
+    `Next: ./cli/automa plugins list --host-name ${h.name} --long`].join("\n") });
+  // plugins arm --name step/id ..., --preset step/preset (the preset's plugins in place of the step's),
+  // or --collection: its plugins added to each step, a one-plugin step's replaced.
+  function arm({ host_name: name, name: names, preset, collection }, onLine) {
+    const h = findHost(name);
+    if (!h) return noHost(name);
+    if (collection !== undefined) {
+      const by = members(h, collection);
+      if (!by) return unknownCollection(h, "Arming", collection);
+      const next = {};
+      for (const [step, ids] of Object.entries(by)) for (const id of ids) next[step] = withPlugin({ armed: { ...h.armed, ...next } }, step, id);
+      return selection(h, "Arming", [`Collection: ${collection}`], next, onLine);
+    }
+    if (preset !== undefined) {
+      const [step, id] = stepItem(preset) || [];
+      const ids = step && (STEPS[step].presets || {})[id];
+      if (!ids) return refused(`unknown ${step} preset '${id}'; known: ${Object.keys(STEPS[step]?.presets || {}).sort().join(", ")}`);
+      return selection(h, "Arming", [`Step: ${step}`, `Preset: ${id}`], { [step]: [...ids] }, onLine);
+    }
+    const items = (names || []).map(stepItem);
+    if (!items.length || items.includes(null)) return refused("name must be a non-empty list of <step>/<plugin>");
+    const next = {};
+    for (const [step, id] of items) next[step] = withPlugin({ armed: { ...h.armed, ...next } }, step, id);
+    return selection(h, "Arming", [], next, onLine);
+  }
+  // plugins disarm --name step/id ..., --collection (a one-plugin step keeps its plugin), --step, or --all.
+  function disarm({ host_name: name, name: names, collection, step, all }, onLine) {
+    const h = findHost(name);
+    if (!h) return noHost(name);
+    if (collection !== undefined) {
+      const by = members(h, collection);
+      if (!by) return unknownCollection(h, "Disarming", collection);
+      const steps = Object.keys(by).filter((s) => CLEARABLE.includes(s));
+      if (!steps.length) return refused(`plugin collection '${collection}' only arms one-plugin steps, which keep their plugin; arm a replacement instead`);
+      return selection(h, "Disarming", [`Collection: ${collection}`],
+                       Object.fromEntries(steps.map((s) => [s, h.armed[s].filter((id) => !by[s].includes(id))])), onLine);
+    }
+    if (names !== undefined) {
+      const next = {};
+      for (const [s, id] of names.map(stepItem).filter(Boolean)) next[s] = (next[s] || h.armed[s]).filter((x) => x !== id);
+      return selection(h, "Disarming", [], next, onLine);
+    }
+    if (step === undefined && !all) return refused("disarm needs name, collection, step or all");
+    const steps = all ? CLEARABLE : [step];
+    return selection(h, "Disarming", step ? [`Step: ${step}`] : [], Object.fromEntries(steps.map((s) => [s, []])), onLine);
+  }
+  // plugins upload --name step/id --file --entrypoint [--config] [--arm].
+  function upload({ host_name: name, name: key, filename, manifest, arm: andArm }, onLine) {
+    const h = findHost(name);
+    if (!h) return missingHost(name);
+    if (manifest !== undefined) return uploadCollection(h, manifest, andArm, onLine);
+    const [step, id] = key.split("/");
+    const revision = ((h.uploads[key] || {}).revision || 0) + 1;
+    const next = withPlugin(h, step, id);
+    const armedText = next.map((x) => `${x} (${x === id ? `revision ${revision}` : sourceOf(h, step, x)})`).join(", ");
+    return play("uploaded", [`Host: ${h.name}`, `Plugin: ${key}`, `Revision: ${revision}`,
+      () => { h.uploads[key] = { revision, filename }; h.catalogVersion += 1; },
+      `Catalog version: ${h.catalogVersion + 1} (host run none)`,
+      ...(andArm ? [`Request: ${hex(12)}`, `Requested ${step}: ${armedText}`, () => { h.armed[step] = next; }, `Applied ${step}: ${armedText}`] : [])], onLine);
+  }
+  // plugins upload --manifest [--arm]: every plugin MANIFEST names as one revision, then the collection.
+  function uploadCollection(h, manifest, andArm, onLine) {
+    const head = [`Host: ${h.name}`, `Endpoint: ${h.url}`];
+    if (!/\.json$/.test(manifest)) return { ok: false, kind: "error", text: [...head, "Upload: failed",
+      `Reason: [Errno 2] No such file or directory: '${manifest}'`, `Next: Fix ${manifest.split("/").pop()}, then upload it again.`].join("\n") };
+    const revision = hex(64), { name: collection, plugins } = MANIFEST;
+    const by = {};
+    for (const { step, id } of [...plugins].sort((a, b) => a.step.localeCompare(b.step))) (by[step] ||= []).push(id);
+    const lines = [...head, "Upload: uploaded", `Collection: ${collection}`, `Revision: ${revision}`,
+      () => { for (const { step, id, filename } of plugins) h.uploads[`${step}/${id}`] = { revision, filename };
+              h.collections[collection] = by; h.catalogVersion += 1; },
+      `Catalog version: ${h.catalogVersion + 1} (host run ${h.runId || "none"})`,
+      ...plugins.map(({ step, id, filename }) => `- ${step}/${id}: revision ${revision} (${filename})`)];
+    if (!andArm) return play("uploaded", [...lines, "Selection: unchanged",
+      `Next: ./cli/automa plugins arm --host-name ${h.name} --collection ${collection}`], onLine);
+    return play("uploaded", lines, onLine).then(() => arm({ host_name: h.name, collection }, onLine));
+  }
+  // plugins save: what the host runs now becomes what it starts with.
+  function save({ host_name: name }, onLine) {
+    const h = findHost(name);
+    if (!h) return missingHost(name);
+    const uploaded = STEP_NAMES.flatMap((step) => h.armed[step].filter((id) => h.uploads[`${step}/${id}`]).map((id) => `${step}/${id}`));
+    if (uploaded.length) return { ok: false, kind: "error", text: `Cannot save: uploaded plugins cannot be saved (${uploaded.join(", ")}).` };
+    return play("saved", [`Host: ${h.name}`,
+      ...STEP_NAMES.map((step) => `${titleCase(step)}: ${selectionLabel(step, h.armed[step])} (${same(h.armed[step], STEPS[step].defaults) ? "default" : "saved"})`),
+      `Activations: runtime/hosts/${h.name}/bundle/runtime`,
+      `Startup: ${h.name} starts with these plugins; hosts update keeps the saved steps.`], onLine);
+  }
+
+  // ---- Learning: the history the viewer keeps of a host's memory step (LearningHistory). ----
+  // Beliefs come from the learning plugins armed on memory (chase-413's stop_row and approach_model),
+  // each a function of the decision count: a check every few decisions, a trial open before it, the
+  // value converging as checks come in. Every memory plugin armed reports a record.
+  const FRAME_MS = 100;  // the host's frame clock: one decision per frame
+  const noise = (j) => (((j * 9301 + 49297) % 233280) / 233280) - 0.5;
+  const round = (x, digits = 2) => Number(x.toFixed(digits));
+  // A learner: its belief id, the decisions between checks, the value after k checks, the check method,
+  // a prediction (a number or [lo, hi]) and the observation it is checked against.
+  const LEARNERS = {
+    stop_row: { belief: "stop_row.row", every: 15, method: "stop",
+      value: (k) => round(7 + 3 * Math.exp(-k / 6) * Math.cos(k)),
+      spread: (k) => round(0.3 + 1.6 * Math.exp(-k / 8)),
+      predicted: (v) => v, observed: (v, j) => round(v + noise(j) * 2.2) },
+    approach_model: { belief: "approach_model.run_ms", every: 20, method: "run_duration",
+      value: (k) => Math.round(1200 + 300 * Math.exp(-k / 5)),
+      spread: (k) => Math.round(80 + 220 * Math.exp(-k / 6)),
+      predicted: (v, spread) => [v - spread, v + spread], observed: (v, j) => Math.round(v + noise(j) * 500) },
+  };
+  // The belief a learner publishes after d decisions, as Belief.to_dict, and every check it has made.
+  function learned(id, d) {
+    const L = LEARNERS[id], k = Math.floor(d / L.every);
+    const checks = Array.from({ length: k }, (_, j) => {
+      const v = L.value(j), predicted = L.predicted(v, L.spread(j)), observed = L.observed(v, j);
+      const [lo, hi] = Array.isArray(predicted) ? predicted : [predicted - 0.8, predicted + 0.8];
+      return { at_ms: (j + 1) * L.every * FRAME_MS, method: L.method, outcome: observed >= lo && observed <= hi ? "support" : "contradict",
+               predicted, observed };
+    });
+    const kept = checks.slice(-12), support = kept.filter((c) => c.outcome === "support").length;
+    const all = checks.filter((c) => c.outcome === "support").length;
+    const v = L.value(k), open = d % L.every >= L.every / 3;
+    return { checks, belief: { belief_id: L.belief, source_plugin_id: id, value: v, updated_at_ms: d * FRAME_MS,
+      properties: { p25: round(v - L.spread(k) / 2), p75: round(v + L.spread(k) / 2) },
+      confidence: kept.length ? round((support + 1) / (kept.length + 2), 3) : null,
+      by_method: k ? { [L.method]: { support: all, contradict: k - all } } : {}, corroborated: kept.length >= 3 && support > kept.length / 2,
+      checks: kept, trials: open ? [{ trial_id: `${L.method}_${k}`, method: L.method, started_at_ms: (k * L.every + L.every / 3) * FRAME_MS,
+                                      predicted: L.predicted(v, L.spread(k)), properties: {} }] : [] } };
+  }
+  // A memory plugin's record, as MemoryPluginRuntime.status: approach_model's state has a profile by row.
+  function memoryRecord(id, d) {
+    const k = Math.floor(d / 15);
+    const state = id === "stop_row" ? { phase: k < 3 ? "probing" : k < 8 ? "bracketing" : "settled", bracket_width: round(4 * Math.exp(-k / 5), 3), samples: k }
+      : id === "approach_model" ? { samples: k, ms_per_row: Object.fromEntries(Array.from({ length: 12 }, (_, row) =>
+          [row, Math.round(100 + row * 12 + noise(row + k) * 60 * Math.exp(-k / 8))])) }
+      : { record_count: Math.min(d, 64) };
+    return { plugin_id: id, plugin_spec: `${id}:Plugin`, activation: null, update_count: d, reset_count: 0, failure_count: 0,
+             last_duration_ms: round(1 + Math.abs(noise(d)) * 2), last_error: null, state };
+  }
+  // Leaves by JSON Pointer path, as LearningHistory flattens them.
+  function leaves(value, path = "", out = {}) {
+    if (typeof value === "boolean") out[path] = Number(value);
+    else if (typeof value === "number" || typeof value === "string") out[path] = value;
+    else if (Array.isArray(value)) out[`${path}#len`] = value.length;
+    else if (value && typeof value === "object") {
+      for (const [key, item] of Object.entries(value)) if (item !== null && !key.endsWith("at_ms")) leaves(item, `${path}/${key}`, out);
+    }
+    return out;
+  }
+  const BELIEF_FIELDS = ["value", "properties", "confidence", "by_method", "corroborated", "checks", "trials"];
+  const PLUGIN_FIELDS = ["state", "failure_count", "last_duration_ms", "last_error"];
+  const pick = (record, fields) => Object.fromEntries(fields.map((name) => [name, record[name]]));
+  // What changed since the last read: series appended on change, new checks, trials opened and ended.
+  function ingestLearning(h) {
+    if (!h.learning || h.learning.runId !== h.runId) {
+      h.learning = { id: hex(32), runId: h.runId, seq: 0, t: null, beliefs: {}, plugins: {}, events: [], checked: {} };
+    }
+    const H = h.learning, t = h.decisions * FRAME_MS, next = () => ++H.seq;
+    if (t === H.t) return;
+    H.t = t;
+    const trackOf = (map, id) => (map[id] ||= { current: null, last: {}, series: {}, checks: [], trials: {} });
+    const record = (tr, now) => {
+      for (const path of Object.keys(tr.last)) if (!(path in now)) { delete tr.last[path]; tr.series[path].push([next(), t, null]); }
+      for (const [path, value] of Object.entries(now)) {
+        if (tr.last[path] === value) continue;
+        tr.last[path] = value;
+        (tr.series[path] ||= []).push([next(), t, value]);
+      }
+    };
+    for (const id of h.armed.memory.filter((x) => LEARNERS[x])) {
+      const { belief, checks } = learned(id, h.decisions), tr = trackOf(H.beliefs, belief.belief_id);
+      if (!tr.current) H.events.push({ seq: next(), t, kind: "belief_added", belief_id: belief.belief_id });
+      const fresh = checks.slice(H.checked[id] || 0);
+      H.checked[id] = checks.length;
+      for (const check of fresh) tr.checks.push({ seq: next(), t, ...check });
+      const open = new Set(belief.trials.map((x) => x.trial_id));
+      for (const row of Object.values(tr.trials)) {
+        if (row.end !== "open" || open.has(row.trial_id)) continue;
+        const check = fresh.find((c) => JSON.stringify(c.predicted) === JSON.stringify(row.predicted));
+        Object.assign(row, { seq: next(), ended_t: t, end: "resolved", outcome: check ? check.outcome : null });
+      }
+      for (const x of belief.trials) {
+        if (!tr.trials[x.trial_id]) tr.trials[x.trial_id] = { seq: next(), trial_id: x.trial_id, method: x.method, started_at_ms: x.started_at_ms,
+          predicted: x.predicted, opened_t: t, ended_t: null, end: "open", reason: null, outcome: null };
+      }
+      tr.current = belief;
+      record(tr, leaves(pick(belief, BELIEF_FIELDS)));
+    }
+    for (const id of h.armed.memory) {
+      const r = memoryRecord(id, h.decisions), tr = trackOf(H.plugins, id);
+      tr.current = r;
+      record(tr, leaves(pick(r, PLUGIN_FIELDS)));
+    }
+  }
+  const afterSeq = (rows, since) => rows.filter((row) => (Array.isArray(row) ? row[0] : row.seq) > since);
+  // The host's history after the cursor; a stopped host keeps the one it has, not live.
+  function learningHistory({ host_name: name, since = "0" }) {
+    const h = findHost(name);
+    if (!h) return noHost(name);
+    const running = h.state === "running";
+    if (!running && !h.learning) return refused(`Host '${name}' is not running.`);
+    if (running) ingestLearning(h);
+    const H = h.learning, cursor = Number(since);
+    const trackPayload = (tr) => ({ current: tr.current, checks: afterSeq(tr.checks, cursor), dropped_paths: 0,
+      trials: afterSeq(Object.values(tr.trials), cursor).sort((a, b) => a.seq - b.seq),
+      series: Object.fromEntries(Object.entries(tr.series).map(([path, rows]) => [path, afterSeq(rows, cursor)]).filter(([, rows]) => rows.length)) });
+    return { schema: "automa_learning_history_v1", history_id: H.id, seq: H.seq, now_ms: H.t, available: true, host_name: name,
+             live: running, error: running ? null : `Host '${name}' is not running.`,
+             beliefs: Object.fromEntries(Object.entries(H.beliefs).map(([id, tr]) => [id, trackPayload(tr)])),
+             plugins: Object.fromEntries(Object.entries(H.plugins).map(([id, tr]) => [id, trackPayload(tr)])),
+             events: afterSeq(H.events, cursor) };
+  }
+
+  const captureById = (id) => store.captures.find((c) => c.capture === id);
+  function captureList() {
+    const captures = store.captures.map((c) => ({ ...c })).sort((a, b) => (b.started_at_ms || 0) - (a.started_at_ms || 0));
+    return { schema: "automa_captures", captures };
+  }
+  function captureMetadata({ capture }) {
+    const c = captureById(capture);
+    if (!c) return refused("capture is not a recording");
+    return { schema: "automa_capture", capture: c.capture, host: c.host, vehicle: c.vehicle, run_id: c.run_id,
+      format: "entry", state: c.state, viewable: c.state !== "active", started_at_ms: c.started_at_ms,
+      ended_at_ms: c.started_at_ms + c.duration_ms, duration_ms: c.duration_ms, frame_count: c.frame_count, flagged_frames: 0,
+      release: { tree_sha256: "tree-closed", created_at_ms: 1 },
+      generations: [{ generation_id: "gen-1", release: { tree_sha256: "tree-closed", created_at_ms: 1 },
+        steps: [{ step: "perception", plugins: ["frame"] }, { step: "action", plugins: ["selected"] }] }],
+      sources: [{ name: "uploaded.py", bytes: 40 }],
+      files: [{ name: "manifest.jsonl", bytes: 1200, count: 1, largest: "manifest.jsonl", largest_bytes: 1200 },
+              { name: "frames", bytes: 2800, count: c.frame_count, largest: "frames/frame-0.jpg", largest_bytes: 1500 }] };
+  }
+  function captureFrame({ capture, index }) {
+    const c = captureById(capture);
+    if (!c) return refused("capture is not a recording");
+    if (c.state === "active") return refused("an active capture is still being written");
+    const position = Number(index);
+    const sample = CAPTURE[position] || null;
+    const capturedAt = c.started_at_ms + position * 1000;
+    const perception = sample && sample.perception ? sample.perception : {
+      things: [{ thing_id: "box", kind: "obstacle", confidence: 0.9 }],
+      plugin_runs: [{ plugin_id: "frame", status: "ok", duration_ms: 3, thing_count: 1 }], status: "ok", confidence: 0.9 };
+    return { schema: "host_frame_publication", host_name: c.host, health: "healthy", ok: true, read_at_ms: capturedAt,
+      result_age_ms: 12, stale_after_ms: 1000, host_telemetry: null, evidence: null,
+      image: { frame_id: sample ? sample.frame.frame_id : `frame-${position}`, frame_index: position, captured_at_ms: capturedAt,
+        published_at_ms: capturedAt, content_type: "image/jpeg", width_px: sample ? sample.frame.width_px : 4,
+        height_px: sample ? sample.frame.height_px : 3, url: sample ? sample.image : `capture/frame-${position}.png` },
+      report: { schema: "host_report", host_name: c.host, run_id: c.run_id, generation_id: "gen-1", frame_id: `frame-${position}`,
+        frame_index: position, timestamp_ms: capturedAt, published_at_ms: capturedAt, status: "ok", error: null,
+        application: { applied: true, mode: "autonomy", reason: "recorded", steering: 0.1 * (position + 1), throttle: 0.2 },
+        cycle: { perception, observation: null, memory: sample ? sample.memory : null, proposal: null, plan: null, action: null },
+        values: { timing: { duration_ms: 20, steps: [{ step: "perception", duration_ms: 8 }] } } } };
+  }
+
+  // Each route: viewer says the viewer answers it; wait is a read's latency (a status read probes).
+  const ROUTES = {
+    "GET /api/vehicles": { viewer: true, wait: 300, read: vehicles },
+    "GET /api/simulators": { viewer: true, wait: 300, read: simulators },
+    "POST /api/vehicles/discover": { viewer: true, write: discover },
+    "POST /api/vehicles/remove": { viewer: true, write: untrack },
+    "POST /api/simulators/create": { viewer: true, write: createSimulator },
+    "POST /api/simulators/delete": { viewer: true, write: deleteSimulator },
+    "GET /api/hosts/status": { viewer: true, wait: 300, read: hosts },
+    "POST /api/hosts/create": { viewer: true, write: createHost },
+    "POST /api/hosts/update": { viewer: true, write: updateHost },
+    "POST /api/hosts/delete": { viewer: true, write: deleteHost },
+    "POST /api/hosts/run": { viewer: true, write: runHost },
+    "POST /api/hosts/stop": { viewer: true, write: stopHost },
+    "POST /api/hosts/restart": { viewer: true, write: restartHost },
+    "GET /api/plugins/list": { viewer: true, wait: 0, read: plugins },
+    "POST /api/plugins/arm": { viewer: true, write: arm },
+    "POST /api/plugins/disarm": { viewer: true, write: disarm },
+    "POST /api/plugins/upload": { viewer: true, write: upload },
+    "POST /api/plugins/save": { viewer: true, write: save },
+    "GET /api/plugins/stream": { viewer: true, wait: 0, read: stream },
+    "GET /api/hosts/latest": { viewer: true, wait: 0, read: latest },
+    "GET /api/hosts/learning": { viewer: true, wait: 0, read: learningHistory },
+    "GET /api/captures": { viewer: true, wait: 0, read: captureList },
+    "GET /api/captures/metadata": { viewer: true, wait: 0, read: captureMetadata },
+    "GET /api/captures/frame": { viewer: true, wait: 0, read: captureFrame },
+  };
+  const routeOf = (method, route) => ROUTES[`${method} ${route.split("?")[0]}`];
+  const answers = (method, route) => { const r = routeOf(method, route); return !!r && !(SERVED && r.viewer); };
+  async function answer(method, route, body, onLine = () => {}) {
+    const handler = routeOf(method, route);
+    if (method === "GET") {
+      await after(handler.wait);
+      return copy(handler.read(Object.fromEntries(new URL(route, location.href).searchParams)));
+    }
+    return copy(await handler.write(copy(body || {}), onLine));
+  }
+
+  // The hosts' runs: one decision per tick until a counted run finishes.
+  setInterval(() => {
+    for (const h of store.hosts) {
+      if (h.state !== "running") continue;
+      h.decisions += 1;
+      h.lastFrameAt = Date.now();
+      if (h.count && h.decisions >= h.count) Object.assign(h, { state: "finished_run", mode: null });
+    }
+  }, ms(250) || 25);
+
+  // ---- The page's mock-only controls. ----
+  // Opened from disk there is no workbench to open; served, the link opens the viewer's.
+  if (!SERVED) $("workbenchLink").addEventListener("click", (event) => event.preventDefault());
+  // Served, the simulators are real: the store has none to end.
+  $("endProcess").hidden = SERVED;
+  // The selected simulator's process dies, to show an exited record.
+  $("endProcess").addEventListener("click", () => {
+    const s = store.simulators.find((x) => x.url === Simulators.state.selected);
+    if (!s || s.state === "exited") return;
+    Object.assign(s, { state: "exited", logTail: [
+      `[headless] chase ready on ws://127.0.0.1:${s.port}/`,
+      "[headless] browser disconnected: Target page, context or browser has been closed",
+      "[headless] exiting with code 1",
+    ] });
+    readFor(Simulators.state, "/api/simulators").then(refresh);
+  });
+  function paint() {
+    const W = Simulators.state;
+    const s = store.simulators.find((x) => x.url === W.selected);
+    $("endProcess").disabled = !s || s.state === "exited" || W.busy || W.reading;
+  }
+
+  return { ms, store, answers, answer, paint };
+})();

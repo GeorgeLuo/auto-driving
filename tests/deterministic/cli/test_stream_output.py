@@ -12,7 +12,7 @@ import json
 import unittest
 from contextlib import contextmanager
 from pathlib import Path
-from unittest.mock import Mock, patch
+from unittest.mock import patch
 
 from dataclasses import replace
 
@@ -20,13 +20,12 @@ from autonomy.runtime.frame_loop import FRAME_PUBLICATION_SCHEMA, FramePublicati
 from autonomy.runtime.report import HostReport, ReportCycle, ReportApplication, ReportValues
 from autonomy.decision_cycle.perception.interface import PerceptionPluginRun, PerceptionText
 from autonomy.decision_cycle.perception.evidence.values import PerceivedThing, PerceptionSignal, ViewLocation
-from cli.automa_cli.plugins.stream import decision, memory, perception, session
+from cli.automa_cli.plugins.stream import decision, memory, perception
 from cli.automa_cli.plugins.stream.commands import stream_host_step
-from cli.automa_cli.plugins.stream.models import PerceptionPublication, StreamEvent, ViewState
+from cli.automa_cli.plugins.stream.models import PerceptionPublication, StreamEvent
 from cli.automa_cli.plugins.stream.polling import poll_events
 from cli.automa_cli.plugins.stream.render import render_stream
 from cli.automa_cli.hosts.errors import RuntimeHostError
-from cli.automa_cli.hosts.views.view_feed import ViewFeed
 
 
 # A fresh cycle whose plan record is empty.
@@ -51,17 +50,19 @@ STREAM = ROOT / "cli" / "automa_cli" / "plugins" / "stream"
 OPERATIONS = ("service.py", "polling.py", "perception.py", "memory.py", "decision.py", "session.py", "models.py")
 
 
-def _stream_plan(fetch, *, feed=None, **kwargs):
-    """Stream plan from a fixture host whose decision reads are ``fetch``; also return the view factory."""
+VIEWER_LINE = "viewer: ./cli/automa hosts viewer --name fixture"
+
+
+def _stream_plan(fetch, **kwargs):
+    """Stream plan from a fixture host whose decision reads are ``fetch``."""
 
     with (
         patch.object(decision, "require_valid_activations"),
         patch.object(decision, "runtime_base_url", return_value="http://host.invalid"),
-        patch.object(session, "ViewFeed", return_value=feed) as view,
         patch.object(decision, "fetch_frame_publication", side_effect=fetch),
         patch.object(decision, "accept_decision_publication", return_value=NORMALIZED),
     ):
-        return stream_host_step("plan", host_name="fixture", **kwargs), view
+        return stream_host_step("plan", host_name="fixture", **kwargs)
 
 
 def _referenced_modules(path: Path) -> set[str]:
@@ -141,8 +142,8 @@ class StreamOutputTests(unittest.TestCase):
                 pending = iter((item, None) for item in probes)
                 seen = {}
 
-                def fake_host(step, *, emit, refresh_s, once, serve_view, include_publication, **kwargs):
-                    seen["serve_view"] = serve_view
+                def fake_host(step, *, emit, refresh_s, once, show_view, include_publication, **kwargs):
+                    seen["show_view"] = show_view
                     seen["include_publication"] = include_publication
                     return poll_events(
                         step=step, probe=lambda: next(pending), refresh_s=refresh_s, once=once, emit=emit,
@@ -162,7 +163,7 @@ class StreamOutputTests(unittest.TestCase):
                 self.assertEqual(output.frames, [first, first + prefix + lines[1] + "\n"])
                 self.assertEqual((result.exit_code, result.message), (130, ""))
                 self.assertEqual([call.args for call in sleep.call_args_list], [(0.1,), (0.1,)])
-                self.assertEqual(seen["serve_view"], not json_output)
+                self.assertEqual(seen["show_view"], not json_output)
                 self.assertEqual(seen["include_publication"], not json_output)
 
     def test_probe_once_writes_or_returns_the_same_json_verdict(self):
@@ -193,16 +194,13 @@ class StreamOutputTests(unittest.TestCase):
                         self.assertNotIn(line, result.message)
                     sleep.assert_not_called()
 
-    def test_decision_stream_flushes_errors_and_recovers_with_its_view(self):
+    def test_decision_stream_flushes_errors_and_recovers_with_the_viewer_command(self):
         for json_output in (False, True):
             with self.subTest(json=json_output):
                 output = FlushedOutput()
-                feed = Mock(spec_set=ViewFeed)
-                feed.read_observation.return_value = None, None
-                feed.state.return_value = ("http://view/", None, "/decision", None)
                 with patch("cli.automa_cli.plugins.stream.polling.time.sleep", side_effect=[None, KeyboardInterrupt]):
-                    result, view = _stream_plan([ConnectionError("offline"), PUBLICATION], feed=feed,
-                                                json_output=json_output, output=output)
+                    result = _stream_plan([ConnectionError("offline"), PUBLICATION],
+                                          json_output=json_output, output=output)
                 self.assertEqual((result.exit_code, result.message), (130, ""))
                 self.assertEqual(len(output.frames), 2)
                 if json_output:
@@ -211,15 +209,14 @@ class StreamOutputTests(unittest.TestCase):
                                      ("error", "runtime_decision_unavailable", OFFLINE))
                     self.assertNotIn("message", error)
                     self.assertEqual((live["schema"], live["status"], live["frame_id"]), ("host_plan_stream", "live", "next"))
-                    view.assert_not_called()
+                    self.assertNotIn("viewer:", output.getvalue())
                 else:
-                    footer = "\n\nperception view: http://view/perception\naction view: http://view/decision\n"
+                    footer = f"\n\n{VIEWER_LINE}\n"
                     first = "\033[2J\033[H" + OFFLINE + footer
                     self.assertEqual(output.frames[0], first)
                     recovered = output.frames[1].removeprefix(first)
                     self.assertTrue(recovered.startswith("\033[2J\033[HPlan stream: fixture frame=next "), recovered)
                     self.assertTrue(recovered.endswith(footer), recovered)
-                    feed.stop.assert_called_once_with()
 
     def test_decision_once_reports_a_stale_or_raised_frame_and_keeps_its_records(self):
         stale = replace(PUBLICATION, health="stale", result_age_ms=1500, stale_after_ms=1000)
@@ -233,7 +230,7 @@ class StreamOutputTests(unittest.TestCase):
         ):
             with self.subTest(status=status):
                 output = FlushedOutput()
-                result, _view = _stream_plan([publication], once=True, json_output=False, output=output)
+                result = _stream_plan([publication], once=True, json_output=False, output=output)
                 self.assertEqual(result.exit_code, 2)
                 screen = output.getvalue()
                 self.assertTrue(screen.startswith(reason + "\nPlan stream: fixture frame=next "), screen)
@@ -271,13 +268,13 @@ class StreamOutputTests(unittest.TestCase):
         ).text
         self.assertIn("plugin_status id=lens status=error detail=bad_frame_retry_later", text.splitlines())
 
-    def test_decision_once_writes_one_frame_without_a_view(self):
+    def test_decision_once_writes_one_frame_without_the_viewer_command(self):
         for json_output in (False, True):
             for fetch, code in ((ConnectionError("offline"), 2), (PUBLICATION, 0)):
                 with self.subTest(json=json_output, live=not code):
                     output = FlushedOutput()
                     with patch("cli.automa_cli.plugins.stream.polling.time.sleep") as sleep:
-                        result, view = _stream_plan([fetch], once=True, json_output=json_output, output=output)
+                        result = _stream_plan([fetch], once=True, json_output=json_output, output=output)
                     self.assertEqual((result.exit_code, result.message), (code, ""))
                     line = output.getvalue()
                     self.assertEqual(output.frames, [line])
@@ -287,7 +284,7 @@ class StreamOutputTests(unittest.TestCase):
                         self.assertEqual(payload["status"], "error" if code else "live")
                     else:
                         self.assertTrue(line.startswith(OFFLINE if code else "Plan stream: fixture"), line)
-                    view.assert_not_called()
+                    self.assertNotIn("viewer:", line)
                     sleep.assert_not_called()
 
     def test_preflight_prints_one_diagnostic(self):
@@ -306,19 +303,17 @@ class StreamOutputTests(unittest.TestCase):
         self.assertEqual((probe["status"], probe["error"], probe["schema"]),
                          ("unavailable", "missing host", "host_perception_live"))
 
-    def test_json_and_one_shot_do_not_open_a_view(self):
+    def test_only_a_running_text_stream_names_the_viewer(self):
         for step in ("perception", "memory", "plan"):
-            for once, json_output in ((False, True), (True, False), (True, True)):
+            for once, json_output in ((False, False), (False, True), (True, False), (True, True)):
                 with self.subTest(step=step, once=once, json=json_output):
+                    output = io.StringIO()
                     with (
                         _offline(step),
-                        patch.object(session, "ViewFeed") as view,
                         patch("cli.automa_cli.plugins.stream.polling.time.sleep", side_effect=KeyboardInterrupt),
                     ):
-                        stream_host_step(
-                            step, host_name="fixture", once=once, json_output=json_output, output=io.StringIO(),
-                        )
-                    view.assert_not_called()
+                        stream_host_step(step, host_name="fixture", once=once, json_output=json_output, output=output)
+                    self.assertEqual(VIEWER_LINE in output.getvalue(), not once and not json_output, output.getvalue())
 
     def test_memory_text_and_json_read_the_same_completed_report(self):
         report = NORMALIZED.to_dict()
@@ -345,57 +340,23 @@ class StreamOutputTests(unittest.TestCase):
         with (
             patch.object(perception, "runtime_base_url", return_value="http://host.invalid"),
             patch.object(perception, "read_publication", return_value=(None, "absent")) as read,
-            patch.object(session, "ViewFeed") as view,
         ):
             result = stream_host_step(
                 "perception", host_name="fixture", once=True, json_output=True, output=io.StringIO(),
             )
         self.assertEqual(result.exit_code, 2)
         read.assert_called_once()
-        view.assert_not_called()
 
-    def test_view_closes_on_completion_interruption_and_failure(self):
-        for outcome in ("complete", "interrupt", "fail"):
-            with self.subTest(outcome=outcome):
-                feed = Mock(spec_set=ViewFeed)
-                feed.state.return_value = ("http://view/", None, None, None)
-                feed.read_observation.return_value = (None, "absent")
-
-                def emit(event):
-                    if outcome == "interrupt":
-                        raise KeyboardInterrupt
-                    if outcome == "fail":
-                        raise RuntimeError("boom")
-
-                with (
-                    patch.object(perception, "runtime_base_url", return_value="http://host.invalid"),
-                    patch.object(session, "ViewFeed", return_value=feed),
-                ):
-                    if outcome == "fail":
-                        with self.assertRaises(RuntimeError):
-                            perception.stream_perception(
-                                host_name="fixture", refresh_s=0.5, once=True, timeout_s=1,
-                                serve_view=True, emit=emit,
-                            )
-                    else:
-                        result = perception.stream_perception(
-                            host_name="fixture", refresh_s=0.5, once=outcome == "complete", timeout_s=1,
-                            serve_view=True, emit=emit,
-                        )
-                        self.assertEqual(result.exit_code, 2 if outcome == "complete" else 130)
-                feed.stop.assert_called_once_with()
-
-    def test_render_uses_supplied_view_addresses(self):
+    def test_render_shows_the_supplied_viewer_command(self):
         event = StreamEvent(
             step="plan",
             host_name="fixture",
             live={"status": "error", "error": "offline"},
-            view=ViewState(url="http://view/", error=None, decision_page="/decision", decision_error="late"),
+            view="./cli/automa hosts viewer --name fixture",
         )
         text = render_stream(event, json_output=False)
         self.assertIn("offline", text)
-        self.assertIn("perception view: http://view/perception", text)
-        self.assertIn("action view: http://view/decision  (latest unavailable: late)", text)
+        self.assertIn(VIEWER_LINE, text)
         self.assertEqual(render_stream(event, json_output=True), json.dumps(event.live, sort_keys=True))
         self.assertEqual(render_stream(replace_view(event), json_output=False), "offline")
 

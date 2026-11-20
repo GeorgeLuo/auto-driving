@@ -22,8 +22,8 @@ def register_stream(commands: argparse._SubParsersAction) -> None:
             "observation; memory shows each applied plugin's health, epoch and record count and the "
             "evidence publisher; proposal, plan and action print the step's record from the latest fresh "
             "cycle whose generation matches the step selections, with the observation and memory a "
-            "proposal read and the host's application of an action. A running terminal stream serves "
-            "the local runtime view and shows its URLs: the perception view, memory map and action view."
+            "proposal read and the host's application of an action. A running terminal stream also "
+            "prints the hosts viewer command that opens the runtime viewer on the host's stream."
         ),
         epilog="Streaming never starts automation or changes what a host has armed.",
     )
@@ -31,7 +31,7 @@ def register_stream(commands: argparse._SubParsersAction) -> None:
     stream.add_argument("--step", required=True, choices=STREAM_STEPS, help="Cycle step to stream.")
     stream.add_argument("--refresh-s", type=float, default=0.5, help="Refresh cadence for the replacing terminal view.")
     stream.add_argument("--once", action="store_true",
-                        help="Render once without a local view and exit; exit 2 unless the step is live.")
+                        help="Render once without the viewer command and exit; exit 2 unless the step is live.")
     stream.add_argument("--no-clear", action="store_true",
                         help="Print each render below the previous one, keeping earlier renders in scrollback.")
     stream.add_argument("--json", action="store_true", help=(
@@ -75,7 +75,7 @@ def stream_host_step(
     return _present(
         lambda emit: stream_host(
             step, host_name=host_name, refresh_s=refresh_s, once=once, timeout_s=timeout_s,
-            serve_view=continuous_text,
+            show_view=continuous_text,
             include_publication=not json_output,
             emit=emit,
         ),

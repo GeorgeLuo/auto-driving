@@ -12,18 +12,15 @@ from autonomy.runtime.report import HostReport
 from ...hosts.publications.frame_publication import presets_text
 from ...shared.memory_report import evidence_publisher, plugin_ledgers
 from ..step_formatting import format_step_record, format_step_timing
-from .models import MemoryPublication, PerceptionPublication, StreamEvent, ViewState
+from .models import MemoryPublication, PerceptionPublication, StreamEvent
 
-_PERCEPTION_PAGES = (("view", ""),)
-_MEMORY_PAGES = (("memory map", "/memory"), ("perception view", "/perception"))
-_DECISION_PAGES = (("perception view", "/perception"),)
 
 
 def render_stream(event: StreamEvent, *, json_output: bool) -> str:
     """The terminal screen, or one JSON probe line without its trailing newline.
 
     ``json_output`` chooses the formatting. The event carries the probe, its
-    source, and any view addresses; this function does not fetch or serve them.
+    source, and any viewer command; this function does not fetch or serve them.
     """
 
     if json_output:
@@ -59,7 +56,7 @@ def _perception_screen(event: StreamEvent) -> str:
             f"signals={_shown(publication.signal_count)}  "
             f"things={_shown(publication.thing_count)}"
         ),
-        *_view_lines(event.view, *_PERCEPTION_PAGES),
+        *_view_lines(event.view),
         (
             f"publication: {publication.health or 'unavailable'}  "
             f"json: {LATEST_JSON_PATH}"
@@ -80,7 +77,7 @@ def _memory_screen(event: StreamEvent) -> str:
     lines = [
         _live_memory_screen(host_name=event.host_name, live=event.live),
         "",
-        *_view_lines(event.view, *_MEMORY_PAGES),
+        *_view_lines(event.view),
     ]
     if source.error:
         lines.append(f"publication memory: {source.error}")
@@ -101,7 +98,7 @@ def _decision_screen(event: StreamEvent) -> str:
     text = "\n".join(parts)
     if event.view is None:
         return text
-    return "\n".join([text, "", *_view_lines(event.view, *_DECISION_PAGES)])
+    return "\n".join([text, "", *_view_lines(event.view)])
 
 
 def _format_stream_frame(step: str, frame: dict[str, object], report: HostReport) -> str:
@@ -183,22 +180,7 @@ def _shown(value: Any, default: str = "unknown") -> Any:
     return default if value is None else value
 
 
-def _view_lines(view: ViewState | None, *pages: tuple[str, str]) -> list[str]:
-    """Each ``(label, route)`` page, then the action view. An absent view shows nothing."""
+def _view_lines(view: str | None) -> list[str]:
+    """The command that opens the runtime viewer on the host; nothing without one."""
 
-    if view is None:
-        return []
-    return [*(_page_line(label, view.url, view.error, route) for label, route in pages), _action_line(view)]
-
-
-def _action_line(view: ViewState) -> str:
-    if view.url is None or view.decision_page is None:
-        return _page_line("action view", None, view.error or view.decision_error or "no action yet")
-    line = f"action view: {view.url.rstrip('/')}{view.decision_page}"
-    return f"{line}  (latest unavailable: {view.decision_error})" if view.decision_error else line
-
-
-def _page_line(label: str, url: str | None, error: str | None, route: str = "") -> str:
-    if url:
-        return f"{label}: {url.rstrip('/') + route if route else url}"
-    return f"{label}: unavailable ({error})" if error else f"{label}: unavailable"
+    return [] if view is None else [f"viewer: {view}"]

@@ -1,0 +1,256 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Automa</title>
+  <!-- Opened from disk, js/mock.js answers every route. The viewer (./cli/automa) serves this page at
+       /v2/, where the routes it has are real and the mock answers the rest (v2_page.py). -->
+  <link rel="stylesheet" href="../shared/float.css">
+  <link rel="stylesheet" href="v2.css">
+</head>
+<body>
+  <!-- The column: one launcher per window, each with its window's readout. -->
+  <main>
+    <h1>Automa</h1>
+    <nav aria-label="Stream">
+      <button type="button" class="nav" id="streamOpen">Stream <small id="streamReadout"></small></button>
+      <button type="button" class="nav" data-recall="learningFrame">Learning <small id="learningReadout"></small></button>
+    </nav>
+    <nav aria-label="Commands">
+      <button type="button" class="nav" data-recall="vehiclesFrame">Vehicles <small id="vehiclesReadout"></small></button>
+      <button type="button" class="nav" data-recall="hostsFrame">Hosts <small id="hostsReadout"></small></button>
+      <button type="button" class="nav" data-recall="pluginsFrame">Plugins <small id="pluginsReadout"></small></button>
+      <button type="button" class="nav" data-recall="simulatorsFrame">Simulators <small id="simulatorsReadout"></small></button>
+      <button type="button" class="nav" data-recall="capturesFrame">Captures <small id="capturesReadout"></small></button>
+    </nav>
+    <nav aria-label="Workbench">
+      <a class="nav" href="/workbench/" id="workbenchLink" title="Opens /workbench/, the replay page, in its own layout">Workbench</a>
+    </nav>
+  </main>
+
+  <!-- Every window's title bar: desk.js puts one at the top of each .float-frame[data-title]. -->
+  <template id="frameChrome">
+    <div class="float-frame-header" data-frame-header>
+      <div class="float-frame-title">
+        <span class="grip" aria-hidden="true"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="9" cy="7" r="1"></circle><circle cx="9" cy="12" r="1"></circle><circle cx="9" cy="17" r="1"></circle><circle cx="15" cy="7" r="1"></circle><circle cx="15" cy="12" r="1"></circle><circle cx="15" cy="17" r="1"></circle></svg></span>
+        <strong data-title></strong><span class="muted" data-mode></span>
+      </div>
+      <div class="float-frame-controls">
+        <button type="button" class="icon-btn" data-frame-close title="Close"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M18 6 6 18"/><path d="m6 6 12 12"/></svg></button>
+        <button type="button" class="icon-btn" data-frame-minimize title="Minimize"></button>
+      </div>
+    </div>
+  </template>
+
+  <!-- A window is a list in its left third and a pane in the rest. The list's verbs head it and its
+       rows build under them; the pane shows what a command prints, a form above that when one is
+       open, and its keys bottom right. The window's view (js/<window>.js) fills every slot. -->
+  <div id="floatLayer">
+    <article class="float-frame" id="vehiclesFrame" data-title="Vehicles" data-frame-start="closed" hidden>
+      <div class="float-frame-body split" data-frame-body>
+        <div class="list"><div class="list-verbs" data-verbs></div><div class="list-rows" data-rows></div></div>
+        <section class="float-frame-status">
+          <!-- vehicles discover's flags. -->
+          <div class="pane-form" data-form="discover" hidden>
+            <label class="field"><span class="field-label">provider</span>
+              <select class="field-select" data-field="provider"><option value="picar">picar</option><option value="chase-sim">chase-sim</option></select></label>
+            <label class="field"><span class="field-label">url</span>
+              <input class="field-input" data-field="url" type="text" autocomplete="off" placeholder="http://piracer.local:8887"></label>
+          </div>
+          <p class="float-frame-status-text" role="status"></p>
+          <div class="pane-keys" data-keys></div>
+        </section>
+      </div>
+    </article>
+
+    <article class="float-frame" id="simulatorsFrame" data-title="Simulators" data-frame-start="closed" hidden>
+      <div class="float-frame-body split" data-frame-body>
+        <div class="list"><div class="list-verbs" data-verbs></div><div class="list-rows" data-rows></div></div>
+        <section class="float-frame-status">
+          <!-- simulators create's flags. -->
+          <div class="pane-form" data-form="create" hidden>
+            <label class="field"><span class="field-label">backend</span>
+              <select class="field-select" data-field="backend"><option value="metrics-ui">Metrics UI</option><option value="native">native (experimental)</option></select></label>
+            <label class="field"><span class="field-label">config</span>
+              <input class="field-input" data-field="config" type="text" autocomplete="off" placeholder="default; a path, e.g. simulator/native/maps/room-run6.json"></label>
+          </div>
+          <p class="float-frame-status-text" role="status"></p>
+          <div class="pane-keys" data-keys></div>
+        </section>
+      </div>
+    </article>
+
+    <article class="float-frame" id="hostsFrame" data-title="Hosts" data-frame-start="closed" hidden>
+      <div class="float-frame-body split" data-frame-body>
+        <div class="list"><div class="list-verbs" data-verbs></div><div class="list-rows" data-rows></div></div>
+        <section class="float-frame-status">
+          <!-- hosts create's and hosts run's flags. -->
+          <div class="pane-form" data-form="create" hidden>
+            <label class="field"><span class="field-label">name</span>
+              <input class="field-input" data-field="name" type="text" autocomplete="off" placeholder="host name"></label>
+            <label class="field"><span class="field-label">vehicle</span>
+              <select class="field-select" data-field="vehicle"></select></label>
+          </div>
+          <div class="pane-form" data-form="run" hidden>
+            <label class="field"><span class="field-label">mode</span>
+              <select class="field-select" data-field="mode"><option value="observe_only">observe only</option><option value="autonomy">autonomy</option></select></label>
+            <label class="field"><span class="field-label">decisions</span>
+              <select class="field-select" data-field="count"><option value="unbounded">unbounded</option><option value="10">10</option><option value="100">100</option><option value="1000">1000</option></select></label>
+            <label class="field"><span class="field-label">record</span>
+              <select class="field-select" data-field="record"><option value="off">off</option><option value="on">on</option></select></label>
+          </div>
+          <p class="float-frame-status-text" role="status"></p>
+          <div class="pane-keys" data-keys></div>
+        </section>
+      </div>
+    </article>
+
+    <!-- plugins list: the steps, the selected step's plugins under it. The pane manages what is
+         selected: the host (save, disarm all), a step (preset, stream, disarm it) or a plugin. -->
+    <article class="float-frame" id="pluginsFrame" data-title="Plugins" data-frame-start="closed" hidden>
+      <div class="float-frame-body split" data-frame-body>
+        <div class="list"><div class="list-verbs" data-verbs></div><div class="list-rows" data-rows></div></div>
+        <section class="float-frame-status">
+          <div class="pane-form" data-form="preset" hidden>
+            <label class="field"><span class="field-label">preset</span>
+              <select class="field-select" data-field="preset"></select></label>
+          </div>
+          <!-- plugins upload's flags. FILE stands in for the native file control, which stays hidden. -->
+          <div class="pane-form" data-form="collection" hidden>
+            <label class="field"><span class="field-label">collection</span>
+              <select class="field-select" data-field="collection"></select></label>
+          </div>
+          <!-- source: --file and its flags, or --manifest, a path on the viewer's machine. -->
+          <div class="pane-form" data-form="upload" hidden>
+            <label class="field"><span class="field-label">source</span>
+              <select class="field-select" data-field="source"><option value="file">file</option><option value="manifest">manifest</option></select></label>
+            <label class="field" data-upload="manifest"><span class="field-label">manifest</span>
+              <input class="field-input" data-field="manifest" type="text" autocomplete="off" placeholder="/path/to/manifest.json"></label>
+            <label class="field" data-upload="file"><span class="field-label">step</span>
+              <select class="field-select" data-field="step"><option>perception</option><option>observation</option><option>memory</option><option>proposal</option><option>plan</option><option>action</option></select></label>
+            <label class="field" data-upload="file"><span class="field-label">name</span>
+              <input class="field-input" data-field="name" type="text" autocomplete="off" placeholder="prototype"></label>
+            <div class="field" data-upload="file"><span class="field-label">file</span>
+              <span class="file-pick"><button type="button" class="key" data-file-pick>FILE</button><span class="file-name" data-file-name></span>
+                <input data-field="file" type="file" accept=".py" hidden></span></div>
+            <label class="field" data-upload="file"><span class="field-label">entrypoint</span>
+              <input class="field-input" data-field="entrypoint" type="text" autocomplete="off" placeholder="prototype:Prototype"></label>
+            <label class="field" data-upload="file"><span class="field-label">config</span>
+              <input class="field-input" data-field="config" type="text" autocomplete="off" placeholder="{}"></label>
+            <label class="field"><span class="field-label">arm</span>
+              <select class="field-select" data-field="arm"><option value="off">off</option><option value="on">on</option></select></label>
+          </div>
+          <p class="float-frame-status-text" role="status"></p>
+          <div class="pane-keys" data-keys></div>
+        </section>
+      </div>
+    </article>
+
+    <!-- Stream: one window per click, each on any host and step. Feeds lists the hosts, a host's steps
+         under it. Perception is the v1 /perception page: its aside in the list, its frame in the pane;
+         the other steps put their details in the list and plugins stream's screen in the pane. -->
+    <template id="streamTemplate">
+      <article class="float-frame stream-frame" data-title="Stream" hidden>
+        <div class="float-frame-body split" data-frame-body>
+          <div class="list">
+            <div class="list-verbs" data-verbs></div>
+            <div class="list-rows" data-rows></div>
+            <dl class="kv step-meta" data-step-meta hidden></dl>
+            <div class="aside" data-aside hidden>
+              <section class="aside-section">
+                <button type="button" class="aside-toggle" data-overlay="regions" aria-pressed="true">Regions</button>
+                <button type="button" class="aside-toggle" data-overlay="labels" aria-pressed="true">Labels</button>
+                <div class="aside-kinds" data-kinds></div>
+              </section>
+              <section class="aside-section"><h2 class="kicker">Frame</h2><dl class="kv" data-metrics></dl></section>
+              <section class="aside-section"><h2 class="kicker">Plugin runs</h2><div class="aside-list" data-runs></div></section>
+              <section class="aside-section"><h2 class="kicker">Findings</h2><div class="aside-list" data-findings></div></section>
+              <section class="aside-section"><details><summary>Published data</summary><pre data-raw></pre></details></section>
+            </div>
+          </div>
+          <section class="float-frame-status">
+            <div class="feed" aria-label="Current perception frame" data-feed hidden>
+              <span class="feed-empty" data-empty>Waiting for the first published frame</span>
+              <div class="feed-stage" hidden><img alt="Current front camera frame"><canvas aria-hidden="true"></canvas></div>
+            </div>
+            <p class="float-frame-status-text" role="status"></p>
+            <div class="pane-keys" data-keys></div>
+          </section>
+        </div>
+      </article>
+    </template>
+
+    <!-- Captures: one row per recorded run. A closed run's frames use the stream window's feed. -->
+    <article class="float-frame captures-frame" id="capturesFrame" data-title="Captures" data-frame-start="closed" data-context="list" hidden>
+      <div class="float-frame-body split" data-frame-body>
+        <div class="list">
+          <div class="list-verbs" data-verbs></div>
+          <div class="list-rows" data-rows></div>
+          <div class="aside" data-aside hidden>
+            <section class="aside-section">
+              <button type="button" class="aside-toggle" data-overlay="regions" aria-pressed="true">Regions</button>
+              <button type="button" class="aside-toggle" data-overlay="labels" aria-pressed="true">Labels</button>
+              <div class="aside-kinds" data-kinds></div>
+            </section>
+            <section class="aside-section"><h2 class="kicker">Frame</h2><dl class="kv" data-metrics></dl></section>
+            <section class="aside-section"><h2 class="kicker">Plugin runs</h2><div class="aside-list" data-runs></div></section>
+            <section class="aside-section"><h2 class="kicker">Findings</h2><div class="aside-list" data-findings></div></section>
+            <section class="aside-section"><details><summary>Published data</summary><pre data-raw></pre></details></section>
+          </div>
+        </div>
+        <section class="float-frame-status">
+          <div class="feed" aria-label="Recorded perception frame" data-feed hidden>
+            <span class="feed-empty" data-empty>No frame</span>
+            <div class="feed-stage" hidden><img alt="Recorded front camera frame"><canvas aria-hidden="true"></canvas></div>
+          </div>
+          <p class="float-frame-status-text" role="status"></p>
+          <div class="pane-keys" data-keys>
+            <input class="pane-seek" data-seek type="range" min="0" max="0" value="0" aria-label="Frame" hidden>
+          </div>
+        </section>
+      </div>
+    </article>
+
+    <!-- Learning: hosts, the chosen host's beliefs and memory plugins under it. The pane shows the host's
+         beliefs as a board, or one belief's or plugin's charts over the run (js/learning.js). -->
+    <article class="float-frame learning-frame" id="learningFrame" data-title="Learning" data-frame-start="closed" hidden>
+      <div class="float-frame-body split" data-frame-body>
+        <div class="list"><div class="list-verbs" data-verbs></div><div class="list-rows" data-rows></div></div>
+        <section class="float-frame-status">
+          <div class="learning" data-learning hidden>
+            <dl class="kv learning-metrics" data-metrics></dl>
+            <div data-charts></div>
+            <details><summary>Published data</summary><pre data-raw></pre></details>
+          </div>
+          <p class="float-frame-status-text" role="status"></p>
+          <div class="pane-keys" data-keys></div>
+        </section>
+      </div>
+    </article>
+
+  </div>
+
+  <!-- Mock only: bottom centre, under the column, where no window opens. -->
+  <div id="mockControls">
+    <button type="button" class="text-action" id="endProcess" title="Mock only: the selected simulator's process dies" disabled>end process</button>
+  </div>
+
+  <!-- Classic scripts, one global per file. float.js binds the windows, so it runs after the
+       layout is seeded (main.js) and before the first paint (on DOMContentLoaded). -->
+  <script src="capture/frames.js"></script> <!-- mock only: a recorded chase-sim run -->
+  <script src="js/desk.js"></script>
+  <script src="js/api.js"></script>
+  <script src="js/mock.js"></script> <!-- mock only: answers every route; without it the page asks the viewer -->
+  <script src="js/feed.js"></script>
+  <script src="js/captures.js"></script>
+  <script src="js/vehicles.js"></script>
+  <script src="js/simulators.js"></script>
+  <script src="js/hosts.js"></script>
+  <script src="js/plugins.js"></script>
+  <script src="js/stream.js"></script>
+  <script src="js/learning.js"></script>
+  <script src="js/main.js"></script>
+  <script src="../shared/float.js"></script>
+</body>
+</html>

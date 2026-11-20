@@ -9,6 +9,7 @@ from __future__ import annotations
 import base64
 import binascii
 import json
+import time
 import urllib.error
 import urllib.request
 from dataclasses import dataclass, replace
@@ -20,12 +21,18 @@ from autonomy.runtime.frame_loop import (
     LATEST_JSON_PATH,
     OBSERVATION_TRANSACTION_PATH,
 )
+from autonomy.runtime.report import HostReport
 from autonomy.runtime.routes import (
     STATUS_PATH,
     TELEMETRY_LATEST_PATH,
 )
 from ...shared.io import http_json
-from .host_telemetry import HostTelemetryError
+from .host_telemetry import (
+    HostTelemetryError,
+    host_telemetry_failure,
+    join_host_telemetry_to_decision,
+    normalize_host_telemetry_record,
+)
 
 
 @dataclass
@@ -329,3 +336,31 @@ def fetch_host_telemetry_latest(
 
     url = f"{base_url.rstrip('/')}{TELEMETRY_LATEST_PATH}"
     return _fetch_host_telemetry_json(url, timeout_s=timeout_s)
+
+
+def read_host_telemetry_panel(
+    base_url: str,
+    *,
+    report: HostReport,
+    host_name: str,
+    timeout_s: float = 3.0,
+    now_ms: int | None = None,
+) -> dict[str, object]:
+    """Read one latest host telemetry point and join it to this decision.
+
+    A refresh performs one latest read. Identity, freshness, and transport
+    results stay attached to that read.
+    """
+
+    effective_now_ms = int(time.time() * 1000) if now_ms is None else now_ms
+    try:
+        raw = fetch_host_telemetry_latest(base_url, timeout_s=timeout_s)
+        point = normalize_host_telemetry_record(raw, now_ms=effective_now_ms, host_name=host_name)
+        return join_host_telemetry_to_decision(point, report, host_name=host_name)
+    except HostTelemetryError as exc:
+        return host_telemetry_failure(exc.reason, message=exc.message_text)
+    except (ConnectionError, OSError, TypeError, ValueError) as exc:
+        return host_telemetry_failure(
+            "publisher_missing",
+            message=f"Host telemetry is unavailable: {type(exc).__name__}: {exc}",
+        )

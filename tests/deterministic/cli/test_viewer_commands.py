@@ -22,12 +22,16 @@ from cli.automa_cli import viewer_commands
 from cli.automa_cli.frontend.server import RuntimeViewServer
 from cli.automa_cli.hosts.deployment.models import CreateResult, UpdateResult
 from cli.automa_cli.hosts.errors import RuntimeHostError
-from cli.automa_cli.hosts.views import frames
-from cli.automa_cli.providers.urls import chase_operator_url
+from cli.automa_cli.hosts.staging import automation_dir
+from cli.automa_cli.hosts.step_activations import host_names
+from cli.automa_cli.hosts.views import frames, learning
+from cli.automa_cli.providers.urls import chase_operator_url, normalize_chase_url
+from cli.automa_cli.simulators.models import SimulatorResult
+from cli.automa_cli.simulators.store import SIMULATOR_SCHEMA, write_simulator_record
 from cli.automa_cli.viewer_commands import VIEWER_READS, VIEWER_WRITES
 from tests.shared.cli.workbench_fixtures import ImageReplayRunner
 from tests.support.fake_metrics_ui import fake_metrics_ui
-from tests.support.runtime_fixtures import runtime_root_env
+from tests.support.runtime_fixtures import runtime_root_env, write_host_fixture
 
 
 def _publication(frame_id: str) -> FramePublication:
@@ -85,8 +89,7 @@ class ViewerCommandTests(unittest.TestCase):
         self.root = root
         self.enterContext(runtime_root_env(root))
         self.server = RuntimeViewServer(
-            host_name="viewer", automation_dir=None, port=0, connected=False,
-            reads=VIEWER_READS, writes=VIEWER_WRITES, replay_runner_factory=ImageReplayRunner,
+            host_name="viewer", port=0, reads=VIEWER_READS, writes=VIEWER_WRITES, replay_runner_factory=ImageReplayRunner,
         ).start()
         self.addCleanup(self.server.stop)
 
@@ -109,6 +112,14 @@ class ViewerCommandTests(unittest.TestCase):
                 return response.status, json.loads(response.read())
         except HTTPError as error:
             return error.code, json.loads(error.read())
+
+    def simulator_with_hosts(self, *names: str) -> str:
+        url = "http://127.0.0.1:5051/"
+        control_url = normalize_chase_url(url)
+        write_simulator_record({"schema": SIMULATOR_SCHEMA, "port": 5051, "url": control_url, "pid": None})
+        for name in names:
+            write_host_fixture(self.root, name, url=control_url)
+        return url
 
     def test_a_discovered_vehicle_is_listed_until_it_is_removed(self) -> None:
         self.assertEqual(self.get("/api/vehicles")["vehicles"], [])
@@ -137,12 +148,70 @@ class ViewerCommandTests(unittest.TestCase):
         self.assertTrue(uncreated[1]["text"].startswith("Cannot create a simulator: AUTOMA_METRICS_UI_DIR"), uncreated[1])
         self.assertEqual(self.get("/api/simulators"), {"schema": "automa_simulators_status", "simulators": []})
 
+    def test_simulator_creation_forwards_the_backend_and_configuration(self) -> None:
+        created = SimulatorResult(0, "created", url="http://127.0.0.1:5051/")
+        with mock.patch("cli.automa_cli.viewer_commands.create_simulator", return_value=created) as create:
+            self.post("/api/simulators/create", {})
+            self.post("/api/simulators/create", {"backend": "native", "config": "maps/room.json"})
+            self.post("/api/simulators/create", {"backend": None, "config": ""})
+            refused = self.post("/api/simulators/create", {"backend": "unity"})
+
+        self.assertEqual([call.kwargs for call in create.call_args_list], [
+            {"backend": "metrics-ui", "config": None},
+            {"backend": "native", "config": "maps/room.json"},
+            {"backend": "metrics-ui", "config": None},
+        ])
+        self.assertEqual(refused, (400, {"ok": False, "error": "backend must be one of metrics-ui, native"}))
+
+    def test_simulator_delete_with_hosts_removes_them_before_the_simulator(self) -> None:
+        url = self.simulator_with_hosts("alpha", "bravo")
+        write_host_fixture(self.root, "unrelated")
+
+        code, deleted = self.post("/api/simulators/delete", {"url": url, "with_hosts": True})
+
+        self.assertEqual((code, deleted["ok"], deleted["kind"]), (200, True, "deleted"))
+        first, second, last = deleted["text"].splitlines()
+        self.assertIn("Stopped host alpha.", first)
+        self.assertIn("Stopped host bravo.", second)
+        self.assertIn(f"Deleted Simulator (chase-sim) at {url}", last)
+        self.assertEqual(host_names(), ["unrelated"])
+        self.assertEqual(self.get("/api/simulators")["simulators"], [])
+
+    def test_simulator_delete_stops_at_a_failed_host(self) -> None:
+        url = self.simulator_with_hosts("alpha", "bravo", "charlie")
+        broken_state = automation_dir("bravo") / "state.json"
+        broken_state.parent.mkdir(parents=True)
+        broken_state.write_text("invalid JSON", encoding="utf-8")
+
+        code, failure = self.post("/api/simulators/delete", {"url": url, "with_hosts": True})
+
+        self.assertEqual((code, failure["ok"], failure["exit_code"]), (400, False, 2))
+        first, last = failure["text"].splitlines()
+        self.assertIn("Stopped host alpha.", first)
+        self.assertIn("Could not delete host bravo", last)
+        self.assertIn("must contain valid JSON", last)
+        self.assertEqual(host_names(), ["bravo", "charlie"])
+        [simulator] = self.get("/api/simulators")["simulators"]
+        self.assertEqual((simulator["url"], simulator["hosts"]), (url, ["bravo", "charlie"]))
+
+    def test_simulator_delete_without_opt_in_still_refuses_attached_hosts(self) -> None:
+        url = self.simulator_with_hosts("alpha")
+        for body in ({"url": url}, {"url": url, "with_hosts": False}):
+            with self.subTest(body=body):
+                code, refused = self.post("/api/simulators/delete", body)
+                self.assertEqual((code, refused["kind"], refused["hosts"]), (400, "blocked", ["alpha"]))
+        self.assertEqual(host_names(), ["alpha"])
+        [simulator] = self.get("/api/simulators")["simulators"]
+        self.assertEqual(simulator["url"], url)
+
     def test_a_malformed_request_is_refused_before_the_command_runs(self) -> None:
         self.assertEqual(self.post("/api/vehicles/discover", {"provider": "boat", "url": "x"}),
                          (400, {"ok": False, "error": "provider must be one of chase-sim, picar"}))
         self.assertEqual(self.post("/api/vehicles/remove", {}),
                          (400, {"ok": False, "error": "url must be a non-empty string"}))
         self.assertEqual(self.post("/api/vehicles/remove", ["url"])[1]["error"], "request body must be an object")
+        self.assertEqual(self.post("/api/simulators/delete", {"url": "x", "with_hosts": "true"}),
+                         (400, {"ok": False, "error": "with_hosts must be true or false"}))
 
     def test_hosts_status_reads_as_its_json_prints(self) -> None:
         self.assertEqual(self.get("/api/hosts/status"), {"schema": "automa_hosts_status", "host_name": None, "hosts": []})
@@ -214,6 +283,41 @@ class ViewerCommandTests(unittest.TestCase):
                          (400, {"ok": False, "error": "step must be one of perception, memory, proposal, plan, action"}))
         self.assertEqual(self.refused("/api/plugins/stream?step=plan"),
                          (400, {"ok": False, "error": "host_name must be a non-empty string"}))
+
+    def test_a_hosts_learning_reads_after_the_cursor_and_outlasts_the_host(self) -> None:
+        def status(t, value, session="running"):
+            belief = {"belief_id": "stop_row.row", "value": value, "source_plugin_id": "stop_row", "updated_at_ms": t,
+                      "confidence": 0.5, "checks": [], "trials": []}
+            return {"http_status": 200, "session": {"status": session}, "host": {"components": {"observation": {"latest": {"captured_at_ms": t}}}, "steps": {"memory": {
+                "reset_count": 0, "beliefs": {"stop_row.row": belief},
+                "plugins": [{"plugin_id": "stop_row", "state": {"phase": "probing"}, "failure_count": 0}]}}}}
+
+        def series(doc):
+            return {path: [row[1:] for row in rows] for path, rows in doc["beliefs"]["stop_row.row"]["series"].items()}
+
+        with (mock.patch.object(learning, "runtime_base_url", return_value="http://host.invalid") as resolve,
+              mock.patch.object(learning, "fetch_autonomy_status",
+                                side_effect=[status(100, 3.0), status(200, 4.0), status(200, 4.0, "stopped")])):
+            first = self.get("/api/hosts/learning?host_name=learner")
+            later = self.get(f"/api/hosts/learning?host_name=learner&since={first['seq']}")
+            finished = self.get(f"/api/hosts/learning?host_name=learner&since={later['seq']}")
+            resolve.side_effect = RuntimeHostError("Host 'learner' is not running.")
+            stopped = self.get("/api/hosts/learning?host_name=learner")
+
+        self.assertEqual((first["host_name"], first["live"], first["available"]), ("learner", True, True))
+        self.assertEqual(series(first)["/value"], [[100, 3.0]])
+        self.assertEqual(first["plugins"]["stop_row"]["series"]["/state/phase"][0][1:], [100, "probing"])
+        # After the cursor: only what changed.
+        self.assertEqual(series(later), {"/value": [[200, 4.0]]})
+        # A host whose run ended still answers: not live, and nothing new.
+        self.assertEqual((finished["live"], finished["error"], series(finished)), (False, "Host 'learner' is stopped.", {}))
+        # A host that stops keeps what it learned.
+        self.assertEqual((stopped["live"], stopped["error"], stopped["now_ms"]), (False, "Host 'learner' is not running.", 200))
+        self.assertEqual(series(stopped)["/value"], [[100, 3.0], [200, 4.0]])
+        code, missing = self.refused("/api/hosts/learning?host_name=chaser")
+        self.assertEqual((code, missing["ok"]), (400, False))
+        self.assertEqual(self.refused("/api/hosts/learning?host_name=learner&since=-1"),
+                         (400, {"ok": False, "error": "since must be a non-negative integer"}))
 
     def test_a_hosts_latest_frame_names_its_image_at_the_frame_route(self) -> None:
         buffer = io.BytesIO()
@@ -345,6 +449,8 @@ class ViewerCommandTests(unittest.TestCase):
 
     def test_writes_come_only_from_the_viewer_itself(self) -> None:
         self.assertEqual(self.post("/api/vehicles/remove", {"url": "x"}, Origin="http://example.com")[0], 403)
+        self.assertEqual(self.post("/api/simulators/delete", {"url": "x", "with_hosts": True},
+                                   Origin="http://example.com")[0], 403)
         self.assertEqual(self.post("/api/vehicles/remove", {"url": "x"}, **{"Content-Type": "text/plain"}),
                          (415, {"ok": False, "error": "writes require application/json"}))
         with self.assertRaises(HTTPError) as caught:

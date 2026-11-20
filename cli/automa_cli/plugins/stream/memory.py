@@ -23,7 +23,7 @@ from ...shared.timestamps import timestamp_ms
 from .models import MemoryPublication, StreamEvent, StreamResult
 from .perception import read_publication
 from .polling import poll_events, preflight_failure, unavailable_probe
-from .session import StreamView, with_view
+from .session import with_view
 
 MEMORY_LIVE_SCHEMA = "host_memory_live"
 
@@ -34,11 +34,11 @@ def stream_memory(
     refresh_s: float,
     once: bool,
     timeout_s: float,
-    serve_view: bool,
+    show_view: bool,
     include_publication: bool,
     emit: Callable[[StreamEvent], None],
 ) -> StreamResult:
-    """Read one completed frame for memory's probe, text, and optional local view."""
+    """Read one completed frame for memory's probe and text."""
 
     try:
         base_url = runtime_base_url(host_name)
@@ -47,13 +47,9 @@ def stream_memory(
             message=str(exc),
             live=unavailable_probe(MEMORY_LIVE_SCHEMA, host_name, str(exc)),
         )
-    view = StreamView(host_name, base_url=base_url, timeout_s=timeout_s) if serve_view else None
 
     def probe() -> tuple[dict[str, object], MemoryPublication | None]:
-        publication, fetch_error = (view.read_observation() if view is not None
-                                    else read_publication(base_url, timeout_s=timeout_s))
-        if view is not None:
-            view.publish(publication)
+        publication, fetch_error = read_publication(base_url, timeout_s=timeout_s)
         live = _probe_memory(
             host_name=host_name, base_url=base_url, publication=publication, fetch_error=fetch_error,
         )
@@ -62,13 +58,9 @@ def stream_memory(
         return live, source
 
     def outbound(event: StreamEvent) -> None:
-        emit(with_view(view, event, host_name=host_name))
+        emit(with_view(show_view, event, host_name=host_name))
 
-    try:
-        return poll_events(step="memory", probe=probe, refresh_s=refresh_s, once=once, emit=outbound)
-    finally:
-        if view is not None:
-            view.close()
+    return poll_events(step="memory", probe=probe, refresh_s=refresh_s, once=once, emit=outbound)
 
 
 def probe_live_memory(*, host_name: str, timeout_s: float = 3.0) -> dict[str, object]:

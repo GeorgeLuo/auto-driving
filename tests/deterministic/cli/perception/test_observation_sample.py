@@ -1,13 +1,10 @@
-"""A fast host must not split the CLI viewer's image and findings."""
+"""A fast host must not split the image and findings the CLI reads of one frame."""
 from __future__ import annotations
 
 import base64
 import io
 import json
-import tempfile
 import unittest
-from dataclasses import replace
-from pathlib import Path
 from unittest.mock import patch
 from urllib.error import HTTPError, URLError
 
@@ -16,7 +13,6 @@ from PIL import Image
 from autonomy.runtime.frame_loop import FRAME_TRANSACTION_SCHEMA, FramePublication
 from autonomy.runtime.report import HostReport, ReportCycle, ReportApplication, ReportValues
 from cli.automa_cli.hosts.publications import host_publications as publications
-from cli.automa_cli.hosts.views import view_feed as viewer
 
 
 class _Response(io.BytesIO):
@@ -75,16 +71,6 @@ def _transaction(frame_id="first"):
 
 
 class ObservationSampleTests(unittest.TestCase):
-    def _feed(self):
-        root = Path(self.enterContext(tempfile.TemporaryDirectory()))
-        with patch.object(viewer, "runtime_view_dir", return_value=root):
-            feed = viewer.ViewFeed("fixture", base_url="http://host.invalid", timeout_s=1.0)
-        self.addCleanup(feed.stop)
-        self.assertIsNone(feed.error)
-        self.enterContext(patch("cli.automa_cli.hosts.views.decision_live.fetch_host_telemetry_latest",
-                                side_effect=ConnectionError("no telemetry")))
-        return feed
-
     def test_conditional_observation_read_reuses_image_without_downloading_it(self):
         cache = publications.TransactionCache()
         first = _Response(_transaction(), headers={"ETag": 'W/"first"'})
@@ -206,96 +192,3 @@ class ObservationSampleTests(unittest.TestCase):
                     with self.assertRaises(ConnectionError):
                         publications.fetch_frame_sample("http://host.invalid")
                 self.assertEqual(read.call_count, 1)
-
-    def test_stream_view_uses_the_transaction_metadata_when_the_host_advances(self):
-        feed = self._feed()
-        jpeg = _jpeg((4, 4), (1, 2, 3))
-        with patch.object(viewer, "fetch_frame_sample", return_value=(_publication("second"), jpeg)):
-            feed.publish(_publication("first"))
-        payload = json.loads(feed.server.perception.latest_json())
-        self.assertEqual(payload["report"]["frame_id"], "second")
-        self.assertEqual(payload["image"]["frame_id"], "second")
-        self.assertIsNone(feed.error)
-        self.assertIsNone(feed.decision_error)
-
-    def test_stream_terminal_and_view_share_one_read_and_skip_unchanged_publication(self):
-        feed = self._feed()
-        jpeg = _jpeg((4, 4), (1, 2, 3))
-        with (
-            patch.object(viewer, "fetch_frame_sample", return_value=(_publication(), jpeg)) as read,
-            patch.object(feed.server.perception, "publish", wraps=feed.server.perception.publish) as publish,
-        ):
-            publication, error = feed.read_observation()
-            self.assertIsNone(error)
-            feed.publish(publication)
-            first_count = publish.call_count
-            feed.publish(publication)
-        self.assertEqual(read.call_count, 1)
-        self.assertGreater(first_count, 0)
-        self.assertEqual(publish.call_count, first_count)
-        self.assertIsNone(feed.decision_error)
-
-    def test_an_unavailable_capture_keeps_a_readable_report(self):
-        publication, jpeg = _publication(), _jpeg((4, 4), (1, 2, 3))
-        for name, unavailable in (
-            ("bad image", (_publication("second"), b"not-an-image")),
-            ("failed fetch", ConnectionError("offline")),
-        ):
-            samples = [(publication, jpeg), unavailable, (publication, jpeg)]
-            with self.subTest(name), patch.object(viewer, "fetch_frame_sample", side_effect=samples):
-                feed = self._feed()
-                feed.publish(feed.read_observation()[0])
-                self.assertIsNotNone(feed.server.perception.latest_json())
-                feed.publish(feed.read_observation()[0])
-                if name == "failed fetch":
-                    self.assertIsNone(feed.server.perception.latest_json())
-                else:
-                    self.assertIsNotNone(feed.server.perception.latest_json())
-                    self.assertIsNone(json.loads(feed.server.perception.latest_json())["image"]["url"])
-                feed.publish(feed.read_observation()[0])
-                self.assertEqual(feed.server.perception.frame(), (jpeg, "image/jpeg"))
-                self.assertIsNone(feed.error)
-                self.assertIsNone(feed.decision_error)
-        for name, unavailable in (
-            ("missing image", (publication, None)),
-            ("stale frame", (replace(publication, health="stale"), jpeg)),
-        ):
-            samples = [(publication, jpeg), unavailable, (publication, jpeg)]
-            with self.subTest(name), patch.object(viewer, "fetch_frame_sample", side_effect=samples):
-                feed = self._feed()
-                feed.publish(feed.read_observation()[0])
-                feed.publish(feed.read_observation()[0])
-                payload = json.loads(feed.server.perception.latest_json())
-                self.assertEqual(payload["report"]["frame_id"], publication.report.frame_id)
-                self.assertIsNone(feed.error)
-                self.assertIsNone(feed.decision_error)
-                if name == "stale frame":
-                    self.assertEqual(payload["health"], "stale")
-                    self.assertEqual(feed.server.perception.frame(), (jpeg, "image/jpeg"))
-                else:
-                    self.assertEqual(feed.server.perception.frame(), (jpeg, "image/jpeg"))
-
-    def test_a_cleared_view_shows_the_same_frame_when_the_host_answers_again(self):
-        publication = _publication()
-        pair = publication, _jpeg((4, 4), (1, 2, 3))
-        feed = self._feed()
-        with patch.object(viewer, "fetch_frame_sample", side_effect=[pair, ConnectionError("down"), pair]):
-            feed.publish(feed.read_observation()[0])
-            self.assertIsNone(feed.decision_error)
-            self.assertIsNotNone(feed.server.perception.latest_json())
-            feed.read_observation()
-            self.assertIsNone(feed.server.perception.latest_json())
-            feed.publish(feed.read_observation()[0])
-        self.assertIsNotNone(feed.server.perception.latest_json())
-
-    def test_observation_remains_available_when_decision_refresh_fails(self):
-        feed = self._feed()
-        publication, jpeg = _publication(), _jpeg((4, 4), (1, 2, 3))
-        feed._observation = publication, jpeg
-        with patch.object(feed.decision, "publish_publication", side_effect=ConnectionError("no decision")):
-            feed.publish(publication)
-        self.assertEqual(feed.server.perception.frame(), (jpeg, "image/jpeg"))
-        payload = json.loads(feed.server.perception.latest_json())
-        self.assertEqual(payload["report"]["frame_id"], publication.report.frame_id)
-        self.assertEqual(payload["image"]["frame_id"], publication.report.frame_id)
-        self.assertIn("no decision", feed.decision_error)

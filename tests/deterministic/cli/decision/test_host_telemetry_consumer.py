@@ -3,25 +3,17 @@
 from __future__ import annotations
 
 import copy
-import io
-import json
 import math
 import unittest
-from dataclasses import replace
 from unittest.mock import patch
+from dataclasses import replace
 
-from PIL import Image
 
 from autonomy.decision_cycle.activation import step_activation
 from autonomy.runtime.frame_loop import FRAME_PUBLICATION_SCHEMA, FramePublication
 from autonomy.runtime.report import HostReport
 from autonomy.runtime.routes import TELEMETRY_SCHEMA
-from cli.automa_cli.frontend.perception_view import PerceptionView
-from cli.automa_cli.hosts.views.decision_live import (
-    DecisionViewAdapter,
-    read_host_telemetry_panel,
-)
-from cli.automa_cli.hosts.views.observation import ObservationPublisher
+from cli.automa_cli.hosts.publications.host_publications import read_host_telemetry_panel
 from cli.automa_cli.hosts.publications.decision_records import DecisionRunners
 from cli.automa_cli.hosts.publications.frame_publication import read_frame_publication
 from cli.automa_cli.hosts.publications.host_telemetry import (
@@ -159,65 +151,16 @@ def _normalized_decision() -> HostReport:
     return read_frame_publication(_publication(), host_name="piracer")
 
 
-FETCH = "cli.automa_cli.hosts.views.decision_live.fetch_host_telemetry_latest"
-READ_PANEL = "cli.automa_cli.hosts.views.decision_live.read_host_telemetry_panel"
+FETCH = "cli.automa_cli.hosts.publications.host_publications.fetch_host_telemetry_latest"
 
 
 class HostTelemetryConsumerTests(unittest.TestCase):
-    def test_the_adapter_publishes_the_frame_then_joins_its_telemetry(self) -> None:
-        normalized = _normalized_decision()
-        view = PerceptionView(host_name="piracer")
-        joined = join_host_telemetry_to_decision(normalize_host_telemetry_record(_record(), now_ms=NOW_MS), normalized)
-        adapter = DecisionViewAdapter(
-            host_name="piracer", base_url="http://piracer.local:8887",
-            publisher=ObservationPublisher(view), timeout_s=1.0,
-        )
-
-        seen = []
-
-        def read_panel(*_args, **kwargs):
-            seen.append((json.loads(view.latest_json())["report"], kwargs["report"]))
-            return joined
-
-        with patch(READ_PANEL, side_effect=read_panel):
-            adapter.publish_frame(_publication(), normalized, None)
-
-        # The completed frame was visible before telemetry answered.
-        self.assertEqual(len(seen), 1)
-        published, joined_against = seen[0]
-        self.assertEqual(published, normalized.to_dict())
-        self.assertIs(joined_against, normalized)
-        self.assertEqual(adapter.host_telemetry, joined)
-
-    def test_telemetry_failure_still_publishes_the_decision_image(self) -> None:
-        perception = PerceptionView(host_name="piracer")
-        image = io.BytesIO()
-        Image.new("RGB", (4, 4), (1, 2, 3)).save(image, format="JPEG")
-        jpeg = image.getvalue()
-        with patch(FETCH, side_effect=ConnectionError("down")):
-            adapter = DecisionViewAdapter(
-                host_name="piracer", base_url="http://piracer.local:8887",
-                publisher=ObservationPublisher(perception), timeout_s=1.0,
-            )
-            adapter.publish_frame(_publication(), _normalized_decision(), jpeg)
-
-        self.assertEqual(perception.frame(), (jpeg, "image/jpeg"))
-        shown = json.loads(perception.latest_json())
-        self.assertEqual(shown["image"]["frame_id"], "frame-1")
-        self.assertIsNotNone(shown["image"]["url"])
-        self.assertEqual(adapter.publication.report.frame_id, "frame-1")
-        panel = adapter.host_telemetry
-        self.assertEqual(
-            (panel["status"], panel["reason"], panel["joined"]), ("unavailable", "publisher_missing", False)
-        )
-        self.assertNotIn("authority", panel)
-
     def _read_panel(self, fetched):
         """Read the panel once against the healthy decision; ``fetched`` is the latest record or the read's error."""
 
         answer = {"side_effect": fetched} if isinstance(fetched, Exception) else {"return_value": fetched}
         with patch(FETCH, **answer) as fetch, \
-                patch("cli.automa_cli.hosts.views.decision_live.time.sleep",
+                patch("cli.automa_cli.hosts.publications.host_publications.time.sleep",
                       side_effect=AssertionError("telemetry refresh slept")):
             panel = read_host_telemetry_panel(
                 "http://piracer.local:8887",

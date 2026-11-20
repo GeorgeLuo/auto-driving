@@ -18,7 +18,7 @@ class ViewerEvent:
 @dataclass(frozen=True)
 class ViewerResult:
     exit_code: int
-    kind: Literal["error", "unknown_host", "unavailable", "interrupted"]
+    kind: Literal["error", "unknown_host", "unavailable", "opened", "interrupted"]
     error: str = ""
     host_name: str | None = None
     base_url: str | None = None

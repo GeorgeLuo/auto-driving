@@ -165,8 +165,7 @@ class ViewerStopTests(unittest.TestCase):
             raise RuntimeError("released")
 
         server = RuntimeViewServer(
-            host_name="viewer", automation_dir=None, port=0, connected=False,
-            reads=VIEWER_READS, writes=VIEWER_WRITES, replay_runner_factory=ImageReplayRunner,
+            host_name="viewer", port=0, reads=VIEWER_READS, writes=VIEWER_WRITES, replay_runner_factory=ImageReplayRunner,
         ).start()
         self.addCleanup(server.stop)
         self.addCleanup(release.set)

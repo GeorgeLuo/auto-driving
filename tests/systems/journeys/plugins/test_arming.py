@@ -8,6 +8,7 @@ import time
 import unittest
 from pathlib import Path
 from tests.support.runtime_fixtures import stage_step, write_host_fixture, runtime_root_env
+from urllib.error import HTTPError
 from urllib.request import urlopen
 
 from cli.automa_cli.hosts.discovery import runtime_base_url
@@ -28,6 +29,16 @@ from tests.shared.integration.plugin_flow_fixtures import (
 from tests.support.cli_runner import run_automa, start_automa
 from tests.support.fake_metrics_ui import fake_metrics_ui_server
 
+
+
+def _viewed(url: str) -> dict:
+    """The viewer's latest frame read for the host; empty while the host has no frame to show."""
+
+    try:
+        with urlopen(url, timeout=3) as response:
+            return json.load(response)
+    except HTTPError:
+        return {}
 
 class PluginArmingFlows(unittest.TestCase):
     def test_grouped_dependencies_adopt_on_one_frame_in_both_vehicle_hosts(self):
@@ -89,13 +100,15 @@ class PluginArmingFlows(unittest.TestCase):
             stage_step(runtime, "chase-sim-chaser", "perception")
             try:
                 cli("run", "--name", "chase-sim-chaser", "--observe-only", "--record")
-                # The run serves no page; the explicit viewer does, from the host's publications.
+                # The run serves no page; the viewer hosts viewer serves reads the host for its v2 page.
                 viewer = start_automa("hosts", "viewer", "--name", "chase-sim-chaser", runtime_root=runtime, extra_env=env)
                 self.addCleanup(viewer.stdout.close)
                 self.addCleanup(viewer.wait, 5)
                 self.addCleanup(viewer.terminate)
                 viewer.stdout.readline()
-                view_url = viewer.stdout.readline().removeprefix("Browser opened: ").strip().rstrip("/")
+                view_url = viewer.stdout.readline().removeprefix("Browser opened: ").strip()
+                self.assertTrue(view_url.endswith("/v2/?host=chase-sim-chaser"), view_url)
+                latest_url = view_url.split("v2/", 1)[0] + "api/hosts/latest?host_name=chase-sim-chaser"
                 original = json.loads(cli("status", "--name", "chase-sim-chaser", "--json").stdout)["hosts"][0]["run"]
                 before = host_catalog()
                 file = root / "proposal.py"
@@ -124,18 +137,16 @@ class PluginArmingFlows(unittest.TestCase):
                     self.assertEqual(streamed["plugins"], ["prototype"])
                     self.assertEqual(streamed["generation_id"], shown["applied_decision"]["generation_id"])
                     self.assertEqual(streamed["record"]["candidates"][0]["metadata"]["revision"], revision)
-                    # The viewer publishes the host's decision on its next poll.
+                    # The page's read shows the host's latest decision.
                     deadline = time.monotonic() + 5
                     while True:
-                        with urlopen(view_url + "/api/latest", timeout=3) as response:
-                            health = json.load(response)["report"]
+                        health = _viewed(latest_url).get("report") or {}
                         if health.get("generation_id") == streamed["generation_id"]:
                             break
                         self.assertLess(time.monotonic(), deadline, health)
                         time.sleep(0.05)
                     self.assertEqual(health["status"], "ok")
-                    with urlopen(view_url + "/api/latest", timeout=3) as response:
-                        viewed = json.load(response)
+                    viewed = _viewed(latest_url)
                     self.assertEqual(viewed["report"]["generation_id"], streamed["generation_id"])
                     self.assertEqual(viewed["report"]["cycle"]["proposal"]["candidates"][0]["metadata"]["revision"], revision)
                     current = json.loads(cli("status", "--name", "chase-sim-chaser", "--json").stdout)["hosts"][0]["run"]
@@ -163,14 +174,12 @@ class PluginArmingFlows(unittest.TestCase):
                 self.assertEqual(streamed["generation_id"], shown["applied_decision"]["generation_id"])
                 deadline = time.monotonic() + 5
                 while True:
-                    with urlopen(view_url + "/api/latest", timeout=3) as response:
-                        health = json.load(response)["report"]
+                    health = _viewed(latest_url).get("report") or {}
                     if health.get("generation_id") == streamed["generation_id"]:
                         break
                     self.assertLess(time.monotonic(), deadline, health)
                     time.sleep(0.05)
-                with urlopen(view_url + "/api/latest", timeout=3) as response:
-                    viewed = json.load(response)
+                viewed = _viewed(latest_url)
                 self.assertEqual(viewed["report"]["cycle"]["proposal"]["candidates"], [])
                 current = json.loads(cli("status", "--name", "chase-sim-chaser", "--json").stdout)["hosts"][0]["run"]
                 self.assertEqual(current["state"]["run_id"], original["state"]["run_id"])

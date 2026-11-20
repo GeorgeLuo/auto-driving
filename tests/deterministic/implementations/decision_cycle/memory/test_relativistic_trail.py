@@ -105,8 +105,27 @@ class RelativisticTrailTests(unittest.TestCase):
         self.assertEqual(self.update(1200, direction="stationary")["pose"]["z_s"], 0.0)
         self.apply(1200, mode="manual")
         self.assertEqual(self.update(1400)["pose"]["z_s"], 0.0)
-        self.apply(1400)
+        self.apply(1500)
         self.assertEqual(self.update(2400)["pose"]["z_s"], 0.0)
+
+    def test_long_gap_integrates_control_changes_without_using_the_camera_pair(self):
+        fit = {"kind": "linear", "gain_per_s": 4.0, "max_angle_rad": 0.0, "turn_sign": "normal"}
+        self.update(1200, yaw=0.0, direction="stationary", fit=fit)
+        self.apply(1200, steering=0.50)
+        self.apply(1500, steering=-0.25)
+        trail = self.update(2400, yaw=2.0, direction="stationary", blocked=True)
+        self.assertAlmostEqual(trail["interval_s"], 1.2)
+        self.assertAlmostEqual(trail["pose"]["heading_rad"], (0.3 * 0.50 - 0.9 * 0.25) * 4.0 * 0.6)
+        self.assertGreater(trail["pose"]["z_s"], 1.1)
+        self.assertEqual(trail["applied_steering"], -0.25)
+        self.assertEqual(trail["contacts"], [])
+        self.assertEqual(self.update(2400), trail)
+
+    def test_turn_expansion_cannot_reverse_travel_for_known_throttle_polarity(self):
+        self.apply(1000, steering=0.50)
+        trail = self.update(1200, yaw=0.4, direction="reverse", sign="normal")
+        self.assertGreater(trail["pose"]["z_s"], 0.0)
+        self.assertAlmostEqual(trail["pose"]["heading_rad"], 0.4)
 
     def test_sustained_visual_stationarity_under_throttle_initiates_escape(self):
         trail = self.update(1200, yaw=0.0, direction="stationary")

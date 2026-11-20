@@ -5,6 +5,7 @@ from dataclasses import dataclass, asdict
 from pathlib import Path
 from typing import Any
 
+import cv2
 import numpy as np
 from PIL import Image, ImageDraw
 
@@ -31,6 +32,7 @@ class FloorPlaneConfig:
     min_boundary_width_ratio: float = 0.02
     near_width_ratio: float = 1.0
     far_width_ratio: float = 0.34
+    working_width: int = 320
 
 
 @dataclass
@@ -112,7 +114,7 @@ def estimate_floor_mask(rgb: np.ndarray, config: FloorPlaneConfig) -> tuple[np.n
     spread = np.median(np.abs(seed - center), axis=0) * 1.4826
     spread = np.maximum(spread, np.array([0.025, 0.025, 0.025, 0.04], dtype=np.float32))
 
-    dist = np.sqrt(np.sum(((features - center) / spread) ** 2, axis=-1))
+    dist = floor_color_distance(features, center, spread)
     floor_mask = (dist <= config.floor_threshold) & roi_mask
     floor_mask = majority_filter(floor_mask, config.morph_radius, config.morph_threshold) & roi_mask
 
@@ -125,14 +127,19 @@ def estimate_floor_mask(rgb: np.ndarray, config: FloorPlaneConfig) -> tuple[np.n
 
 
 def color_features(rgb: np.ndarray, brightness_weight: float) -> np.ndarray:
-    total = np.maximum(rgb.sum(axis=-1, keepdims=True), 1e-4)
-    chroma = rgb / total
-    luma = (
-        0.299 * rgb[..., 0] +
-        0.587 * rgb[..., 1] +
-        0.114 * rgb[..., 2]
-    )[..., None] * brightness_weight
-    return np.concatenate([chroma, luma], axis=-1)
+    red, green, blue = cv2.split(rgb)
+    total = np.maximum(red + green + blue, 1e-4)
+    luma = (0.299 * red + 0.587 * green + 0.114 * blue) * brightness_weight
+    return cv2.merge((red / total, green / total, blue / total, luma))
+
+
+def floor_color_distance(features: np.ndarray, center: np.ndarray, spread: np.ndarray) -> np.ndarray:
+    chroma_r, chroma_g, chroma_b, luma = cv2.split(features)
+    r_delta = (chroma_r - center[0]) / spread[0]
+    g_delta = (chroma_g - center[1]) / spread[1]
+    b_delta = (chroma_b - center[2]) / spread[2]
+    luma_delta = (luma - center[3]) / spread[3]
+    return np.sqrt(r_delta ** 2 + g_delta ** 2 + b_delta ** 2 + luma_delta ** 2)
 
 
 def majority_filter(mask: np.ndarray, radius: int, threshold: float) -> np.ndarray:
@@ -144,15 +151,10 @@ def majority_filter(mask: np.ndarray, radius: int, threshold: float) -> np.ndarr
 
 
 def window_sum(mask: np.ndarray, radius: int) -> np.ndarray:
-    padded = np.pad(mask.astype(np.uint8), radius, mode="constant")
-    integral = padded.cumsum(axis=0).cumsum(axis=1)
-    integral = np.pad(integral, ((1, 0), (1, 0)), mode="constant")
     size = radius * 2 + 1
-    return (
-        integral[size:, size:]
-        - integral[:-size, size:]
-        - integral[size:, :-size]
-        + integral[:-size, :-size]
+    return cv2.boxFilter(
+        mask.astype(np.uint8), cv2.CV_32S, (size, size), normalize=False,
+        borderType=cv2.BORDER_CONSTANT,
     )
 
 
@@ -281,43 +283,30 @@ def source_obstacle_hits(floor_mask: np.ndarray, config: FloorPlaneConfig) -> np
     """Locate the first sustained non-floor boundary after supported visible floor."""
 
     height, width = floor_mask.shape
-    source_mask = polygon_mask(width, height, source_quad(width, height, config))
-    horizon_y = int(height * config.horizon_ratio)
+    # Reverse the rows so the first hit in each column is the one nearest the camera.
+    source_mask = polygon_mask(width, height, source_quad(width, height, config))[::-1]
+    floor = floor_mask[::-1]
     min_obstacle_run = max(1, int(config.obstacle_run_length))
     min_floor_support = max(1, int(config.min_floor_support))
-    hit_mask = np.zeros_like(floor_mask, dtype=bool)
-
-    for x in range(width):
-        floor_support = 0
-        non_floor_run = 0
-        run_start_y = -1
-        for y in range(height - 1, horizon_y - 1, -1):
-            if not source_mask[y, x]:
-                floor_support = 0
-                non_floor_run = 0
-                continue
-            if floor_mask[y, x]:
-                floor_support += 1
-                non_floor_run = 0
-                continue
-            if floor_support < min_floor_support:
-                non_floor_run = 0
-                continue
-            if non_floor_run == 0:
-                run_start_y = y
-            non_floor_run += 1
-            if non_floor_run >= min_obstacle_run:
-                hit_mask[run_start_y, x] = True
-                break
+    hit_mask = np.zeros(floor_mask.shape, dtype=np.uint8)
+    if min_obstacle_run <= height:
+        occupied = (source_mask & ~floor).astype(np.uint8)
+        runs = cv2.erode(
+            occupied, np.ones((min_obstacle_run, 1), dtype=np.uint8),
+            anchor=(0, 0), borderType=cv2.BORDER_CONSTANT, borderValue=0,
+        )
+        # The source trapezoid intersects each column in a single span.
+        support = np.cumsum(source_mask & floor, axis=0, dtype=np.int32)
+        hits = (runs != 0) & (support >= min_floor_support)
+        columns = np.flatnonzero(hits.any(axis=0))
+        first_rows = np.argmax(hits[:, columns], axis=0)
+        hit_mask[height - 1 - first_rows, columns] = 1
 
     radius = max(0, int(config.boundary_dilate_radius))
     if radius:
-        from PIL import ImageFilter
-
-        image = Image.fromarray(hit_mask.astype(np.uint8) * 255, mode="L")
         size = radius * 2 + 1
-        hit_mask = np.asarray(image.filter(ImageFilter.MaxFilter(size)), dtype=np.uint8) > 0
-    return hit_mask
+        hit_mask = cv2.dilate(hit_mask, np.ones((size, size), dtype=np.uint8))
+    return hit_mask != 0
 
 
 def project_point(homography: np.ndarray, x: float, y: float) -> tuple[int, int] | None:

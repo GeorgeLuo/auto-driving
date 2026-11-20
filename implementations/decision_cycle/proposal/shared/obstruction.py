@@ -78,6 +78,24 @@ def lateral_side(record: RetainedEvidence) -> str | None:
     return None
 
 
+def horizontal_span(record: RetainedEvidence) -> tuple[float, float] | None:
+    """Resolve an image span for clearance scoring, including center cues."""
+    location = record.location
+    if location is None or location.frame != "image":
+        return None
+    bbox = location.bbox_xyxy_norm
+    if bbox is not None:
+        return bbox[0], bbox[2]
+    side = _explicit_lateral_side(record)
+    if side == "left":
+        return 0.0, 0.40
+    if side == "right":
+        return 0.60, 1.0
+    if location.zone in {"center", "near_center", "mid_center", "far_center"}:
+        return 0.35, 0.65
+    return None
+
+
 def bbox_bottom(record: RetainedEvidence) -> float:
     """Return the lower image edge for a deterministic foreground tie-break."""
 

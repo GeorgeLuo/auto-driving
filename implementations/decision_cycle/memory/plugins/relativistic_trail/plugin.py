@@ -40,9 +40,9 @@ STATE_KEY = "memory.relativistic_trail.state"
 CELL_LIMIT = 120
 CONTACT_LIMIT = 16
 MAX_INTERVAL_MS = 500
-BACK_OUT_S = 0.42
-BACK_OUT_TIMEOUT_MS = 900
-TURN_AWAY_RAD = 1.55
+BACK_OUT_S = 0.26
+BACK_OUT_TIMEOUT_MS = 400
+TURN_AWAY_RAD = 1.10
 TURN_AWAY_TIMEOUT_MS = 2000
 STATIONARY_CONTACT_S = 0.38
 UNOBSERVED_TRAVEL_LIMIT_S = 1.6
@@ -240,7 +240,11 @@ def _motion(
     yaw_rad = 0.0 if blocked or impeded else predicted_yaw
     if yaw is not None:
         yaw_rad = yaw
-    distance = drive_s if direction is None else direction * interval_s
+    # Horizontal flow around a close obstacle can invert expansion during a
+    # turn. Prefer the covered travel direction once its polarity is known.
+    distance = drive_s
+    if direction == 0 or (direction is not None and (not applications or trail["throttle_sign"] == "unknown")):
+        distance = direction * interval_s
     if blocked:
         distance = 0.0
     elif impeded:
@@ -386,12 +390,12 @@ def _update_trail(
 ) -> TrailState:
     trail = state["publication"]
     elapsed_ms = now - trail["at_ms"]
-    interval_s = elapsed_ms / 1000.0 if elapsed_ms <= MAX_INTERVAL_MS else 0.0
-    applications = ()
-    if interval_s > 0.0:
-        applications = control_applications_over(shared_memory, trail["at_ms"], now) or ()
+    interval_s = elapsed_ms / 1000.0
+    applications = control_applications_over(shared_memory, trail["at_ms"], now) or ()
     learned = _refresh_controls(trail, signals, applications or control_applications_over(shared_memory, now, now) or ())
-    motion = _motion(learned, signals, applications, interval_s, now)
+    # The camera pair may abstain over a long gap even though the applied
+    # controls still cover it end to end.
+    motion = _motion(learned, signals if elapsed_ms <= MAX_INTERVAL_MS else {}, applications, interval_s, now)
     stationary_s = state["stationary_s"] + motion.drive_s if motion.stationary and motion.drive_s else 0.0
     unobserved_s = state["unobserved_s"] + motion.drive_s if motion.unobserved and motion.drive_s else 0.0
     if stationary_s >= STATIONARY_CONTACT_S:

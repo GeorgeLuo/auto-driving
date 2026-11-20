@@ -10,8 +10,8 @@ from autonomy.shared_memory import SharedMemory
 from implementations.decision_cycle.perception.shared.motion.visual_yaw import predict_yaw_rate
 
 TRAIL_KEY = "memory.relativistic_trail"
-CELL_SIZE_S = 0.45
-VISIT_HALF_LIFE_MS = 30_000
+CELL_SIZE_S = 0.30
+VISIT_HALF_LIFE_MS = 25_000
 CONTACT_MAX_AGE_MS = 16_000
 
 Polarity = Literal["normal", "inverted", "unknown"]

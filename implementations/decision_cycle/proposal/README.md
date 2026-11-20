@@ -40,12 +40,13 @@ without usable evidence it proposes no command.
 
 ## Relativistic search
 
-Select `proposal/relativistic_search` in place of the default proposal and
-arm `perception/vehicle_dynamics` and `memory/relativistic_trail`. The plugin
-follows the trail's escape directive or projects short arcs to favor less
-visited space and keep clear of recent contacts. Arm `memory/bounded_evidence`
-with a floor or obstruction perception plugin to include lateral clearance
-cues when available.
+Select `proposal/relativistic_search` as the sole proposal, replacing
+`avoid_recent_obstruction`, and arm `perception/vehicle_dynamics` and
+`memory/relativistic_trail`. Pair `perception/floor_plane` with
+`memory/bounded_evidence` so search can steer around foreground center and
+lateral obstructions. The plugin follows the trail's escape directive or
+projects short arcs to favor less visited space and keep clear of recent
+contacts. Any precedence needed for co-arming belongs in the plan step.
 
 ## Framework boundary
 

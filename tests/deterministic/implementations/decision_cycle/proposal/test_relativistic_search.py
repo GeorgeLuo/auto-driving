@@ -2,12 +2,15 @@
 
 import unittest
 
+from autonomy.decision_cycle.action.publication import CONTROL_APPLICATIONS_KEY
 from autonomy.decision_cycle.action.selected import SelectedAction
 from autonomy.decision_cycle.context import DecisionFrameContext
 from autonomy.decision_cycle.memory.evidence import MemoryOrigin, RetainedEvidence
 from autonomy.decision_cycle.memory.publication import EVIDENCE_KEY
 from autonomy.decision_cycle.perception.evidence.values import ViewLocation
 from autonomy.decision_cycle.proposal.runner import ProposalRunner
+from autonomy.runtime.control import AutonomyControl
+from autonomy.runtime.execution import ControlApplication
 from implementations.decision_cycle.catalog import selection_activation
 from implementations.decision_cycle.memory.plugins.relativistic_trail.plugin import RelativisticTrail
 from implementations.decision_cycle.memory.plugins.relativistic_trail.trail import TRAIL_KEY, cell_key
@@ -43,6 +46,16 @@ class RelativisticSearchTests(unittest.TestCase):
         self.assertGreater(command.steering, 0.03)
         self.assertLess(command.steering - 0.03, 0.105)
 
+    def test_steering_slew_starts_from_the_control_written_after_capture(self):
+        self.trail["applied_steering"] = -0.5
+        self.memory[CONTROL_APPLICATIONS_KEY] = (
+            ControlApplication("previous", "autonomy", True, "test",
+                               AutonomyControl(steering=0.30, throttle=0.6), 2020),
+        )
+        command = self.propose().command
+        self.assertGreaterEqual(command.steering, 0.30 - 1.4 * self.trail["interval_s"])
+        self.assertLess(command.steering, 0.30)
+
     def test_contact_in_straight_ahead_path_changes_the_command(self):
         clear = self.propose().command
         self.assertEqual(clear.steering, 0.0)
@@ -50,6 +63,28 @@ class RelativisticSearchTests(unittest.TestCase):
             "x_s": 0.22, "z_s": 1.1, "heading_rad": 0.0, "at_ms": 1950, "direction": 1,
         })
         self.assertLess(self.propose().command.steering, 0.0)
+
+    def test_center_obstruction_turns_before_contact_and_uses_visits_to_choose_a_side(self):
+        origin = MemoryOrigin("observed-1", "boundary", "image", 2000, 2000, "floor_plane", "f-1")
+        for location in (
+            ViewLocation("image", "near_center"),
+            ViewLocation("image", "unknown", (0.39, 0.65, 0.61, 0.75)),
+        ):
+            with self.subTest(location=location):
+                self.memory[EVIDENCE_KEY] = (
+                    RetainedEvidence("center", "floor_boundary", "floor edge", origin,
+                                     confidence=0.95, location=location),
+                )
+                for side in (-1, 1):
+                    self.trail["visited"] = {
+                        cell_key(side * x, z): {"visits": 3, "weight": 3.0, "last_visited_at_ms": 2000}
+                        for x in (0.24, 0.48, 0.72, 0.96) for z in (0.24, 0.48, 0.72, 0.96)
+                    }
+                    proposal = self.propose()
+                    self.assertEqual(proposal.reason, "seek_less_visited_space")
+                    self.assertEqual(proposal.source_refs[-1].id, "center")
+                    self.assertLess(proposal.command.steering * side, -0.1)
+                    self.assertLess(abs(proposal.command.steering), 0.40)
 
     def test_foreground_obstruction_and_combined_polarity(self):
         obstruction = RetainedEvidence(

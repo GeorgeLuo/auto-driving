@@ -116,7 +116,8 @@
         "boundary_dilate_radius": 2,
         "min_boundary_width_ratio": 0.02,
         "near_width_ratio": 1.0,
-        "far_width_ratio": 0.34
+        "far_width_ratio": 0.34,
+        "working_width": 320
       }
     },
     {

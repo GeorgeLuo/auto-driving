@@ -101,9 +101,28 @@ class FloorPlaneTests(unittest.TestCase):
             {"obstacle_run_length": 0},
             {"min_floor_support": 0},
             {"floor_threshold": -1.0},
+            {"working_width": -1},
+            {"working_width": 1.5},
         ):
             with self.subTest(bad_config=bad_config), self.assertRaises(FieldError):
                 FloorPlanePlugin(**bad_config)
+
+    def test_working_width_downscales_wide_frames_and_preserves_source_dimensions_and_bboxes(self) -> None:
+        rgb = np.full((480, 640, 3), (120, 100, 80), dtype=np.uint8)
+        rgb[:260] = (20, 90, 160)
+        rgb[260:325, 230:390] = (180, 60, 40)
+        frame = CameraFrame("front_camera", 0, rgb)
+        inputs = PerceptionPluginInputs("test-frame", 0, {"frame": frame})
+        with mock.patch("implementations.decision_cycle.perception.plugins.floor_plane.plugin.cv2.resize", wraps=cv2.resize) as resize:
+            downscaled = FloorPlanePlugin().perceive(inputs).measurements
+            self.assertEqual(resize.call_args.args[1], (320, 240))
+            full = FloorPlanePlugin(working_width=0).perceive(inputs).measurements
+            self.assertEqual(resize.call_count, 1)
+        self.assertEqual((downscaled["image_width_px"], downscaled["image_height_px"]), (640, 480))
+        self.assertTrue(downscaled["boundaries"])
+        self.assertEqual(len(downscaled["boundaries"]), len(full["boundaries"]))
+        for down, reference in zip(downscaled["boundaries"], full["boundaries"], strict=True):
+            np.testing.assert_allclose(down["bbox_xyxy_norm"], reference["bbox_xyxy_norm"], atol=0.02)
 
     def test_catalog_lists_every_floor_plane_field_at_its_default(self) -> None:
         listed = _catalog_config("floor_plane")

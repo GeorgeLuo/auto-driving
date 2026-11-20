@@ -3,6 +3,7 @@ from __future__ import annotations
 import json
 import math
 import unittest
+from unittest import mock
 
 import cv2
 import numpy as np
@@ -23,8 +24,10 @@ from implementations.decision_cycle.perception.shared.motion.visual_yaw import (
     CameraIntrinsics,
     FrameFlow,
     TurnObservation,
+    VisualYawEstimate,
     estimate_circular_arc_yaw,
     estimate_visual_yaw,
+    fit_throttle_response,
     fit_turn_response,
     rgb_to_working_gray,
     undistort_pixels,
@@ -159,6 +162,95 @@ class VisualYawTests(unittest.TestCase):
                 self.assertTrue(est.confident, f"height={height} yaw={yaw_true} dist={dist} pitch={pitch}")
                 self.assertIsNotNone(est.yaw_delta_rad)
                 self.assertAlmostEqual(est.yaw_delta_rad or 0.0, yaw_true, delta=3e-3)
+
+    def test_mid_arc_expansion_matches_chord_motion_at_both_fovs(self) -> None:
+        dt_s = 0.10
+        depth = 1.20
+        x, y = np.meshgrid(np.linspace(-0.36, 0.36, 10), np.linspace(0.20, 0.36, 6))
+        chord_points = np.column_stack([x.ravel(), y.ravel(), np.full(x.size, depth)])
+        for yaw, distance in ((0.0, 0.16), (0.42, 0.16), (-0.42, -0.16), (0.42, 0.0)):
+            with self.subTest(yaw=yaw, distance=distance):
+                points = chord_points @ _rotation_y_down(yaw / 2.0).T
+                for fov in (70.0, 82.0):
+                    intrinsics = CameraIntrinsics(320, 240, fov, 0.0)
+                    flow = _project_planar_arc(
+                        points, yaw_right_rad=yaw, signed_distance=distance, pitch_rad=0.10, intrinsics=intrinsics
+                    )
+                    estimate = estimate_circular_arc_yaw(flow, intrinsics, dt_s)
+                    expected = math.log(depth / (depth - distance)) / dt_s
+                    assert estimate.expansion_rate_per_s is not None
+                    self.assertAlmostEqual(estimate.expansion_rate_per_s, expected, delta=1e-5)
+                    if distance > 0.0:
+                        assert estimate.forward_time_to_contact_s is not None
+                        self.assertAlmostEqual(
+                            estimate.forward_time_to_contact_s, (depth - distance) / (distance / dt_s), delta=1e-5
+                        )
+                    else:
+                        self.assertIsNone(estimate.forward_time_to_contact_s)
+
+    def test_straight_approach_ttc_decreases_with_wrong_focal_scale(self) -> None:
+        dt_s, distance = 0.10, 0.20
+        true_intrinsics = CameraIntrinsics(320, 240, 82.0, 0.12)
+        wrong_intrinsics = CameraIntrinsics(320, 240, 70.0, 0.12)
+        x, y = np.meshgrid(np.linspace(-0.28, 0.28, 10), np.linspace(0.26, 0.34, 6))
+        previous_ttc = math.inf
+        for depth in (1.6, 1.4, 1.2, 1.0, 0.8):
+            points = np.column_stack((x.ravel(), y.ravel(), np.full(x.size, depth)))
+            flow = _project_planar_arc(
+                points, yaw_right_rad=0.0, signed_distance=distance, pitch_rad=0.0, intrinsics=true_intrinsics
+            )
+            correct = estimate_circular_arc_yaw(flow, true_intrinsics, dt_s)
+            wrong = estimate_circular_arc_yaw(flow, wrong_intrinsics, dt_s)
+            assert correct.expansion_rate_per_s is not None and wrong.expansion_rate_per_s is not None
+            assert correct.forward_time_to_contact_s is not None and wrong.forward_time_to_contact_s is not None
+            self.assertAlmostEqual(correct.expansion_rate_per_s, wrong.expansion_rate_per_s, delta=1e-6)
+            self.assertAlmostEqual(correct.forward_time_to_contact_s, wrong.forward_time_to_contact_s, delta=1e-6)
+            self.assertAlmostEqual(wrong.forward_time_to_contact_s, (depth - distance) / (distance / dt_s), delta=1e-5)
+            self.assertLess(wrong.forward_time_to_contact_s, previous_ttc)
+            previous_ttc = wrong.forward_time_to_contact_s
+
+    def test_curved_approach_ttc_uses_foreground_inside_the_chord_corridor(self) -> None:
+        rng = np.random.default_rng(51)
+        yaw, distance, dt_s = 0.16, 0.14, 0.10
+        rays_at_depth = []
+        for depth, x_bounds, count in (
+            (2.20, (-0.28, 0.28), 36),  # background wall
+            (0.90, (-0.28, 0.28), 16),  # foreground in the corridor
+            (0.70, (0.53, 0.65), 12),  # closer furniture beside the corridor
+        ):
+            rays_at_depth.append(
+                depth * np.column_stack((rng.uniform(*x_bounds, count), rng.uniform(0.18, 0.34, count), np.ones(count)))
+            )
+        points = np.concatenate(rays_at_depth) @ _rotation_y_down(yaw / 2.0).T
+        flow = _project_planar_arc(
+            points, yaw_right_rad=yaw, signed_distance=distance, pitch_rad=0.15,
+            intrinsics=CameraIntrinsics(320, 240, 82.0, 0.0),
+        )
+        estimate = estimate_circular_arc_yaw(flow, CameraIntrinsics(320, 240, 82.0, 0.0), dt_s)
+        assert estimate.expansion_rate_per_s is not None and estimate.forward_time_to_contact_s is not None
+        self.assertAlmostEqual(estimate.expansion_rate_per_s, math.log(2.20 / (2.20 - distance)) / dt_s, delta=1e-5)
+        self.assertAlmostEqual(estimate.forward_time_to_contact_s, (0.90 - distance) / (distance / dt_s), delta=1e-5)
+
+    def test_expansion_abstains_near_foe_and_ttc_requires_corridor_support(self) -> None:
+        intrinsics = CameraIntrinsics(320, 240, 82.0, 0.0)
+        for center_x, has_expansion in ((0.0, False), (0.62, True)):
+            x, y = np.meshgrid(np.linspace(center_x - 0.03, center_x + 0.03, 6), np.linspace(0.035, 0.065, 5))
+            points = np.column_stack((x.ravel(), y.ravel(), np.ones(y.size)))
+            flow = _project_planar_arc(
+                points, yaw_right_rad=0.0, signed_distance=0.10, pitch_rad=0.0, intrinsics=intrinsics
+            )
+            estimate = estimate_circular_arc_yaw(flow, intrinsics, dt_s=0.10)
+            self.assertTrue(estimate.confident)
+            self.assertEqual(estimate.expansion_rate_per_s is not None, has_expansion)
+            self.assertIsNone(estimate.forward_time_to_contact_s)
+
+    def test_throttle_response_abstains_with_insufficient_or_conflicting_votes(self) -> None:
+        fit = fit_throttle_response([(1.0, 0.8), (-1.0, 0.8)] * 2 + [(1.0, 0.01), (0.0, 1.0)])
+        self.assertEqual(fit.throttle_sign, "unknown")
+        self.assertEqual(fit.sample_count, 4)
+        self.assertEqual(fit.consistency, 0.5)
+        self.assertEqual(fit.confidence, 0.0)
+        self.assertEqual(fit_throttle_response([(1.0, 0.8)] * 3).throttle_sign, "unknown")
 
     def test_undistort_center_is_origin(self) -> None:
         intr = CameraIntrinsics(320, 240, 70.0, 0.25)
@@ -336,6 +428,90 @@ class VehicleDynamicsPluginTests(unittest.TestCase):
         self.assertTrue(signals["turn_response_available"].value)
         self.assertEqual(signals["turn_response_available"].properties["turn_sign"], "normal")
         self.assertEqual(signals["turn_response_available"].properties["sample_count"], 4)
+
+    def test_passive_straight_throttle_learning_and_stall_after_json_round_trip(self) -> None:
+        base = _textured_scene()
+        for wiring, direction, label in ((1, "forward", "normal"), (-1, "reverse", "inverted")):
+            with self.subTest(wiring=label):
+                plugin = VehicleDynamicsPlugin(barrel_distortion=0.0, max_observations=5)
+                memory: dict[str, object] = {}
+                apps = (_control_app(delivered_at_ms=900, throttle=1.0, steering=0.0),)
+                write_host_inputs(
+                    memory, mode="autonomy", user_steering=None, user_throttle=None, control_applications=apps
+                )
+                with self.assertRaises(PerceptionPluginWarmingUp):
+                    plugin.perceive(self._inputs(base, "f0", 1000, memory))
+                current = base
+                for index in range(1, 7):
+                    scale = 1.0 + wiring * index * 0.025
+                    warp = cv2.getRotationMatrix2D((159.5, 119.5), 0.0, scale)
+                    current = cv2.warpAffine(base, warp, (320, 240), borderMode=cv2.BORDER_REFLECT)
+                    batch = plugin.perceive(self._inputs(current, f"f{index}", 1000 + index * 100, memory))
+                    self.assertFalse(batch.measurements["control_recorded"])
+                    self.assertFalse(batch.measurements["motion_blocked"])
+                    self.assertFalse(batch.measurements["motion_impeded"])
+                    signal = next(s for s in batch.signals if s.signal_id == "visual_expansion_rate_per_s")
+                    self.assertEqual(signal.properties["motion_direction"], direction)
+                    self.assertEqual(signal.properties["throttle_sign"], label if index >= 4 else "unknown")
+                    self.assertEqual(signal.properties["throttle_sample_count"], min(index, 5))
+                    self.assertEqual(signal.properties["forward_time_to_contact_s"] is not None, wiring == 1)
+
+                memory = shared_memory_from_document(json.loads(json.dumps(shared_memory_document(memory))))
+                with mock.patch(
+                    "implementations.decision_cycle.perception.plugins.vehicle_dynamics.plugin.fit_throttle_response",
+                    side_effect=AssertionError("a stall should reuse the fitted throttle response"),
+                ):
+                    stalled = plugin.perceive(self._inputs(current, "stalled", 1700, memory))
+                self.assertTrue(stalled.measurements["motion_blocked"])
+                self.assertTrue(stalled.measurements["motion_impeded"])
+                self.assertEqual(stalled.measurements["throttle_sign"], label)
+                self.assertEqual(stalled.measurements["expansion_rate_per_s"], 0.0)
+                self.assertEqual(stalled.measurements["throttle_sample_count"], 5)
+
+                opposed = VisualYawEstimate(0.0, 0.0, 0.0, True, "test", 40, 1.0, 2.0, -0.5 * wiring)
+                with mock.patch.object(plugin, "_estimate_pair", return_value=opposed):
+                    batch = plugin.perceive(self._inputs(current, "opposed", 1800, memory))
+                self.assertFalse(batch.measurements["motion_blocked"])
+                self.assertTrue(batch.measurements["motion_impeded"])
+
+    def test_motion_impeded_compares_prior_turn_fit_and_keeps_learning(self) -> None:
+        plugin = VehicleDynamicsPlugin(max_observations=6)
+        base = _textured_scene()
+        memory: dict[str, object] = {}
+        apps = (_control_app(delivered_at_ms=900, throttle=1.0, steering=0.5),)
+        write_host_inputs(memory, mode="autonomy", user_steering=None, user_throttle=None, control_applications=apps)
+        with self.assertRaises(PerceptionPluginWarmingUp):
+            plugin.perceive(self._inputs(base, "f0", 1000, memory))
+
+        free_yaw, partial_yaw = 1.4, 0.35 * 1.4
+        for index, yaw in enumerate([free_yaw] * 6 + [partial_yaw] * 8, start=1):
+            estimate = VisualYawEstimate(yaw * 0.1, yaw, 0.0, True, "test", 40, 1.0, 3.0, 0.2)
+            with mock.patch.object(plugin, "_estimate_pair", return_value=estimate):
+                batch = plugin.perceive(self._inputs(base, f"f{index}", 1000 + index * 100, memory))
+            measurements = batch.measurements
+            self.assertTrue(measurements["control_recorded"])
+            self.assertFalse(measurements["motion_blocked"])
+            if index in (6, 7, 14):
+                expected = partial_yaw if index == 14 else free_yaw
+                self.assertEqual(measurements["motion_impeded"], index == 7)
+                self.assertAlmostEqual(measurements["expected_yaw_rate_rad_s"], expected)
+                self.assertAlmostEqual(measurements["motion_ratio"], yaw / expected)
+                yaw_signal = next(s for s in batch.signals if s.signal_id == "visual_yaw_rate_rad_s")
+                self.assertEqual(yaw_signal.properties["motion_impeded"], measurements["motion_impeded"])
+
+    def test_visible_expansion_prevents_a_false_dead_stall_at_small_pixel_shift(self) -> None:
+        plugin = VehicleDynamicsPlugin()
+        base = _textured_scene()
+        memory: dict[str, object] = {}
+        apps = (_control_app(delivered_at_ms=900, throttle=1.0, steering=0.0),)
+        write_host_inputs(memory, mode="autonomy", user_steering=None, user_throttle=None, control_applications=apps)
+        with self.assertRaises(PerceptionPluginWarmingUp):
+            plugin.perceive(self._inputs(base, "f0", 1000, memory))
+        estimate = VisualYawEstimate(0.0, 0.0, 0.0, True, "test", 40, 1.0, 0.8, 0.2)
+        with mock.patch.object(plugin, "_estimate_pair", return_value=estimate):
+            batch = plugin.perceive(self._inputs(base, "f1", 1100, memory))
+        self.assertFalse(batch.measurements["motion_blocked"])
+        self.assertFalse(batch.measurements["motion_impeded"])
 
     def test_smooth_controls_are_recorded_with_time_weighted_interval_averages(self) -> None:
         plugin = VehicleDynamicsPlugin(barrel_distortion=0.0)

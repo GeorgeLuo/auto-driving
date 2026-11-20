@@ -1,8 +1,9 @@
-"""Windowed scale-free visual yaw-rate and turn-response perception plugin."""
+"""Windowed scale-free visual motion and vehicle response perception plugin."""
 
 from __future__ import annotations
 
 from copy import copy
+from dataclasses import asdict, dataclass
 
 import numpy as np
 
@@ -24,11 +25,14 @@ from implementations.decision_cycle.perception.feeds.camera import (
 )
 from implementations.decision_cycle.perception.shared.image.stored import StoredImage
 from implementations.decision_cycle.perception.shared.motion.visual_yaw import (
+    MIN_EXPANSION_RATE_PER_S,
     CameraIntrinsics,
+    ThrottleResponseEstimate,
     TurnObservation,
     TurnResponseEstimate,
     VisualYawEstimate,
     estimate_visual_yaw,
+    fit_throttle_response,
     fit_turn_response,
     rgb_to_working_gray,
 )
@@ -38,8 +42,15 @@ from implementations.decision_cycle.perception.shared.serialization.history impo
 )
 
 
+@dataclass(frozen=True)
+class MotionDiagnostic:
+    motion_impeded: bool
+    expected_yaw_rate_rad_s: float | None = None
+    motion_ratio: float | None = None
+
+
 class VehicleDynamicsPlugin:
-    """Estimate live angular yaw rate and identify the vehicle's steering-response curve."""
+    """Estimate visual motion and learn the vehicle's response to applied controls."""
 
     plugin_id = "vehicle_dynamics"
     contract = PerceptionPluginContract(
@@ -47,8 +58,8 @@ class VehicleDynamicsPlugin:
         state_mode="windowed",
         memory_required=True,
         description=(
-            "Estimate scale-free vehicle yaw rate from consecutive front-camera frames and "
-            "fit steering-response dynamics against applied autonomous controls."
+            "Estimate scale-free yaw and longitudinal motion from consecutive front-camera frames "
+            "and learn the vehicle's response to applied autonomous controls."
         ),
         assumptions=(
             "consecutive camera frames have sufficient overlap and scene texture for PyrLK or ORB matching",
@@ -58,9 +69,10 @@ class VehicleDynamicsPlugin:
         emits=(
             "signal visual_yaw_rate_rad_s",
             "signal turn_response_available",
+            "signal visual_expansion_rate_per_s",
         ),
         limitations=(
-            "scale-free angular identification only; does not estimate metric speed or turning radius",
+            "scale-free motion identification without metric speed or turning radius",
             "turn-response updates require smooth applied autonomous controls and non-stalled visual motion",
             "radians-per-second scale depends on camera vertical FOV and barrel distortion configuration",
         ),
@@ -102,6 +114,8 @@ class VehicleDynamicsPlugin:
         self._previous_captured_at_ms: int | None = None
         self._observations: list[TurnObservation] = []
         self._cached_response: TurnResponseEstimate | None = None
+        self._throttle_observations: list[tuple[float, float]] = []
+        self._cached_throttle_response: ThrottleResponseEstimate | None = None
 
     def reset(self, shared_memory: SharedMemory | None = None) -> None:
         if shared_memory is not None:
@@ -130,6 +144,10 @@ class VehicleDynamicsPlugin:
         self._previous_captured_at_ms = history_int(history.get("previous_captured_at_ms"))
         self._observations = _restore_observations(history.get("observations"), self.max_observations)
         self._cached_response = _restore_response(history.get("cached_response"))
+        self._throttle_observations = _restore_throttle_observations(
+            history.get("throttle_observations"), self.max_observations
+        )
+        self._cached_throttle_response = _restore_throttle_response(history.get("cached_throttle_response"))
 
     def _history(self) -> dict[str, object]:
         return {
@@ -139,6 +157,10 @@ class VehicleDynamicsPlugin:
                 [obs.signed_throttle, obs.steering, obs.yaw_rate_rad_s] for obs in self._observations
             ],
             "cached_response": _serialize_response(self._cached_response),
+            "throttle_observations": [list(obs) for obs in self._throttle_observations],
+            "cached_throttle_response": (
+                None if self._cached_throttle_response is None else asdict(self._cached_throttle_response)
+            ),
         }
 
     def _perceive_frame(self, inputs: PerceptionPluginInputs) -> PerceptionEvidenceBatch:
@@ -165,11 +187,18 @@ class VehicleDynamicsPlugin:
             settle_ms=self.command_settle_ms,
         )
         blocked = _is_motion_blocked(estimate, applied_control, self.min_moving_px_shift)
+        # Compare against prior evidence. Only the dead-stall guard gates turn learning.
+        diagnostic = _motion_diagnostic(
+            estimate, applied_control, self._cached_response, self._cached_throttle_response, blocked=blocked
+        )
         recorded = self._maybe_record_observation(estimate, applied_control, blocked=blocked)
         response = self._current_response(refit=recorded)
+        throttle_response = self._update_throttle_response(estimate, applied_control)
         return _build_batch(
             estimate,
             response,
+            throttle_response,
+            diagnostic,
             dt_ms=dt_ms,
             control=applied_control,
             recorded=recorded,
@@ -180,6 +209,21 @@ class VehicleDynamicsPlugin:
         if refit or self._cached_response is None:
             self._cached_response = fit_turn_response(self._observations)
         return self._cached_response
+
+    def _update_throttle_response(
+        self, estimate: VisualYawEstimate, control: tuple[float, float] | None,
+    ) -> ThrottleResponseEstimate:
+        expansion = estimate.expansion_rate_per_s
+        if (
+            estimate.confident and expansion is not None and abs(expansion) > MIN_EXPANSION_RATE_PER_S
+            and control is not None and abs(control[0]) > 0.1
+        ):
+            self._throttle_observations.append((control[0], expansion))
+            self._throttle_observations = self._throttle_observations[-self.max_observations :]
+            self._cached_throttle_response = None
+        if self._cached_throttle_response is None:
+            self._cached_throttle_response = fit_throttle_response(self._throttle_observations)
+        return self._cached_throttle_response
 
     def _estimate_pair(
         self,
@@ -248,7 +292,46 @@ def _is_motion_blocked(
     signed_throttle, _steering = control
     if abs(signed_throttle) <= 0.1:
         return False
-    return estimate.median_px_shift < min_moving_px_shift and abs(estimate.yaw_delta_rad) < 0.015
+    expansion = estimate.expansion_rate_per_s
+    return (
+        estimate.median_px_shift < min_moving_px_shift and abs(estimate.yaw_delta_rad) < 0.015
+        and (expansion is None or abs(expansion) <= MIN_EXPANSION_RATE_PER_S)
+    )
+
+
+def _motion_diagnostic(
+    estimate: VisualYawEstimate,
+    control: tuple[float, float] | None,
+    response: TurnResponseEstimate | None,
+    throttle_response: ThrottleResponseEstimate | None,
+    *,
+    blocked: bool,
+) -> MotionDiagnostic:
+    if control is None or not estimate.confident:
+        return MotionDiagnostic(blocked)
+    throttle, steering = control
+    if abs(steering) <= 0.12:
+        return MotionDiagnostic(blocked or _is_straight_motion_impeded(estimate, throttle, throttle_response))
+    yaw_rate = estimate.yaw_rate_rad_s
+    if response is None or response.confidence < 0.5 or yaw_rate is None or abs(throttle) <= 0.1:
+        return MotionDiagnostic(blocked)
+    # Turn response was fitted against commanded throttle, including any polarity inversion.
+    expected = response.predict_yaw_rate(steering, throttle)
+    if abs(expected) < 0.40:
+        return MotionDiagnostic(blocked, expected)
+    ratio = yaw_rate / expected
+    return MotionDiagnostic(blocked or ratio < 0.55, expected, ratio)
+
+
+def _is_straight_motion_impeded(
+    estimate: VisualYawEstimate, throttle: float, response: ThrottleResponseEstimate | None,
+) -> bool:
+    expansion = estimate.expansion_rate_per_s
+    if expansion is None or abs(throttle) <= 0.2 or response is None or response.throttle_sign == "unknown":
+        return False
+    expects_forward = (throttle > 0.0) == (response.throttle_sign == "normal")
+    aligned_expansion = expansion if expects_forward else -expansion
+    return aligned_expansion <= MIN_EXPANSION_RATE_PER_S
 
 
 def _parse_observation(item: object) -> TurnObservation | None:
@@ -267,6 +350,32 @@ def _restore_observations(raw: object, limit: int) -> list[TurnObservation]:
         return []
     restored = [obs for item in raw if (obs := _parse_observation(item)) is not None]
     return restored[-limit:]
+
+
+def _restore_throttle_observations(raw: object, limit: int) -> list[tuple[float, float]]:
+    if not isinstance(raw, list):
+        return []
+    restored: list[tuple[float, float]] = []
+    for item in raw:
+        if isinstance(item, (list, tuple)) and len(item) == 2:
+            throttle, expansion = history_float(item[0]), history_float(item[1])
+            if throttle is not None and expansion is not None:
+                restored.append((throttle, expansion))
+    return restored[-limit:]
+
+
+def _restore_throttle_response(raw: object) -> ThrottleResponseEstimate | None:
+    if not isinstance(raw, dict):
+        return None
+    sign = raw.get("throttle_sign")
+    if not isinstance(sign, str) or sign not in ("normal", "inverted", "unknown"):
+        return None
+    samples = history_int(raw.get("sample_count"))
+    consistency = history_float(raw.get("consistency"))
+    confidence = history_float(raw.get("confidence"))
+    if samples is None or consistency is None or confidence is None:
+        return None
+    return ThrottleResponseEstimate(sign, samples, consistency, confidence)
 
 
 def _serialize_response(response: TurnResponseEstimate | None) -> dict[str, object] | None:
@@ -345,9 +454,34 @@ def _average_control(
     return throttle_sum / duration, steering_sum / duration
 
 
+def _expansion_signal(estimate: VisualYawEstimate, response: ThrottleResponseEstimate) -> PerceptionSignal:
+    expansion = estimate.expansion_rate_per_s
+    direction = "unknown"
+    if estimate.confident and expansion is not None:
+        direction = "stationary"
+        if abs(expansion) > MIN_EXPANSION_RATE_PER_S:
+            direction = "forward" if expansion > 0.0 else "reverse"
+    ttc = estimate.forward_time_to_contact_s
+    return PerceptionSignal(
+        "visual_expansion_rate_per_s",
+        None if expansion is None else round(expansion, 6),
+        0.0 if direction == "unknown" else round(estimate.inlier_ratio, 5),
+        {
+            "confident": direction != "unknown",
+            "motion_direction": direction,
+            "forward_time_to_contact_s": None if ttc is None else round(ttc, 6),
+            "throttle_sign": response.throttle_sign,
+            "throttle_sample_count": response.sample_count,
+            "throttle_confidence": response.confidence,
+        },
+    )
+
+
 def _build_batch(
     estimate: VisualYawEstimate,
     response: TurnResponseEstimate,
+    throttle_response: ThrottleResponseEstimate,
+    diagnostic: MotionDiagnostic,
     *,
     dt_ms: int,
     control: tuple[float, float] | None,
@@ -355,6 +489,7 @@ def _build_batch(
     blocked: bool,
 ) -> PerceptionEvidenceBatch:
     yaw_conf = round(estimate.inlier_ratio, 5) if estimate.confident else 0.0
+    motion = asdict(diagnostic)
     yaw_signal = PerceptionSignal(
         "visual_yaw_rate_rad_s",
         None if estimate.yaw_rate_rad_s is None else round(estimate.yaw_rate_rad_s, 6),
@@ -371,6 +506,7 @@ def _build_batch(
             "inlier_ratio": round(estimate.inlier_ratio, 5),
             "median_px_shift": round(estimate.median_px_shift, 4),
             "motion_blocked": blocked,
+            **motion,
         },
     )
     available = response.kind != "abstain"
@@ -391,13 +527,20 @@ def _build_batch(
             "predicted_full_right_rad_s": round(response.predict_yaw_rate(1.0, 1.0), 5),
         },
     )
+    expansion_signal = _expansion_signal(estimate, throttle_response)
     return PerceptionEvidenceBatch(
-        signals=(yaw_signal, turn_signal),
+        signals=(yaw_signal, turn_signal, expansion_signal),
         measurements={
             "visual_yaw": dict(yaw_signal.properties),
             "turn_response": dict(turn_signal.properties),
             "control_recorded": recorded,
             "motion_blocked": blocked,
+            **motion,
+            "expansion_rate_per_s": expansion_signal.value,
+            "forward_time_to_contact_s": expansion_signal.properties["forward_time_to_contact_s"],
+            "throttle_sign": throttle_response.throttle_sign,
+            "throttle_sample_count": throttle_response.sample_count,
+            "throttle_confidence": throttle_response.confidence,
             "interval_control": None if control is None else [control[0], control[1]],
         },
     )

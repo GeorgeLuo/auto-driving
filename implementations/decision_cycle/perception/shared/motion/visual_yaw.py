@@ -1,4 +1,4 @@
-"""Scale-free monocular visual yaw estimation and turn-response fitting.
+"""Scale-free monocular visual motion estimation and control-response fitting.
 
 Uses forward-backward checked Lucas-Kanade optical flow (with an ORB descriptor
 fallback for large inter-frame shifts) and Scaramuzza's 1-point circular-arc
@@ -13,6 +13,9 @@ from dataclasses import dataclass
 
 import cv2
 import numpy as np
+
+
+MIN_EXPANSION_RATE_PER_S = 0.05
 
 
 @dataclass(frozen=True)
@@ -38,7 +41,7 @@ class FrameFlow:
 
 @dataclass(frozen=True)
 class VisualYawEstimate:
-    """Scale-free angular displacement and rate estimated from one image pair."""
+    """Scale-free angular and longitudinal motion estimated from one image pair."""
 
     yaw_delta_rad: float | None
     yaw_rate_rad_s: float | None
@@ -48,11 +51,13 @@ class VisualYawEstimate:
     num_tracks: int
     inlier_ratio: float
     median_px_shift: float = 0.0
+    expansion_rate_per_s: float | None = None
+    forward_time_to_contact_s: float | None = None
 
 
 @dataclass(frozen=True)
 class TurnObservation:
-    """One turning observation with interval-average controls (+right, +forward)."""
+    """One yaw-rate observation with interval-average commanded controls."""
 
     signed_throttle: float
     steering: float
@@ -78,6 +83,16 @@ class TurnResponseEstimate:
         if self.kind == "linear":
             return self.gain_per_s * signed_throttle * steering
         return 0.0
+
+
+@dataclass(frozen=True)
+class ThrottleResponseEstimate:
+    """Agreement between commanded throttle and visually observed travel direction."""
+
+    throttle_sign: str
+    sample_count: int
+    consistency: float
+    confidence: float
 
 
 def rgb_to_working_gray(rgb: np.ndarray, *, working_width: int = 320) -> np.ndarray:
@@ -268,6 +283,40 @@ def _wrap_angle(angle: float) -> float:
     return math.atan2(math.sin(angle), math.cos(angle))
 
 
+def _chord_ray_components(
+    rays: np.ndarray, cos_h: float, sin_h: float,
+) -> tuple[np.ndarray, np.ndarray, np.ndarray]:
+    x = cos_h * rays[:, 0] + sin_h * rays[:, 2]
+    z = -sin_h * rays[:, 0] + cos_h * rays[:, 2]
+    return x, z, np.hypot(x, rays[:, 1])
+
+
+def _mid_arc_expansion(
+    u1: np.ndarray, u2: np.ndarray, pitch: float, yaw: float, dt_s: float,
+) -> tuple[float | None, float | None]:
+    w1, w2 = _rotate_pitch(u1, u2, pitch)
+    cos_h, sin_h = math.cos(yaw / 2.0), math.sin(yaw / 2.0)
+    # Express both rays in the chord frame, where translation is along +Z or -Z.
+    _, z1, radius1 = _chord_ray_components(w1, cos_h, -sin_h)
+    x2, z2, radius2 = _chord_ray_components(w2, cos_h, sin_h)
+    valid = (z1 > 0.15) & (z2 > 0.15) & (radius1 > 0.12 * z1) & (radius2 > 0.12 * z2)
+    if np.count_nonzero(valid) < 8:
+        return None, None
+
+    log_expansion = np.log((radius2[valid] * z1[valid]) / (radius1[valid] * z2[valid]))
+    expansion_rate = float(np.median(log_expansion)) / dt_s
+    if expansion_rate <= MIN_EXPANSION_RATE_PER_S:
+        return expansion_rate, None
+    corridor = log_expansion[(np.abs(x2[valid]) <= 0.45 * z2[valid]) & (log_expansion > 0.0)]
+    if len(corridor) < 6:
+        return expansion_rate, None
+    looming = float(np.quantile(corridor, 0.75))
+    # At constant chord speed, r2/r1 = 1 + dt/TTC at the second capture.
+    if not math.isfinite(looming) or looming < math.log1p(dt_s * MIN_EXPANSION_RATE_PER_S):
+        return expansion_rate, None
+    return expansion_rate, dt_s / math.expm1(looming)
+
+
 def estimate_circular_arc_yaw(
     flow: FrameFlow,
     intrinsics: CameraIntrinsics,
@@ -313,8 +362,12 @@ def estimate_circular_arc_yaw(
         return VisualYawEstimate(
             None, None, phi_hat, False, "abstain_low_inliers", flow.num_tracked, inlier_ratio, flow.median_px_shift
         )
+    inliers = sampson <= sampson_thresh
+    expansion_rate, ttc = _mid_arc_expansion(u1[inliers], u2[inliers], phi_hat, theta_hat, dt_s)
     return VisualYawEstimate(
-        theta_hat, theta_hat / dt_s, phi_hat, True, mode_label, flow.num_tracked, inlier_ratio, flow.median_px_shift
+        theta_hat, theta_hat / dt_s, phi_hat, True, mode_label, flow.num_tracked, inlier_ratio, flow.median_px_shift,
+        expansion_rate_per_s=expansion_rate,
+        forward_time_to_contact_s=ttc,
     )
 
 
@@ -426,6 +479,24 @@ def fit_turn_response(observations: tuple[TurnObservation, ...] | list[TurnObser
     if not _has_nonlinear_excitation(clean_us):
         return _fit_linear_response(st, us, omega, sign=sign, distinct_count=distinct_count)
     return _fit_ackermann_response(st, us, omega, sign=sign, fallback_distinct=distinct_count)
+
+
+def fit_throttle_response(
+    observations: tuple[tuple[float, float], ...] | list[tuple[float, float]],
+) -> ThrottleResponseEstimate:
+    """Identify throttle polarity from the sign of longitudinal expansion under throttle."""
+    votes = [
+        (throttle > 0.0) == (expansion > 0.0)
+        for throttle, expansion in observations
+        if abs(throttle) > 0.1 and abs(expansion) > MIN_EXPANSION_RATE_PER_S
+    ]
+    count = len(votes)
+    normal_votes = sum(votes)
+    consistency = max(normal_votes, count - normal_votes) / count if count else 0.0
+    if count < 4 or consistency < 0.8:
+        return ThrottleResponseEstimate("unknown", count, consistency, 0.0)
+    sign = "normal" if normal_votes > count / 2 else "inverted"
+    return ThrottleResponseEstimate(sign, count, consistency, min(count / 8.0, 1.0) * consistency)
 
 
 def _filter_per_bin_outliers(

@@ -49,6 +49,11 @@ add_executable(native-sim-tour tools/tour.cpp)
 target_link_libraries(native-sim-tour PRIVATE sim_protocol)
 target_compile_definitions(native-sim-tour PRIVATE SIM_ASSETS="${asset_directory}")
 
+add_executable(native-sim-dataset tools/dataset/main.cpp tools/dataset/runner.cpp)
+target_link_libraries(native-sim-dataset PRIVATE sim_protocol)
+target_compile_definitions(native-sim-dataset PRIVATE SIM_ASSETS="${asset_directory}")
+target_compile_options(native-sim-dataset PRIVATE -Wall -Wextra -Wpedantic)
+
 add_executable(native-sim-bench EXCLUDE_FROM_ALL tools/bench/main.cpp tools/bench/stress.cpp)
 target_link_libraries(native-sim-bench PRIVATE sim_protocol)
 target_compile_definitions(native-sim-bench PRIVATE
@@ -75,6 +80,12 @@ add_test(NAME native_sim_scene COMMAND native_sim_scene ${default_map} ${asset_d
   ${CMAKE_CURRENT_SOURCE_DIR}/maps/room-run6.json)
 add_test(NAME native_sim_include_graph COMMAND ${CMAKE_COMMAND}
   -Dsource_dir=${CMAKE_CURRENT_SOURCE_DIR}/src -P ${CMAKE_CURRENT_SOURCE_DIR}/tests/include-graph.cmake)
+add_executable(native_sim_dataset_tests tests/dataset.cpp tools/dataset/runner.cpp)
+target_include_directories(native_sim_dataset_tests PRIVATE ${CMAKE_CURRENT_SOURCE_DIR})
+target_link_libraries(native_sim_dataset_tests PRIVATE sim_protocol)
+target_compile_options(native_sim_dataset_tests PRIVATE -Wall -Wextra -Wpedantic)
+add_test(NAME native_sim_dataset COMMAND native_sim_dataset_tests
+  ${default_map} ${CMAKE_CURRENT_SOURCE_DIR}/tools/dataset/example-spec.json ${asset_directory})
 
 # Offline motion priors for the run 6 photo registration tool.
 add_executable(native-fit-motion EXCLUDE_FROM_ALL tools/fit/motion.cpp)

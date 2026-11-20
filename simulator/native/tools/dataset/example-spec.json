@@ -1,0 +1,30 @@
+{
+  "schemaVersion": 1,
+  "episodeId": "example_showcase_turn",
+  "seed": 1,
+  "map": "../../maps/showcase.json",
+  "overrides": {
+    "spawn": {
+      "x": 0.6,
+      "z": 0.8,
+      "headingRadians": -1.5707963267948966
+    }
+  },
+  "capture": {
+    "width": 320,
+    "height": 240,
+    "quality": 0.8,
+    "stride": 3,
+    "includeFrameZero": true
+  },
+  "validation": {
+    "maxStepYawRadians": 0.2617993877991494,
+    "minExcitationYawRadians": 0.05
+  },
+  "segments": [
+    {"frames": 15, "motion": "forward", "throttle": 1.0, "steering": 0.0},
+    {"frames": 36, "motion": "forward", "throttle": 1.0, "steering": 0.57},
+    {"frames": 30, "motion": "forward", "throttle": 0.75, "steering": -0.57},
+    {"frames": 24, "motion": "reverse", "throttle": 0.75, "steering": 0.4}
+  ]
+}

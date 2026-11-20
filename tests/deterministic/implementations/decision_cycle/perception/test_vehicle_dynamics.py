@@ -230,6 +230,26 @@ class VisualYawTests(unittest.TestCase):
         self.assertEqual(fit.turn_sign, "normal")
         self.assertGreater(fit.predict_yaw_rate(1.0, 1.0), 2.5)
 
+    def test_fit_turn_response_avoids_extrapolation_blowup_on_imbalanced_bins(self) -> None:
+        # Reproduce v2-slow-cal: 5 samples at 0.25, 3 slightly high (+3%) at 0.50, 2 slightly low at 0.75.
+        imbalanced = [
+            TurnObservation(-1.0, 0.25, -0.722),
+            TurnObservation(1.0, -0.25, -0.758),
+            TurnObservation(1.0, -0.25, -0.798),
+            TurnObservation(-1.0, -0.25, 0.803),
+            TurnObservation(-1.0, -0.25, 0.751),
+            TurnObservation(-1.0, -0.50, 1.664),
+            TurnObservation(1.0, 0.50, 1.633),
+            TurnObservation(-1.0, 0.50, -1.684),
+            TurnObservation(-1.0, 0.75, -2.365),
+            TurnObservation(-1.0, -0.75, 2.299),
+            TurnObservation(-1.0, 0.50, -0.606),
+            TurnObservation(-1.0, 1.00, -2.208),
+        ]
+        fit = fit_turn_response(imbalanced)
+        self.assertLess(fit.predict_yaw_rate(1.0, 1.0), 3.70)
+        self.assertGreater(fit.predict_yaw_rate(1.0, 1.0), 2.90)
+
     def test_orb_fallback_recovers_large_turn_beyond_pyrlk_range(self) -> None:
         intr = CameraIntrinsics(320, 240, vertical_fov_degrees=82.0, barrel_distortion=0.0)
         img_a = _textured_scene(320, 240)
@@ -333,10 +353,38 @@ class VehicleDynamicsPluginTests(unittest.TestCase):
         self.assertTrue(batch_stalled.measurements["motion_blocked"])
         self.assertFalse(batch_stalled.measurements["control_recorded"])
 
-        # Blank frame -> abstains cleanly.
+        # Blank frame -> abstains cleanly without invoking ORB fallback.
         blank = np.full_like(base, 128)
         batch_blank = plugin.perceive(self._inputs(blank, "f3", 1300, memory))
         self.assertFalse(batch_blank.measurements["visual_yaw"]["confident"])
+
+    def test_cached_turn_response_skips_refit_when_no_observation_recorded(self) -> None:
+        from unittest import mock
+
+        plugin = VehicleDynamicsPlugin(vertical_fov_degrees=70.0, barrel_distortion=0.0, command_settle_ms=0)
+        intr = CameraIntrinsics(320, 240, 70.0, 0.0)
+        base = _textured_scene()
+        memory: dict[str, object] = {}
+        with self.assertRaises(PerceptionPluginWarmingUp):
+            plugin.perceive(self._inputs(base, "f0", 1000, memory))
+
+        # Seed one recorded observation so cached_response is populated.
+        apps = (_control_app(delivered_at_ms=1000, throttle=1.0, steering=0.5),)
+        write_host_inputs(memory, mode="autonomy", user_steering=None, user_throttle=None, control_applications=apps)
+        warped = _warp_pure_yaw(base, 0.08, intr)
+        plugin.perceive(self._inputs(warped, "f1", 1100, memory))
+
+        # Round-trip shared memory through JSON serialization.
+        memory = shared_memory_from_document(json.loads(json.dumps(shared_memory_document(memory))))
+
+        # Next frame has dt out of range (recorded=False): fit_turn_response must NOT be called.
+        with mock.patch(
+            "implementations.decision_cycle.perception.plugins.vehicle_dynamics.plugin.fit_turn_response",
+            side_effect=AssertionError("fit_turn_response should not run when no observation is recorded"),
+        ):
+            batch = plugin.perceive(self._inputs(warped, "f2", 2000, memory))
+        self.assertFalse(batch.measurements["control_recorded"])
+        self.assertEqual(batch.measurements["visual_yaw"]["mode"], "abstain_dt_out_of_range")
 
     @staticmethod
     def _inputs(rgb: np.ndarray, frame_id: str, captured_at_ms: int, memory: dict[str, object]):

@@ -151,7 +151,7 @@ def track_orb_matches(
     gray_a: np.ndarray,
     gray_b: np.ndarray,
     *,
-    max_features: int = 600,
+    max_features: int = 300,
     lowe_ratio: float = 0.78,
 ) -> FrameFlow:
     """Descriptor-based ORB matching for large rotations and close-range translations."""
@@ -340,7 +340,7 @@ def estimate_visual_yaw(
         sampson_thresh=0.008,
         mode_label="circular_arc_1pt",
     )
-    if lk_est.confident:
+    if lk_est.confident or lk_flow.num_detected < min_tracks:
         return lk_est
 
     orb_flow = track_orb_matches(gray_a, gray_b)
@@ -412,19 +412,38 @@ def fit_turn_response(observations: tuple[TurnObservation, ...] | list[TurnObser
     if sign == 0.0:
         return TurnResponseEstimate("abstain", 0.0, 0.0, "unknown", len(active), 0, None, 0.0)
 
-    # Filter out near-zero / wrong-sign observations before upper-consensus clustering.
+    # Filter out near-zero / wrong-sign observations, then reject partial contacts within each steering bin.
     linear_gains = (omega / (st * us)) * sign
     keep = linear_gains > 0.05
     if int(np.sum(keep)) < 2:
         return TurnResponseEstimate("abstain", 0.0, 0.0, "unknown", len(active), 0, None, 0.0)
-    st, us, omega = st[keep], us[keep], omega[keep]
+    st, us, omega, linear_gains = st[keep], us[keep], omega[keep], linear_gains[keep]
+    st, us, omega, linear_gains = _filter_per_bin_outliers(st, us, omega, linear_gains)
 
-    inlier_mask = _upper_consensus_mask(omega / (st * us) * sign, rel_tol=0.35)
+    inlier_mask = _upper_consensus_mask(linear_gains, rel_tol=0.35)
     clean_us = us[inlier_mask]
     distinct_count = int(len(np.unique(np.round(np.abs(clean_us), 3))))
     if not _has_nonlinear_excitation(clean_us):
         return _fit_linear_response(st, us, omega, sign=sign, distinct_count=distinct_count)
     return _fit_ackermann_response(st, us, omega, sign=sign, fallback_distinct=distinct_count)
+
+
+def _filter_per_bin_outliers(
+    st: np.ndarray,
+    us: np.ndarray,
+    omega: np.ndarray,
+    linear_gains: np.ndarray,
+) -> tuple[np.ndarray, np.ndarray, np.ndarray, np.ndarray]:
+    abs_bins = np.round(np.abs(us), 2)
+    keep = np.ones(len(omega), dtype=bool)
+    for steer_bin in np.unique(abs_bins):
+        idx = np.flatnonzero(abs_bins == steer_bin)
+        if len(idx) >= 3:
+            sub_mask = _upper_consensus_mask(linear_gains[idx], rel_tol=0.20)
+            keep[idx[~sub_mask]] = False
+    if int(np.sum(keep)) < 2:
+        return st, us, omega, linear_gains
+    return st[keep], us[keep], omega[keep], linear_gains[keep]
 
 
 def _has_nonlinear_excitation(us: np.ndarray) -> bool:
@@ -441,8 +460,8 @@ def _dominant_turn_sign(st: np.ndarray, us: np.ndarray, omega: np.ndarray) -> fl
     nonzero = signed_gains[np.abs(signed_gains) > 0.05]
     if len(nonzero) == 0:
         return 0.0
-    top_cutoff = float(np.percentile(np.abs(nonzero), 50))
-    top = nonzero[np.abs(nonzero) >= top_cutoff]
+    abs_nz = np.abs(nonzero)
+    top = nonzero[abs_nz >= float(np.median(abs_nz))]
     med = float(np.median(top))
     return 1.0 if med > 0.0 else -1.0 if med < 0.0 else 0.0
 
@@ -453,19 +472,15 @@ def _upper_consensus_mask(values: np.ndarray, *, rel_tol: float) -> np.ndarray:
     if n <= 2:
         return np.ones(n, dtype=bool)
     min_support = max(2, min(4, int(math.ceil(0.25 * n))))
-    best_mask = np.ones(n, dtype=bool)
-    best_center = -1.0
-    for center in np.sort(values)[::-1]:
-        if center <= 0.0:
-            continue
-        mask = np.abs(values - center) <= rel_tol * center
-        if int(np.sum(mask)) >= min_support:
-            med = float(np.median(values[mask]))
-            if med > best_center:
-                best_center = med
-                best_mask = mask
-                break
-    return best_mask
+    centers = np.sort(values)[::-1]
+    centers = centers[centers > 0.0]
+    if len(centers) == 0:
+        return np.ones(n, dtype=bool)
+    masks = np.abs(values[None, :] - centers[:, None]) <= (rel_tol * centers[:, None])
+    valid = np.flatnonzero(masks.sum(axis=1) >= min_support)
+    if len(valid) == 0:
+        return np.ones(n, dtype=bool)
+    return masks[int(valid[0])]
 
 
 def _fit_linear_response(
@@ -496,11 +511,11 @@ def _fit_ackermann_response(
     sign: float,
     fallback_distinct: int,
 ) -> TurnResponseEstimate:
-    gain0, b0, mask0 = _grid_search_max_angle(st, us, omega, sign=sign, grid=np.linspace(0.15, 1.22, 108))
+    gain0, b0, mask0 = _grid_search_max_angle(st, us, omega, sign=sign, grid=np.linspace(0.15, 1.15, 41))
     if gain0 == 0.0 or not _has_nonlinear_excitation(us[mask0]):
         return _fit_linear_response(st, us, omega, sign=sign, distinct_count=fallback_distinct)
     gain, max_angle, mask = _grid_search_max_angle(
-        st, us, omega, sign=sign, grid=np.linspace(max(0.10, b0 - 0.03), min(1.25, b0 + 0.03), 121)
+        st, us, omega, sign=sign, grid=np.linspace(max(0.10, b0 - 0.03), min(1.20, b0 + 0.03), 25)
     )
     if gain == 0.0 or not _has_nonlinear_excitation(us[mask]):
         return _fit_linear_response(st, us, omega, sign=sign, distinct_count=fallback_distinct)
@@ -522,6 +537,47 @@ def _fit_ackermann_response(
     )
 
 
+def _small_median(values: np.ndarray) -> float:
+    k = len(values)
+    if k == 1:
+        return float(values[0])
+    if k == 2:
+        return 0.5 * (float(values[0]) + float(values[1]))
+    ordered = sorted(values.tolist())
+    mid = k // 2
+    return ordered[mid] if k % 2 == 1 else 0.5 * (ordered[mid - 1] + ordered[mid])
+
+
+def _bin_weighted_gain_and_score(
+    implied: np.ndarray,
+    mask: np.ndarray,
+    bin_steers: list[float],
+    bin_indices: list[np.ndarray],
+) -> tuple[float, float] | None:
+    inlier_count = int(mask.sum())
+    if inlier_count < 4:
+        return None
+    meds: list[float] = []
+    steers: list[float] = []
+    weights: list[float] = []
+    for steer, idx in zip(bin_steers, bin_indices, strict=True):
+        sub_vals = implied[idx][mask[idx]]
+        count = len(sub_vals)
+        if count > 0:
+            steers.append(steer)
+            weights.append(math.sqrt(min(count, 4)))
+            meds.append(_small_median(sub_vals))
+    if len(steers) < 2 or (steers[-1] - steers[0]) < 0.30 or steers[-1] < 0.65:
+        return None
+    w_sum = sum(weights)
+    gain_mag = sum(w * v for w, v in zip(weights, meds, strict=True)) / w_sum
+    if gain_mag <= 0.0:
+        return None
+    bin_err = sum(w * abs(v - gain_mag) for w, v in zip(weights, meds, strict=True)) / (w_sum * gain_mag)
+    coverage_penalty = 0.05 * (1.0 - inlier_count / len(implied))
+    return gain_mag, bin_err + coverage_penalty
+
+
 def _grid_search_max_angle(
     st: np.ndarray,
     us: np.ndarray,
@@ -530,23 +586,25 @@ def _grid_search_max_angle(
     sign: float,
     grid: np.ndarray,
 ) -> tuple[float, float, np.ndarray]:
+    abs_bins = np.round(np.abs(us), 2)
+    uniq_bins = np.unique(abs_bins)
+    bin_steers = [float(b) for b in uniq_bins]
+    bin_indices = [np.flatnonzero(abs_bins == b) for b in uniq_bins]
+
+    tan_mat = np.tan(grid[:, None] * us[None, :])
+    implied_mat = (omega[None, :] / (st[None, :] * tan_mat)) * sign
+
     best_score = float("inf")
     best_gain = 0.0
     best_angle = 0.65
     best_mask = np.zeros(len(omega), dtype=bool)
-    for angle in grid:
-        basis = st * np.tan(float(angle) * us)
-        implied = (omega / basis) * sign
+    for row_idx, angle in enumerate(grid.tolist()):
+        implied = implied_mat[row_idx]
         mask = _upper_consensus_mask(implied, rel_tol=0.18)
-        if not _has_nonlinear_excitation(us[mask]):
+        evaluated = _bin_weighted_gain_and_score(implied, mask, bin_steers, bin_indices)
+        if evaluated is None:
             continue
-        gain_mag = float(np.median(implied[mask]))
-        if gain_mag <= 0.0:
-            continue
-        rel_err = np.abs(implied[mask] - gain_mag) / gain_mag
-        # Prefer tight relative fit across the largest supported upper cluster.
-        coverage_penalty = 0.08 * (1.0 - float(np.mean(mask)))
-        score = float(np.median(rel_err)) + 0.35 * float(np.mean(np.minimum(rel_err, 0.25))) + coverage_penalty
+        gain_mag, score = evaluated
         if score < best_score:
             best_score = score
             best_gain = gain_mag * sign

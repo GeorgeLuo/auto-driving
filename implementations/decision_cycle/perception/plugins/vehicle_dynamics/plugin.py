@@ -101,6 +101,7 @@ class VehicleDynamicsPlugin:
         self._previous_gray: np.ndarray | None = None
         self._previous_captured_at_ms: int | None = None
         self._observations: list[TurnObservation] = []
+        self._cached_response: TurnResponseEstimate | None = None
 
     def reset(self, shared_memory: SharedMemory | None = None) -> None:
         if shared_memory is not None:
@@ -128,6 +129,7 @@ class VehicleDynamicsPlugin:
             self._previous_gray = np.array(previous.pixels, dtype=np.uint8, copy=True)
         self._previous_captured_at_ms = history_int(history.get("previous_captured_at_ms"))
         self._observations = _restore_observations(history.get("observations"), self.max_observations)
+        self._cached_response = _restore_response(history.get("cached_response"))
 
     def _history(self) -> dict[str, object]:
         return {
@@ -136,6 +138,7 @@ class VehicleDynamicsPlugin:
             "observations": [
                 [obs.signed_throttle, obs.steering, obs.yaw_rate_rad_s] for obs in self._observations
             ],
+            "cached_response": _serialize_response(self._cached_response),
         }
 
     def _perceive_frame(self, inputs: PerceptionPluginInputs) -> PerceptionEvidenceBatch:
@@ -163,7 +166,7 @@ class VehicleDynamicsPlugin:
         )
         blocked = _is_motion_blocked(estimate, applied_control, self.min_moving_px_shift)
         recorded = self._maybe_record_observation(estimate, applied_control, blocked=blocked)
-        response = fit_turn_response(self._observations)
+        response = self._current_response(refit=recorded)
         return _build_batch(
             estimate,
             response,
@@ -172,6 +175,11 @@ class VehicleDynamicsPlugin:
             recorded=recorded,
             blocked=blocked,
         )
+
+    def _current_response(self, *, refit: bool) -> TurnResponseEstimate:
+        if refit or self._cached_response is None:
+            self._cached_response = fit_turn_response(self._observations)
+        return self._cached_response
 
     def _estimate_pair(
         self,
@@ -259,6 +267,39 @@ def _restore_observations(raw: object, limit: int) -> list[TurnObservation]:
         return []
     restored = [obs for item in raw if (obs := _parse_observation(item)) is not None]
     return restored[-limit:]
+
+
+def _serialize_response(response: TurnResponseEstimate | None) -> dict[str, object] | None:
+    if response is None:
+        return None
+    return {
+        "kind": response.kind,
+        "gain_per_s": response.gain_per_s,
+        "max_angle_rad": response.max_angle_rad,
+        "turn_sign": response.turn_sign,
+        "sample_count": response.sample_count,
+        "distinct_steering_count": response.distinct_steering_count,
+        "median_residual_rad_s": response.median_residual_rad_s,
+        "confidence": response.confidence,
+    }
+
+
+def _restore_response(raw: object) -> TurnResponseEstimate | None:
+    if not isinstance(raw, dict):
+        return None
+    kind = raw.get("kind")
+    turn_sign = raw.get("turn_sign")
+    gain = history_float(raw.get("gain_per_s"))
+    max_angle = history_float(raw.get("max_angle_rad"))
+    samples = history_int(raw.get("sample_count"))
+    distinct = history_int(raw.get("distinct_steering_count"))
+    confidence = history_float(raw.get("confidence"))
+    if not isinstance(kind, str) or not isinstance(turn_sign, str):
+        return None
+    if gain is None or max_angle is None or samples is None or distinct is None or confidence is None:
+        return None
+    residual = history_float(raw.get("median_residual_rad_s"))
+    return TurnResponseEstimate(kind, gain, max_angle, turn_sign, samples, distinct, residual, confidence)
 
 
 def _settled_autonomous_control(

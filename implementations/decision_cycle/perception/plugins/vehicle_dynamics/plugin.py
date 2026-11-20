@@ -28,10 +28,9 @@ from implementations.decision_cycle.perception.shared.motion.visual_yaw import (
     TurnObservation,
     TurnResponseEstimate,
     VisualYawEstimate,
-    estimate_circular_arc_yaw,
+    estimate_visual_yaw,
     fit_turn_response,
     rgb_to_working_gray,
-    track_pyrlk,
 )
 from implementations.decision_cycle.perception.shared.serialization.history import (
     history_float,
@@ -52,7 +51,7 @@ class VehicleDynamicsPlugin:
             "fit steering-response dynamics against applied autonomous controls."
         ),
         assumptions=(
-            "consecutive camera frames have sufficient overlap and scene texture for Lucas-Kanade flow",
+            "consecutive camera frames have sufficient overlap and scene texture for PyrLK or ORB matching",
             "motion is approximately planar on a flat floor",
             "applied autonomous controls are published in shared memory before perception runs",
         ),
@@ -62,8 +61,8 @@ class VehicleDynamicsPlugin:
         ),
         limitations=(
             "scale-free angular identification only; does not estimate metric speed or turning radius",
-            "turn-response updates require autonomous control history with constant control over the frame interval",
-            "severe motion blur, untextured walls, or excessive inter-frame yaw trigger abstention",
+            "turn-response updates require settled autonomous control history and non-stalled visual motion",
+            "radians-per-second scale depends on camera vertical FOV and barrel distortion configuration",
         ),
     )
 
@@ -75,16 +74,20 @@ class VehicleDynamicsPlugin:
         barrel_distortion: float = 0.12,
         min_dt_ms: int = 20,
         max_dt_ms: int = 500,
+        command_settle_ms: int = 250,
+        min_moving_px_shift: float = 1.5,
         max_observations: int = 40,
         min_tracks: int = 15,
         min_inlier_ratio: float = 0.50,
-        max_step_yaw_radians: float = 0.65,
+        max_step_yaw_radians: float = 0.90,
     ) -> None:
         self.working_width = max(80, int(working_width))
         self.vertical_fov_degrees = float(vertical_fov_degrees)
         self.barrel_distortion = float(barrel_distortion)
         self.min_dt_ms = max(1, int(min_dt_ms))
         self.max_dt_ms = max(self.min_dt_ms, int(max_dt_ms))
+        self.command_settle_ms = max(0, int(command_settle_ms))
+        self.min_moving_px_shift = max(0.0, float(min_moving_px_shift))
         self.max_observations = max(2, int(max_observations))
         self.min_tracks = max(8, int(min_tracks))
         self.min_inlier_ratio = max(0.1, min(0.95, float(min_inlier_ratio)))
@@ -152,10 +155,23 @@ class VehicleDynamicsPlugin:
         assert previous_gray is not None and previous_ms is not None
         dt_ms = int(frame.captured_at_ms) - previous_ms
         estimate = self._estimate_pair(previous_gray, current_gray, dt_ms)
-        applied_control = _constant_autonomous_control(inputs.shared_memory, previous_ms, int(frame.captured_at_ms))
-        recorded = self._maybe_record_observation(estimate, applied_control)
+        applied_control = _settled_autonomous_control(
+            inputs.shared_memory,
+            previous_ms,
+            int(frame.captured_at_ms),
+            settle_ms=self.command_settle_ms,
+        )
+        blocked = _is_motion_blocked(estimate, applied_control, self.min_moving_px_shift)
+        recorded = self._maybe_record_observation(estimate, applied_control, blocked=blocked)
         response = fit_turn_response(self._observations)
-        return _build_batch(estimate, response, dt_ms, applied_control, recorded)
+        return _build_batch(
+            estimate,
+            response,
+            dt_ms=dt_ms,
+            control=applied_control,
+            recorded=recorded,
+            blocked=blocked,
+        )
 
     def _estimate_pair(
         self,
@@ -164,8 +180,7 @@ class VehicleDynamicsPlugin:
         dt_ms: int,
     ) -> VisualYawEstimate:
         if not (self.min_dt_ms <= dt_ms <= self.max_dt_ms):
-            return VisualYawEstimate(None, None, None, False, "abstain_dt_out_of_range", 0, 0.0)
-        flow = track_pyrlk(previous_gray, current_gray)
+            return VisualYawEstimate(None, None, None, False, "abstain_dt_out_of_range", 0, 0.0, 0.0)
         height, width = current_gray.shape[:2]
         intrinsics = CameraIntrinsics(
             width=width,
@@ -173,8 +188,9 @@ class VehicleDynamicsPlugin:
             vertical_fov_degrees=self.vertical_fov_degrees,
             barrel_distortion=self.barrel_distortion,
         )
-        return estimate_circular_arc_yaw(
-            flow,
+        return estimate_visual_yaw(
+            previous_gray,
+            current_gray,
             intrinsics,
             dt_ms / 1000.0,
             min_tracks=self.min_tracks,
@@ -186,8 +202,10 @@ class VehicleDynamicsPlugin:
         self,
         estimate: VisualYawEstimate,
         control: tuple[float, float] | None,
+        *,
+        blocked: bool,
     ) -> bool:
-        if not estimate.confident or estimate.yaw_rate_rad_s is None:
+        if blocked or not estimate.confident or estimate.yaw_rate_rad_s is None:
             return False
         if control is None or not _is_active_turn_control(control):
             return False
@@ -212,6 +230,19 @@ def _is_active_turn_control(control: tuple[float, float]) -> bool:
     return abs(signed_throttle) > 1e-4 and abs(steering) > 1e-4
 
 
+def _is_motion_blocked(
+    estimate: VisualYawEstimate,
+    control: tuple[float, float] | None,
+    min_moving_px_shift: float,
+) -> bool:
+    if control is None or not estimate.confident or estimate.yaw_delta_rad is None:
+        return False
+    signed_throttle, _steering = control
+    if abs(signed_throttle) <= 0.1:
+        return False
+    return estimate.median_px_shift < min_moving_px_shift and abs(estimate.yaw_delta_rad) < 0.015
+
+
 def _parse_observation(item: object) -> TurnObservation | None:
     if not isinstance(item, (list, tuple)) or len(item) != 3:
         return None
@@ -230,12 +261,15 @@ def _restore_observations(raw: object, limit: int) -> list[TurnObservation]:
     return restored[-limit:]
 
 
-def _constant_autonomous_control(
+def _settled_autonomous_control(
     shared_memory: SharedMemory | None,
     start_ms: int,
     end_ms: int,
+    *,
+    settle_ms: int,
 ) -> tuple[float, float] | None:
-    applications = control_applications_over(shared_memory, start_ms, end_ms)
+    window_start = start_ms - settle_ms
+    applications = control_applications_over(shared_memory, window_start, end_ms)
     if not applications:
         return None
     return _uniform_command(applications)
@@ -255,9 +289,11 @@ def _uniform_command(applications: tuple[ControlApplication, ...]) -> tuple[floa
 def _build_batch(
     estimate: VisualYawEstimate,
     response: TurnResponseEstimate,
+    *,
     dt_ms: int,
     control: tuple[float, float] | None,
     recorded: bool,
+    blocked: bool,
 ) -> PerceptionEvidenceBatch:
     yaw_conf = round(estimate.inlier_ratio, 5) if estimate.confident else 0.0
     yaw_signal = PerceptionSignal(
@@ -274,6 +310,8 @@ def _build_batch(
             "dt_ms": dt_ms,
             "num_tracks": estimate.num_tracks,
             "inlier_ratio": round(estimate.inlier_ratio, 5),
+            "median_px_shift": round(estimate.median_px_shift, 4),
+            "motion_blocked": blocked,
         },
     )
     available = response.kind != "abstain"
@@ -300,6 +338,7 @@ def _build_batch(
             "visual_yaw": dict(yaw_signal.properties),
             "turn_response": dict(turn_signal.properties),
             "control_recorded": recorded,
+            "motion_blocked": blocked,
             "interval_control": None if control is None else [control[0], control[1]],
         },
     )

@@ -1,8 +1,9 @@
 """Scale-free monocular visual yaw estimation and turn-response fitting.
 
-Uses forward-backward checked Lucas-Kanade optical flow and Scaramuzza's
-1-point circular-arc epipolar constraint to recover vehicle yaw delta without
-knowing camera height, camera pitch, room scale, or vehicle parameters.
+Uses forward-backward checked Lucas-Kanade optical flow (with an ORB descriptor
+fallback for large inter-frame shifts) and Scaramuzza's 1-point circular-arc
+epipolar constraint to recover vehicle yaw delta without knowing camera height,
+camera pitch, room scale, or vehicle parameters.
 """
 
 from __future__ import annotations
@@ -26,7 +27,7 @@ class CameraIntrinsics:
 
 @dataclass(frozen=True)
 class FrameFlow:
-    """Subpixel feature tracks between two grayscale frames."""
+    """Feature correspondences between two grayscale frames."""
 
     pts_a: np.ndarray
     pts_b: np.ndarray
@@ -46,6 +47,7 @@ class VisualYawEstimate:
     mode: str
     num_tracks: int
     inlier_ratio: float
+    median_px_shift: float = 0.0
 
 
 @dataclass(frozen=True)
@@ -145,6 +147,41 @@ def track_pyrlk(
     )
 
 
+def track_orb_matches(
+    gray_a: np.ndarray,
+    gray_b: np.ndarray,
+    *,
+    max_features: int = 600,
+    lowe_ratio: float = 0.78,
+) -> FrameFlow:
+    """Descriptor-based ORB matching for large rotations and close-range translations."""
+    orb = cv2.ORB_create(nfeatures=max_features, fastThreshold=10)  # pyright: ignore[reportAttributeAccessIssue]
+    kp_a, des_a = orb.detectAndCompute(gray_a, None)
+    kp_b, des_b = orb.detectAndCompute(gray_b, None)
+    empty = np.empty((0, 2), dtype=np.float32)
+    if des_a is None or des_b is None or len(kp_a) < 2 or len(kp_b) < 2:
+        return FrameFlow(empty, empty, len(kp_a), 0, 0.0)
+
+    matcher = cv2.BFMatcher(cv2.NORM_HAMMING)
+    raw = matcher.knnMatch(des_a, des_b, k=2)
+    pts_a_list: list[tuple[float, float]] = []
+    pts_b_list: list[tuple[float, float]] = []
+    for pair in raw:
+        if len(pair) < 2:
+            continue
+        first, second = pair[0], pair[1]
+        if first.distance < lowe_ratio * second.distance:
+            pts_a_list.append(kp_a[first.queryIdx].pt)
+            pts_b_list.append(kp_b[first.trainIdx].pt)
+    if not pts_a_list:
+        return FrameFlow(empty, empty, len(kp_a), 0, 0.0)
+
+    pts_a = np.asarray(pts_a_list, dtype=np.float32)
+    pts_b = np.asarray(pts_b_list, dtype=np.float32)
+    shift = float(np.median(np.linalg.norm(pts_b - pts_a, axis=1)))
+    return FrameFlow(pts_a, pts_b, len(kp_a), len(pts_a), shift)
+
+
 def _filter_flow(
     shape: tuple[int, ...],
     corners: np.ndarray,
@@ -238,22 +275,26 @@ def estimate_circular_arc_yaw(
     *,
     min_tracks: int = 15,
     min_inlier_ratio: float = 0.50,
-    max_step_yaw_rad: float = 0.65,
+    max_step_yaw_rad: float = 0.90,
     sampson_thresh: float = 0.008,
+    mode_label: str = "circular_arc_1pt",
 ) -> VisualYawEstimate:
     """Estimate vehicle yaw (+right) via 1-point circular-arc epipolar geometry with unknown pitch."""
     if flow.num_tracked < min_tracks:
-        return VisualYawEstimate(None, None, None, False, "abstain_low_tracks", flow.num_tracked, 0.0)
+        return VisualYawEstimate(
+            None, None, None, False, "abstain_low_tracks", flow.num_tracked, 0.0, flow.median_px_shift
+        )
     if dt_s <= 0.0:
-        return VisualYawEstimate(None, None, None, False, "abstain_invalid_dt", flow.num_tracked, 0.0)
+        return VisualYawEstimate(
+            None, None, None, False, "abstain_invalid_dt", flow.num_tracked, 0.0, flow.median_px_shift
+        )
 
     na = undistort_pixels(flow.pts_a, intrinsics)
     nb = undistort_pixels(flow.pts_b, intrinsics)
     u1 = np.column_stack([na, np.ones(len(na))])
     u2 = np.column_stack([nb, np.ones(len(nb))])
 
-    best = _search_pitch(u1, u2, sampson_thresh)
-    phi_hat, theta_init, inlier_ratio, sampson = best
+    phi_hat, theta_init, inlier_ratio, sampson = _search_pitch(u1, u2, sampson_thresh)
     theta_hat = _refine_theta_svd(
         u1, u2, phi_hat, theta_init=theta_init, sampson=sampson, sampson_thresh=sampson_thresh
     )
@@ -270,11 +311,50 @@ def estimate_circular_arc_yaw(
     )
     if not confident:
         return VisualYawEstimate(
-            None, None, phi_hat, False, "abstain_low_inliers", flow.num_tracked, inlier_ratio
+            None, None, phi_hat, False, "abstain_low_inliers", flow.num_tracked, inlier_ratio, flow.median_px_shift
         )
     return VisualYawEstimate(
-        theta_hat, theta_hat / dt_s, phi_hat, True, "circular_arc_1pt", flow.num_tracked, inlier_ratio
+        theta_hat, theta_hat / dt_s, phi_hat, True, mode_label, flow.num_tracked, inlier_ratio, flow.median_px_shift
     )
+
+
+def estimate_visual_yaw(
+    gray_a: np.ndarray,
+    gray_b: np.ndarray,
+    intrinsics: CameraIntrinsics,
+    dt_s: float,
+    *,
+    min_tracks: int = 15,
+    min_inlier_ratio: float = 0.50,
+    max_step_yaw_rad: float = 0.90,
+) -> VisualYawEstimate:
+    """Estimate visual yaw using PyrLK first, falling back to ORB matching for large inter-frame shifts."""
+    lk_flow = track_pyrlk(gray_a, gray_b)
+    lk_est = estimate_circular_arc_yaw(
+        lk_flow,
+        intrinsics,
+        dt_s,
+        min_tracks=min_tracks,
+        min_inlier_ratio=min_inlier_ratio,
+        max_step_yaw_rad=max_step_yaw_rad,
+        sampson_thresh=0.008,
+        mode_label="circular_arc_1pt",
+    )
+    if lk_est.confident:
+        return lk_est
+
+    orb_flow = track_orb_matches(gray_a, gray_b)
+    orb_est = estimate_circular_arc_yaw(
+        orb_flow,
+        intrinsics,
+        dt_s,
+        min_tracks=min_tracks,
+        min_inlier_ratio=max(0.45, min_inlier_ratio - 0.05),
+        max_step_yaw_rad=max_step_yaw_rad,
+        sampson_thresh=0.012,
+        mode_label="circular_arc_orb",
+    )
+    return orb_est if orb_est.confident else lk_est
 
 
 def _is_confident_arc_estimate(
@@ -315,7 +395,7 @@ def _search_pitch(
 
 
 def fit_turn_response(observations: tuple[TurnObservation, ...] | list[TurnObservation]) -> TurnResponseEstimate:
-    """Fit signed omega = gain * signed_throttle * tan(max_angle * steering) in Automa sign convention."""
+    """Fit signed omega = gain * signed_throttle * tan(max_angle * steering) robustly against blocked turns."""
     active = [
         obs
         for obs in observations
@@ -327,32 +407,84 @@ def fit_turn_response(observations: tuple[TurnObservation, ...] | list[TurnObser
     st = np.array([obs.signed_throttle for obs in active], dtype=np.float64)
     us = np.array([obs.steering for obs in active], dtype=np.float64)
     omega = np.array([obs.yaw_rate_rad_s for obs in active], dtype=np.float64)
-    abs_steers = np.sort(np.unique(np.round(np.abs(us), 3)))
-    distinct_count = int(len(abs_steers))
-    spread = float(abs_steers[-1] - abs_steers[0]) if distinct_count >= 2 else 0.0
-    max_steer = float(abs_steers[-1]) if distinct_count >= 1 else 0.0
-    can_fit_nonlinear = distinct_count >= 2 and spread >= 0.30 and max_steer >= 0.65
 
-    if not can_fit_nonlinear:
-        return _fit_linear_response(st, us, omega, distinct_count)
-    return _fit_ackermann_response(st, us, omega, distinct_count)
+    sign = _dominant_turn_sign(st, us, omega)
+    if sign == 0.0:
+        return TurnResponseEstimate("abstain", 0.0, 0.0, "unknown", len(active), 0, None, 0.0)
+
+    # Filter out near-zero / wrong-sign observations before upper-consensus clustering.
+    linear_gains = (omega / (st * us)) * sign
+    keep = linear_gains > 0.05
+    if int(np.sum(keep)) < 2:
+        return TurnResponseEstimate("abstain", 0.0, 0.0, "unknown", len(active), 0, None, 0.0)
+    st, us, omega = st[keep], us[keep], omega[keep]
+
+    inlier_mask = _upper_consensus_mask(omega / (st * us) * sign, rel_tol=0.35)
+    clean_us = us[inlier_mask]
+    distinct_count = int(len(np.unique(np.round(np.abs(clean_us), 3))))
+    if not _has_nonlinear_excitation(clean_us):
+        return _fit_linear_response(st, us, omega, sign=sign, distinct_count=distinct_count)
+    return _fit_ackermann_response(st, us, omega, sign=sign, fallback_distinct=distinct_count)
+
+
+def _has_nonlinear_excitation(us: np.ndarray) -> bool:
+    if len(us) < 4:
+        return False
+    abs_steers = np.sort(np.unique(np.round(np.abs(us), 3)))
+    if len(abs_steers) < 2:
+        return False
+    return float(abs_steers[-1] - abs_steers[0]) >= 0.30 and float(abs_steers[-1]) >= 0.65
+
+
+def _dominant_turn_sign(st: np.ndarray, us: np.ndarray, omega: np.ndarray) -> float:
+    signed_gains = omega / (st * us)
+    nonzero = signed_gains[np.abs(signed_gains) > 0.05]
+    if len(nonzero) == 0:
+        return 0.0
+    top_cutoff = float(np.percentile(np.abs(nonzero), 50))
+    top = nonzero[np.abs(nonzero) >= top_cutoff]
+    med = float(np.median(top))
+    return 1.0 if med > 0.0 else -1.0 if med < 0.0 else 0.0
+
+
+def _upper_consensus_mask(values: np.ndarray, *, rel_tol: float) -> np.ndarray:
+    """Select the highest-magnitude supported cluster (contact/drag only slows turns down)."""
+    n = len(values)
+    if n <= 2:
+        return np.ones(n, dtype=bool)
+    min_support = max(2, min(4, int(math.ceil(0.25 * n))))
+    best_mask = np.ones(n, dtype=bool)
+    best_center = -1.0
+    for center in np.sort(values)[::-1]:
+        if center <= 0.0:
+            continue
+        mask = np.abs(values - center) <= rel_tol * center
+        if int(np.sum(mask)) >= min_support:
+            med = float(np.median(values[mask]))
+            if med > best_center:
+                best_center = med
+                best_mask = mask
+                break
+    return best_mask
 
 
 def _fit_linear_response(
     st: np.ndarray,
     us: np.ndarray,
     omega: np.ndarray,
+    *,
+    sign: float,
     distinct_count: int,
 ) -> TurnResponseEstimate:
-    basis = st * us
-    denom = float(np.dot(basis, basis))
-    if denom <= 1e-9:
-        return TurnResponseEstimate("abstain", 0.0, 0.0, "unknown", len(omega), distinct_count, None, 0.0)
-    gain = float(np.dot(basis, omega) / denom)
-    median_res = float(np.median(np.abs(gain * basis - omega)))
-    conf = _response_confidence(len(omega), distinct_count, median_res, nonlinear=False)
+    gains = (omega / (st * us)) * sign
+    mask = _upper_consensus_mask(gains, rel_tol=0.22)
+    gain = float(np.median(gains[mask])) * sign
+    pred = gain * st[mask] * us[mask]
+    median_res = float(np.median(np.abs(pred - omega[mask])))
+    inlier_count = int(np.sum(mask))
+    conf = _response_confidence(inlier_count, distinct_count, median_res, nonlinear=False)
     return TurnResponseEstimate(
-        "linear", gain, 0.0, _turn_sign_label(gain), len(omega), distinct_count, median_res, conf
+        "linear", gain, 0.0, _turn_sign_label(gain), inlier_count, distinct_count, median_res, conf
     )
 
 
@@ -360,21 +492,30 @@ def _fit_ackermann_response(
     st: np.ndarray,
     us: np.ndarray,
     omega: np.ndarray,
-    distinct_count: int,
+    *,
+    sign: float,
+    fallback_distinct: int,
 ) -> TurnResponseEstimate:
-    _, b0, _ = _grid_search_max_angle(st, us, omega, np.linspace(0.15, 1.22, 108))
-    gain, max_angle, _ = _grid_search_max_angle(
-        st, us, omega, np.linspace(max(0.10, b0 - 0.03), min(1.25, b0 + 0.03), 121)
+    gain0, b0, mask0 = _grid_search_max_angle(st, us, omega, sign=sign, grid=np.linspace(0.15, 1.22, 108))
+    if gain0 == 0.0 or not _has_nonlinear_excitation(us[mask0]):
+        return _fit_linear_response(st, us, omega, sign=sign, distinct_count=fallback_distinct)
+    gain, max_angle, mask = _grid_search_max_angle(
+        st, us, omega, sign=sign, grid=np.linspace(max(0.10, b0 - 0.03), min(1.25, b0 + 0.03), 121)
     )
-    pred = gain * st * np.tan(max_angle * us)
-    median_res = float(np.median(np.abs(pred - omega)))
-    conf = _response_confidence(len(omega), distinct_count, median_res, nonlinear=True)
+    if gain == 0.0 or not _has_nonlinear_excitation(us[mask]):
+        return _fit_linear_response(st, us, omega, sign=sign, distinct_count=fallback_distinct)
+    clean_us = us[mask]
+    distinct_count = int(len(np.unique(np.round(np.abs(clean_us), 3))))
+    pred = gain * st[mask] * np.tan(max_angle * clean_us)
+    median_res = float(np.median(np.abs(pred - omega[mask])))
+    inlier_count = int(np.sum(mask))
+    conf = _response_confidence(inlier_count, distinct_count, median_res, nonlinear=True)
     return TurnResponseEstimate(
         "ackermann_tan",
         gain,
         max_angle,
         _turn_sign_label(gain),
-        len(omega),
+        inlier_count,
         distinct_count,
         median_res,
         conf,
@@ -385,24 +526,33 @@ def _grid_search_max_angle(
     st: np.ndarray,
     us: np.ndarray,
     omega: np.ndarray,
+    *,
+    sign: float,
     grid: np.ndarray,
-) -> tuple[float, float, float]:
-    best_err = float("inf")
+) -> tuple[float, float, np.ndarray]:
+    best_score = float("inf")
     best_gain = 0.0
     best_angle = 0.65
+    best_mask = np.zeros(len(omega), dtype=bool)
     for angle in grid:
         basis = st * np.tan(float(angle) * us)
-        denom = float(np.dot(basis, basis))
-        if denom < 1e-12:
+        implied = (omega / basis) * sign
+        mask = _upper_consensus_mask(implied, rel_tol=0.18)
+        if not _has_nonlinear_excitation(us[mask]):
             continue
-        gain = float(np.dot(basis, omega) / denom)
-        diff = np.abs(gain * basis - omega)
-        err = float(np.mean(np.where(diff < 0.25, 0.5 * diff * diff, 0.25 * (diff - 0.125))))
-        if err < best_err:
-            best_err = err
-            best_gain = gain
+        gain_mag = float(np.median(implied[mask]))
+        if gain_mag <= 0.0:
+            continue
+        rel_err = np.abs(implied[mask] - gain_mag) / gain_mag
+        # Prefer tight relative fit across the largest supported upper cluster.
+        coverage_penalty = 0.08 * (1.0 - float(np.mean(mask)))
+        score = float(np.median(rel_err)) + 0.35 * float(np.mean(np.minimum(rel_err, 0.25))) + coverage_penalty
+        if score < best_score:
+            best_score = score
+            best_gain = gain_mag * sign
             best_angle = float(angle)
-    return best_gain, best_angle, best_err
+            best_mask = mask
+    return best_gain, best_angle, best_mask
 
 
 def _turn_sign_label(gain: float) -> str:

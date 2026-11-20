@@ -24,7 +24,9 @@ from implementations.decision_cycle.perception.shared.motion.visual_yaw import (
     FrameFlow,
     TurnObservation,
     estimate_circular_arc_yaw,
+    estimate_visual_yaw,
     fit_turn_response,
+    rgb_to_working_gray,
     undistort_pixels,
 )
 
@@ -191,6 +193,58 @@ class VisualYawTests(unittest.TestCase):
         self.assertEqual(lin_fit.kind, "linear")
         self.assertAlmostEqual(lin_fit.predict_yaw_rate(0.5, 1.0), 1.5, places=4)
 
+    def test_fit_turn_response_resists_half_blocked_observations(self) -> None:
+        # Reproduce the cramped-room failure mode: 50% of observations are blocked or partial-contact.
+        gain = 4.826
+        angle = 0.6458
+        true_full = gain * math.tan(angle)
+        observations: list[TurnObservation] = []
+        for steer, count in ((0.25, 5), (0.50, 7), (0.75, 5)):
+            w_free = gain * math.tan(angle * steer)
+            for idx in range(count):
+                direction = 1.0 if idx % 2 == 0 else -1.0
+                observations.append(TurnObservation(direction, steer, direction * w_free))
+        # Inject 19 blocked / partial-contact observations including pinned full-lock turns.
+        for steer, frac in (
+            (0.25, 0.0), (0.25, 0.0), (0.25, 0.44),
+            (0.50, 0.0), (0.50, 0.47), (0.50, 0.0), (0.50, 0.58),
+            (0.75, 0.08), (0.75, 0.0), (0.75, 0.09), (0.75, 0.0), (0.75, 0.52),
+            (1.00, 0.06), (1.00, 0.0), (1.00, 0.17), (1.00, 0.0), (1.00, 0.0), (1.00, 0.19), (1.00, 0.29),
+        ):
+            w_blocked = frac * gain * math.tan(angle * steer)
+            observations.append(TurnObservation(1.0, steer, w_blocked))
+
+        fit = fit_turn_response(observations)
+        self.assertEqual(fit.kind, "ackermann_tan")
+        self.assertEqual(fit.turn_sign, "normal")
+        self.assertAlmostEqual(fit.predict_yaw_rate(1.0, 1.0), true_full, delta=0.18)
+
+    def test_fit_turn_response_falls_back_to_linear_without_four_supported_inliers(self) -> None:
+        # Two steering levels with only 2 points total must not fit a 2-parameter nonlinear curve.
+        sparse = [
+            TurnObservation(1.0, 0.25, 0.80),
+            TurnObservation(1.0, 0.75, 2.30),
+        ]
+        fit = fit_turn_response(sparse)
+        self.assertEqual(fit.kind, "linear")
+        self.assertEqual(fit.turn_sign, "normal")
+        self.assertGreater(fit.predict_yaw_rate(1.0, 1.0), 2.5)
+
+    def test_orb_fallback_recovers_large_turn_beyond_pyrlk_range(self) -> None:
+        intr = CameraIntrinsics(320, 240, vertical_fov_degrees=82.0, barrel_distortion=0.0)
+        img_a = _textured_scene(320, 240)
+        # 0.72 rad (~41 deg) turn exceeds PyrLK patch range at 320px width.
+        img_b = _warp_pure_yaw(img_a, 0.72, intr)
+        est = estimate_visual_yaw(
+            rgb_to_working_gray(img_a),
+            rgb_to_working_gray(img_b),
+            intr,
+            dt_s=0.2,
+        )
+        self.assertTrue(est.confident)
+        self.assertIsNotNone(est.yaw_delta_rad)
+        self.assertAlmostEqual(est.yaw_delta_rad or 0.0, 0.72, delta=0.04)
+
 
 class VehicleDynamicsPluginTests(unittest.TestCase):
     def test_plugin_loads_via_catalog_warms_up_and_identifies_turn_response(self) -> None:
@@ -198,8 +252,8 @@ class VehicleDynamicsPluginTests(unittest.TestCase):
         runner = PerceptionRunner.from_activation(
             activation,
         )
-        # Override distortion=0 in direct plugin check for exact pinhole homography warp.
-        plugin = VehicleDynamicsPlugin(vertical_fov_degrees=70.0, barrel_distortion=0.0)
+        # Override distortion=0 and settle_ms=0 in direct plugin check for exact pinhole homography warp.
+        plugin = VehicleDynamicsPlugin(vertical_fov_degrees=70.0, barrel_distortion=0.0, command_settle_ms=0)
         intr = CameraIntrinsics(320, 240, 70.0, 0.0)
         base = _textured_scene()
         memory: dict[str, object] = {}
@@ -247,28 +301,41 @@ class VehicleDynamicsPluginTests(unittest.TestCase):
         self.assertEqual(signals["turn_response_available"].properties["turn_sign"], "normal")
         self.assertEqual(signals["turn_response_available"].properties["sample_count"], 4)
 
-    def test_mid_interval_control_change_and_blank_frame_handling(self) -> None:
-        plugin = VehicleDynamicsPlugin(vertical_fov_degrees=70.0, barrel_distortion=0.0)
+    def test_mid_interval_control_change_stall_and_settle_guard(self) -> None:
+        plugin = VehicleDynamicsPlugin(
+            vertical_fov_degrees=70.0, barrel_distortion=0.0, command_settle_ms=250
+        )
         intr = CameraIntrinsics(320, 240, 70.0, 0.0)
         base = _textured_scene()
         memory: dict[str, object] = {}
         with self.assertRaises(PerceptionPluginWarmingUp):
             plugin.perceive(self._inputs(base, "f0", 1000, memory))
 
-        # Control changed mid-interval (1000ms and 1050ms) -> visual yaw works, but observation NOT recorded.
+        # Command changed only 50 ms before prev_ms (< command_settle_ms=250) -> NOT recorded.
         apps = (
-            _control_app(delivered_at_ms=1000, throttle=1.0, steering=0.2),
-            _control_app(delivered_at_ms=1050, throttle=1.0, steering=0.8),
+            _control_app(delivered_at_ms=700, throttle=0.0, steering=0.0),
+            _control_app(delivered_at_ms=950, throttle=1.0, steering=0.5),
         )
         write_host_inputs(memory, mode="autonomy", user_steering=None, user_throttle=None, control_applications=apps)
         warped = _warp_pure_yaw(base, 0.08, intr)
-        batch = plugin.perceive(self._inputs(warped, "f1", 1100, memory))
-        self.assertFalse(batch.measurements["control_recorded"])
-        self.assertTrue(batch.measurements["visual_yaw"]["confident"])
+        batch_unsettled = plugin.perceive(self._inputs(warped, "f1", 1100, memory))
+        self.assertFalse(batch_unsettled.measurements["control_recorded"])
+        self.assertTrue(batch_unsettled.measurements["visual_yaw"]["confident"])
+
+        # Settled command (>= 250 ms before prev_ms=1100), but frame is identical (stalled against obstacle) -> blocked!
+        settled_apps = (
+            _control_app(delivered_at_ms=800, throttle=1.0, steering=0.5),
+        )
+        write_host_inputs(
+            memory, mode="autonomy", user_steering=None, user_throttle=None, control_applications=settled_apps
+        )
+        batch_stalled = plugin.perceive(self._inputs(warped, "f2", 1200, memory))
+        self.assertTrue(batch_stalled.measurements["motion_blocked"])
+        self.assertFalse(batch_stalled.measurements["control_recorded"])
 
         # Blank frame -> abstains cleanly.
         blank = np.full_like(base, 128)
-        batch_blank = plugin.perceive(self._inputs(blank, "f2", 1200, memory))
+        batch_blank = plugin.perceive(self._inputs(blank, "f3", 1300, memory))
         self.assertFalse(batch_blank.measurements["visual_yaw"]["confident"])
 
     @staticmethod

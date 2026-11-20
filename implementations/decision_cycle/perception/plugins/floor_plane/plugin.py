@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+from dataclasses import replace
 from typing import Any
 
 import cv2
@@ -130,13 +131,31 @@ class FloorPlanePlugin:
         )
 
 
+def _working_frame(rgb: np.ndarray, config: FloorPlaneConfig) -> tuple[np.ndarray, FloorPlaneConfig]:
+    height, width = rgb.shape[:2]
+    if not 0 < config.working_width < width:
+        return rgb, config
+    scale = config.working_width / width
+    working_height = min(height, max(2, round(height * scale)))
+    resized = cv2.resize(rgb, (config.working_width, working_height), interpolation=cv2.INTER_AREA)
+    vertical_scale = working_height / height
+    return resized, replace(
+        config,
+        obstacle_run_length=max(1, round(config.obstacle_run_length * vertical_scale)),
+        min_floor_support=max(1, round(config.min_floor_support * vertical_scale)),
+        morph_radius=round(config.morph_radius * scale),
+        boundary_dilate_radius=round(config.boundary_dilate_radius * scale),
+    )
+
+
 def _analyze_floor(
     *,
     rgb: np.ndarray,
     config: FloorPlaneConfig,
 ) -> dict[str, Any]:
+    height, width = rgb.shape[:2]
+    rgb, config = _working_frame(rgb, config)
     normalized_rgb = rgb.astype(np.float32) / 255.0
-    height, width = normalized_rgb.shape[:2]
 
     floor_mask, roi_mask, _model_info = estimate_floor_mask(normalized_rgb, config)
     occupied_mask = roi_mask & ~floor_mask

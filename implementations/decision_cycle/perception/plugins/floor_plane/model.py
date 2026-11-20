@@ -31,6 +31,7 @@ _INT_FIELD_MINIMUMS = (
     ("obstacle_run_length", 1),
     ("min_floor_support", 1),
     ("boundary_dilate_radius", 0),
+    ("working_width", 0),
 )
 _SEED_BOUNDS_PAIRS = (
     ("seed_x0_ratio", "seed_x1_ratio"),
@@ -60,6 +61,7 @@ class FloorPlaneConfig:
     min_boundary_width_ratio: float = 0.02
     near_width_ratio: float = 1.0
     far_width_ratio: float = 0.34
+    working_width: int = 320
 
     def __post_init__(self) -> None:
         for name in _UNIT_RATIO_FIELDS:

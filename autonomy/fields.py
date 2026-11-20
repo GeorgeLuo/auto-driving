@@ -100,6 +100,23 @@ def require_number(value: object, *, field_name: str, bounds: tuple[float, float
     return number
 
 
+def require_ordered_numbers(
+    low: object,
+    high: object,
+    *,
+    low_name: str,
+    high_name: str,
+    bounds: tuple[float, float] | None = None,
+) -> tuple[float, float]:
+    """Two finite numbers inside ``bounds`` with ``low <= high``."""
+
+    low_value = require_number(low, field_name=low_name, bounds=bounds)
+    high_value = require_number(high, field_name=high_name, bounds=bounds)
+    if low_value > high_value:
+        raise FieldError(low_name, f"must be <= {high_name}")
+    return low_value, high_value
+
+
 def require_text(value: object, *, field_name: str) -> str:
     """A nonempty string, kept exactly as written."""
 

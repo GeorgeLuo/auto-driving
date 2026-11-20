@@ -195,6 +195,53 @@ def find_motion_groups(
     return groups, grouped_indices
 
 
+def _accepted_similarity_pairs(
+    matches: list[FeatureMatch],
+    indices: list[int],
+) -> tuple[np.ndarray, np.ndarray, np.ndarray, np.ndarray]:
+    source = np.array([matches[i].source for i in indices], dtype=np.float64)
+    target = np.array([matches[i].target for i in indices], dtype=np.float64)
+    src_complex = source[:, 0] + 1j * source[:, 1]
+    dst_complex = target[:, 0] + 1j * target[:, 1]
+    left, right = np.triu_indices(len(indices), k=1)
+    delta = src_complex[right] - src_complex[left]
+    separated = np.abs(delta) >= 10.0
+    transform = (dst_complex[right[separated]] - dst_complex[left[separated]]) / delta[separated]
+    left = left[separated]
+    scale = np.abs(transform)
+    accepted = (scale >= 0.35) & (scale <= 3.8)
+    left = left[accepted]
+    transform = transform[accepted]
+    offset = dst_complex[left] - transform * src_complex[left]
+    return src_complex, dst_complex, transform, offset
+
+
+def _chunk_similarity_winner(
+    src_complex: np.ndarray,
+    dst_complex: np.ndarray,
+    transform: np.ndarray,
+    offset: np.ndarray,
+    start: int,
+    *,
+    residual_threshold: float,
+) -> tuple[tuple[int, float], np.ndarray] | None:
+    chunk = slice(start, start + 256)
+    predicted = transform[chunk, None] * src_complex + offset[chunk, None]
+    residual = np.abs(predicted - dst_complex)
+    inliers = residual <= residual_threshold
+    counts = np.count_nonzero(inliers, axis=1)
+    count = int(counts.max()) if counts.size else 0
+    if count < 4:
+        return None
+    rows = np.flatnonzero(counts == count)
+    selected = np.where(inliers[rows], residual[rows], np.inf)
+    low, high = (count - 1) // 2, count // 2
+    middle = np.partition(selected, (low, high), axis=1)
+    medians = (middle[:, low] + middle[:, high]) / 2.0
+    winner = int(np.argmin(medians))
+    return (count, -float(medians[winner])), inliers[rows[winner]]
+
+
 def find_best_similarity_group(
     matches: list[FeatureMatch],
     indices: list[int],
@@ -203,42 +250,30 @@ def find_best_similarity_group(
     if len(indices) < 4:
         return None
 
-    source = np.array([matches[i].source for i in indices], dtype=np.float64)
-    target = np.array([matches[i].target for i in indices], dtype=np.float64)
-    src_complex = source[:, 0] + 1j * source[:, 1]
-    dst_complex = target[:, 0] + 1j * target[:, 1]
+    src_complex, dst_complex, transform, offset = _accepted_similarity_pairs(matches, indices)
+    # A count below 4 never wins. An equal score keeps the earlier pair, which
+    # is the same lexicographic order as the previous nested loops.
+    best_score = (3, -float("inf"))
+    best_inliers: np.ndarray | None = None
+    for start in range(0, transform.size, 256):
+        ranked = _chunk_similarity_winner(
+            src_complex,
+            dst_complex,
+            transform,
+            offset,
+            start,
+            residual_threshold=residual_threshold,
+        )
+        if ranked is None:
+            continue
+        score, inliers = ranked
+        if score > best_score:
+            best_score = score
+            best_inliers = inliers
 
-    best_local: np.ndarray | None = None
-    best_score: tuple[int, float] | None = None
-    for local_i in range(len(indices)):
-        for local_j in range(local_i + 1, len(indices)):
-            src_delta = src_complex[local_j] - src_complex[local_i]
-            if abs(src_delta) < 10.0:
-                continue
-
-            transform = (dst_complex[local_j] - dst_complex[local_i]) / src_delta
-            transform_scale = abs(transform)
-            if transform_scale < 0.35 or transform_scale > 3.8:
-                continue
-
-            offset = dst_complex[local_i] - transform * src_complex[local_i]
-            predicted = transform * src_complex + offset
-            residual = np.abs(predicted - dst_complex)
-            inliers = residual <= residual_threshold
-            count = int(inliers.sum())
-            if count < 4 or (best_score is not None and count < best_score[0]):
-                continue
-
-            median_residual = float(np.median(residual[inliers]))
-            score = (count, -median_residual)
-            if best_score is None or score > best_score:
-                best_score = score
-                best_local = inliers
-
-    if best_local is None:
+    if best_inliers is None:
         return None
-
-    return [indices[i] for i, is_inlier in enumerate(best_local) if is_inlier]
+    return [index for index, inlier in zip(indices, best_inliers, strict=True) if inlier]
 
 
 def summarize_group(group_id: int, matches: list[FeatureMatch], indices: list[int]) -> MotionGroup:

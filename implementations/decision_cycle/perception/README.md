@@ -28,11 +28,13 @@ stages the default.
 | Preset | Plugins |
 |---|---|
 | `lightweight_observer` (default) | `frame`, `floor_plane` |
-| `sim_debug` | `frame`, `sim_color_targets` |
+| `sim_debug` (diagnostic, not a driving preset) | `frame`, `sim_color_targets` |
 | `chase-v1-detect-by-color` | `sim_cardboard_obstacle`, `sim_cardboard_permanence` |
-| `visual_observer` | `frame`, `floor_plane`, `motion_tracks` |
+| `visual_observer` (diagnostic scene-motion tracks, not a driving preset) | `frame`, `floor_plane`, `motion_tracks` |
 | `multi_obstruction` | `multi_obstruction_tracks`, `floor_continuity`, `classical_regions` |
 | `obstruction_observer` | `frame`, `floor_plane`, `multi_obstruction_tracks`, with config overrides |
+| `capture_floor` | `floor_continuity`, with the stricter capture boundary settings |
+| `object_separated_fusion` | `composite_box_fusion`, with object-separated geometry |
 
 ## Finding the default business logic
 

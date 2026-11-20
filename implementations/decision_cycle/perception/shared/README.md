@@ -8,6 +8,7 @@ when more than one plugin, a memory plugin, or a tool needs it.
 | Topic | Holds |
 |---|---|
 | `features/` | Feature-point matching across frames, and motion fits over a sequence. |
+| `floor/` | Bottom-up column scans shared by floor-boundary plugins. |
 | `image/` | Whole-frame image operations: contrast, frame analysis. |
 | `landmarks/` | Landmark distance estimates. |
 | `motion/` | Scene motion between frames. |

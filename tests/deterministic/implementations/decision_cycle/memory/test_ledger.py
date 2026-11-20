@@ -14,7 +14,6 @@ from implementations.decision_cycle.memory.shared.evidence_ledger.ledger import 
     LEDGER_SCHEMA,
     EvidenceLedger,
     LedgerBounds,
-    bounds_from_config,
     empty_ledger,
 )
 
@@ -79,8 +78,8 @@ class EvidenceLedgerTests(unittest.TestCase):
         self.assertEqual(empty.record_count, 0)
 
 
-    def test_bounds_come_from_plugin_config(self) -> None:
-        bounds = bounds_from_config({"max_records": 8, "max_age_ms": None})
+    def test_null_age_is_an_explicit_constructor_value(self) -> None:
+        bounds = LedgerBounds(max_records=8, max_age_ms=None)
 
         self.assertEqual(bounds.max_records, 8)
         self.assertIsNone(bounds.max_age_ms)

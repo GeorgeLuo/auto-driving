@@ -47,12 +47,4 @@ class DecisionRecords:
             "action": self.action.to_dict(),
         }
 
-    @classmethod
-    def from_cycle(cls, cycle: Any) -> DecisionRecords | None:
-        """The decision records of a cycle result, when it has them."""
 
-        proposal = getattr(cycle, "proposal", None)
-        action = getattr(cycle, "action", None)
-        if not isinstance(proposal, ProposalResult) or not isinstance(action, ActionResult):
-            return None
-        return cls(proposal=proposal, plan=getattr(cycle, "plan", None), action=action)

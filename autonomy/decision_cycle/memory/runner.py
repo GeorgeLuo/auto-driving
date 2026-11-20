@@ -136,7 +136,7 @@ class MemoryPluginRuntime:
 class MemoryRunner(StepRunner[MemoryPluginRuntime]):
     """Run the manager's selected memory plugins once per decision cycle.
 
-    This runner is the step's ``MemoryBackend``. Each applied plugin is held
+    Each applied plugin is held
     in a ``MemoryPluginRuntime`` that times and reports it.
 
     Plugins run in selection order on the same host map. Each plugin writes its

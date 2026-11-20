@@ -147,9 +147,6 @@ def content_type_for_path(path: Path) -> str:
     return mimetypes.guess_type(path.name)[0] or "application/octet-stream"
 
 
-load_image_source = normalize_image_directory
-
-
 def _path_text(source_dir: object) -> str:
     if not isinstance(source_dir, (str, os.PathLike)):
         raise SourceValidationError("source_dir must be a path string")
@@ -534,7 +531,6 @@ __all__ = [
     "WORKBENCH_DEFAULT_MAX_FRAMES",
     "WORKBENCH_DEFAULT_MAX_IMAGE_BYTES",
     "content_type_for_path",
-    "load_image_source",
     "manifest_frame_entries",
     "normalize_image_directory",
     "read_image_manifest",

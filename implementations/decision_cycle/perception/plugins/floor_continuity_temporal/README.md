@@ -8,6 +8,10 @@ reuse the last geometry with decayed confidence.
 It is intended for the captured PiCar sequence. It is representation evidence,
 not object identity, semantic detection, depth, or safe traversability.
 
+Held confidence decays by `held_confidence_decay` (0.82) on each missed frame.
+Association uses `overlap_weight` 0.55, `distance_weight` 0.30 and
+`confidence_weight` 0.15. Each weight is a number in 0..1.
+
 Run it against the capture with:
 
 ```sh

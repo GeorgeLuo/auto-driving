@@ -10,6 +10,7 @@ from autonomy.fields import (
     require_keys,
     require_nested,
     require_number,
+    require_ordered_numbers,
     require_schema,
 )
 
@@ -45,6 +46,16 @@ class FieldRuleTests(unittest.TestCase):
         for value in (True, "0.5", float("nan"), float("inf"), 10**400, 1.5):
             with self.subTest(value=value), self.assertRaisesRegex(FieldError, r"^steering must be a finite number in \[-1, 1\]$"):
                 require_number(value, field_name="steering", bounds=(-1.0, 1.0))
+
+    def test_ordered_numbers_reject_inverted_or_out_of_bounds_pairs(self) -> None:
+        self.assertEqual(
+            require_ordered_numbers(0.2, 0.2, low_name="low", high_name="high", bounds=(0, 1)),
+            (0.2, 0.2),
+        )
+        with self.assertRaisesRegex(FieldError, r"^low must be <= high$"):
+            require_ordered_numbers(0.8, 0.2, low_name="low", high_name="high", bounds=(0, 1))
+        with self.assertRaisesRegex(FieldError, r"^high must be a finite number in \[0, 1\]$"):
+            require_ordered_numbers(0.2, 1.5, low_name="low", high_name="high", bounds=(0, 1))
 
     def test_a_choice_accepts_only_a_listed_string(self) -> None:
         for value in ({}, [], " manual", None):

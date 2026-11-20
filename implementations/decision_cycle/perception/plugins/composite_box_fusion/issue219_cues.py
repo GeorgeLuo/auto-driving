@@ -1,9 +1,11 @@
 
-# selected=['_adaptive_contours', '_canny_morph', '_corner_junctions', '_hough_fragments', '_partial_contour', '_photometric_windows', '_quad_rectangularity'] needed=['_adaptive_contours', '_bbox_area', '_bbox_iou', '_canny_morph', '_contour_candidate', '_corner_junctions', '_cv_box_thing', '_dedupe_cv_things', '_gray_variants', '_hough_fragments', '_normalized_xywh', '_partial_contour', '_photometric_windows', '_quad_rectangularity', '_quad_score', '_working_rgb', '_zone_from_bbox']
+# Cue helpers for composite box fusion. The adaptive-contour cue was removed;
+# adaptive_contours_max_boxes stays accepted by the plugin constructor.
 from __future__ import annotations
 
 import math
-from typing import Any
+from functools import lru_cache
+from typing import Any, NamedTuple
 
 import cv2
 import numpy as np
@@ -13,6 +15,35 @@ from autonomy.decision_cycle.perception.evidence.values import (
     ViewLocation,
 )
 
+
+class PreparedCueImage:
+    """Call-local working RGB raster and lazy grayscale variants for one frame."""
+
+    def __init__(self, source_rgb: np.ndarray, working_width: int) -> None:
+        self._source_rgb = source_rgb
+        self._working_width = working_width
+        self._rgb: np.ndarray | None = None
+        self._gray_variants: dict[str, np.ndarray] | None = None
+
+    def working_rgb(self) -> np.ndarray:
+        if self._rgb is None:
+            self._rgb = _working_rgb(self._source_rgb, self._working_width)
+        return self._rgb
+
+    def gray_variants(self) -> dict[str, np.ndarray]:
+        if self._gray_variants is None:
+            self._gray_variants = _gray_variants(self.working_rgb())
+        return self._gray_variants
+
+
+def _prepare_cue_image(
+    rgb: np.ndarray,
+    working_width: int,
+    prepared: PreparedCueImage | None,
+) -> PreparedCueImage:
+    return PreparedCueImage(rgb, working_width) if prepared is None else prepared
+
+
 def _working_rgb(rgb: np.ndarray, working_width: int) -> np.ndarray:
     source_height, source_width = rgb.shape[:2]
     scale = min(1.0, working_width / max(source_width, 1))
@@ -20,9 +51,13 @@ def _working_rgb(rgb: np.ndarray, working_width: int) -> np.ndarray:
         return rgb
     return cv2.resize(
         rgb,
-        (max(1, int(round(source_width * scale))), max(1, int(round(source_height * scale)))),
+        (
+            max(1, int(round(source_width * scale))),
+            max(1, int(round(source_height * scale))),
+        ),
         interpolation=cv2.INTER_AREA,
     )
+
 
 def _gray_variants(rgb: np.ndarray) -> dict[str, np.ndarray]:
     lab = cv2.cvtColor(rgb, cv2.COLOR_RGB2LAB)
@@ -168,15 +203,16 @@ def _canny_morph(
     shared_close_kernel: int = 0,
     shared_min_width_px: int = 0,
     shared_min_height_px: int = 0,
+    prepared: PreparedCueImage | None = None,
 ) -> list[PerceivedThing]:
-    working = _working_rgb(rgb, working_width)
+    prepared = _prepare_cue_image(rgb, working_width, prepared)
     outputs: list[PerceivedThing] = []
     settings = (
         (35, 105, 5, 7, 1, 0),
         (55, 145, 3, 5, 2, 0),
         (75, 190, 5, 9, 1, 1),
     )
-    for channel_name, channel in _gray_variants(working).items():
+    for channel_name, channel in prepared.gray_variants().items():
         for low, high, blur, close_kernel, close_iter, open_iter in settings:
             if shared_blur_kernel > 0:
                 blur = shared_blur_kernel
@@ -230,73 +266,269 @@ def _canny_morph(
                     outputs.append(thing)
     return _dedupe_cv_things(outputs, threshold=0.92, max_boxes=max_boxes)
 
-def _adaptive_contours(
-    rgb: np.ndarray,
+def _reported_px(value: float) -> int | float:
+    number = float(value)
+    if number.is_integer():
+        return int(number)
+    return number
+
+
+class _ScoredBox(NamedTuple):
+    """Lightweight box kept until suppression. Field order is the tuple order."""
+
+    bbox: tuple[float, float, float, float]
+    confidence: float
+    source: str
+    index: int
+    kind: str
+    label: str
+    properties: dict[str, object]
+
+
+def _keep_scored_boxes(
+    candidates: list[_ScoredBox],
     *,
-    working_width: int,
+    threshold: float,
     max_boxes: int,
 ) -> list[PerceivedThing]:
-    """Keep loose adaptive-threshold fragments as a separate geometry cue."""
-    working = _working_rgb(rgb, working_width)
-    lab = cv2.cvtColor(working, cv2.COLOR_RGB2LAB)
-    gray = cv2.cvtColor(working, cv2.COLOR_RGB2GRAY)
-    outputs: list[PerceivedThing] = []
-    for channel_name, channel in (("lab_l", lab[..., 0]), ("gray", gray)):
-        binary = cv2.adaptiveThreshold(
-            channel,
-            255,
-            cv2.ADAPTIVE_THRESH_GAUSSIAN_C,
-            cv2.THRESH_BINARY,
-            51,
-            5,
+    """Suppress lightweight boxes, then build typed things for the ones kept.
+
+    Each candidate is ``(bbox, confidence, source, index, kind, label, properties)``.
+    Confidence is already clamped. The sort is stable, so equal scores keep
+    emission order. ``index`` is assigned before suppression and stays on the id.
+    """
+
+    kept: list[_ScoredBox] = []
+    for candidate in sorted(candidates, key=lambda item: item[1], reverse=True):
+        bbox = candidate[0]
+        if any(_bbox_iou(bbox, previous[0]) >= threshold for previous in kept):
+            continue
+        kept.append(candidate)
+        if len(kept) >= max_boxes:
+            break
+    return [
+        _cv_box_thing(
+            source,
+            index,
+            bbox,
+            confidence,
+            kind=kind,
+            label=label,
+            properties=properties,
         )
-        binary = cv2.morphologyEx(
-            binary,
-            cv2.MORPH_CLOSE,
-            np.ones((3, 3), dtype=np.uint8),
-            iterations=1,
+        for bbox, confidence, source, index, kind, label, properties in kept
+    ]
+
+
+def _padded_member_span(
+    points_xy: list[tuple[float, float]],
+    members: list[int],
+) -> tuple[int, int, int, int]:
+    xs = [points_xy[member_index][0] for member_index in members]
+    ys = [points_xy[member_index][1] for member_index in members]
+    return (
+        int(math.floor(min(xs) - 20.0)),
+        int(math.floor(min(ys) - 20.0)),
+        int(math.ceil(max(xs) + 20.0)),
+        int(math.ceil(max(ys) + 20.0)),
+    )
+
+
+def _corner_cluster_candidate(
+    points_xy: list[tuple[float, float]],
+    anchor: tuple[float, float],
+    *,
+    response: np.ndarray,
+    response_max: float,
+    radius_px: float,
+    reported_radius: int | float,
+    width: int,
+    height: int,
+    output_index: int,
+) -> _ScoredBox | None:
+    px, py = anchor
+    members = [
+        member_index
+        for member_index, (qx, qy) in enumerate(points_xy)
+        if math.hypot(px - qx, py - qy) <= radius_px
+    ]
+    if len(members) < 3:
+        return None
+    x1, y1, x2, y2 = _padded_member_span(points_xy, members)
+    box_width = x2 - x1
+    box_height = y2 - y1
+    density = len(members) / max(1.0, (box_width * box_height) / 10000.0)
+    corner_response = float(response[int(round(py)), int(round(px))]) / response_max
+    score = (
+        0.27
+        + 0.42 * min(1.0, len(members) / 12.0)
+        + 0.18 * min(1.0, density)
+        + 0.13 * min(1.0, corner_response)
+    )
+    bbox = _normalized_xywh(x1, y1, box_width, box_height, width, height)
+    if _bbox_area(bbox) <= 0.00025 or _bbox_area(bbox) > 0.28:
+        return None
+    return _ScoredBox(
+        bbox,
+        max(0.0, min(1.0, float(score))),
+        "corner_junctions",
+        output_index,
+        "corner_support",
+        "corner_junctions: local support",
+        {
+            "anchor_xy_px": [round(px, 2), round(py, 2)],
+            "member_count": len(members),
+            "cluster_radius_px": reported_radius,
+            "cluster_padding_px": 20,
+            "corner_response": round(corner_response, 4),
+            "working_width": width,
+            "working_height": height,
+        },
+    )
+
+
+def _append_corner_clusters(
+    outputs: list[_ScoredBox],
+    points_xy: list[tuple[float, float]],
+    *,
+    response: np.ndarray,
+    response_max: float,
+    radius_px: float,
+    reported_radius: int | float,
+    width: int,
+    height: int,
+) -> None:
+    for anchor in points_xy:
+        candidate = _corner_cluster_candidate(
+            points_xy,
+            anchor,
+            response=response,
+            response_max=response_max,
+            radius_px=radius_px,
+            reported_radius=reported_radius,
+            width=width,
+            height=height,
+            output_index=len(outputs),
         )
-        contours, _ = cv2.findContours(
-            binary,
-            cv2.RETR_LIST,
-            cv2.CHAIN_APPROX_SIMPLE,
-        )
-        for contour in contours:
-            thing = _contour_candidate(
-                "adaptive_contours",
-                len(outputs),
-                contour,
-                binary,
-                params={
-                    "channel": channel_name,
-                    "mode": "adaptive_threshold",
-                    "adaptive_block": 51,
-                    "adaptive_constant": 5,
-                    "close_kernel": 3,
-                    "close_iter": 1,
-                    "retrieval": "list",
-                },
-                min_area_fraction=0.00035,
-                max_area_fraction=0.19,
-                min_width=15,
-                min_height=15,
+        if candidate is not None:
+            outputs.append(candidate)
+
+
+def _corner_pair_candidate(
+    points_xy: list[tuple[float, float]],
+    left_index: int,
+    right_index: int,
+    *,
+    response: np.ndarray,
+    response_max: float,
+    pair_min_px: float,
+    pair_max_px: float,
+    width: int,
+    height: int,
+    output_index: int,
+) -> _ScoredBox | None:
+    x1, y1 = points_xy[left_index]
+    x2, y2 = points_xy[right_index]
+    distance = math.hypot(abs(x2 - x1), abs(y2 - y1))
+    if distance < pair_min_px or distance > pair_max_px:
+        return None
+    angle = abs(math.degrees(math.atan2(y2 - y1, x2 - x1))) % 180.0
+    axis_bonus = max(
+        0.0,
+        1.0 - min(abs(angle), abs(angle - 90.0), abs(angle - 180.0)) / 45.0,
+    )
+    if axis_bonus < 0.06:
+        return None
+    pad = 16
+    box = (
+        int(math.floor(min(x1, x2) - pad)),
+        int(math.floor(min(y1, y2) - pad)),
+        int(math.ceil(max(x1, x2) + pad)),
+        int(math.ceil(max(y1, y2) + pad)),
+    )
+    box_width = box[2] - box[0]
+    box_height = box[3] - box[1]
+    bbox = _normalized_xywh(box[0], box[1], box_width, box_height, width, height)
+    if _bbox_area(bbox) <= 0.00025 or _bbox_area(bbox) > 0.28:
+        return None
+    support = (
+        float(response[int(round(y1)), int(round(x1))])
+        + float(response[int(round(y2)), int(round(x2))])
+    ) / (2.0 * response_max)
+    score = (
+        0.23
+        + 0.28 * axis_bonus
+        + 0.25 * min(1.0, distance / 260.0)
+        + 0.24 * min(1.0, support)
+    )
+    return _ScoredBox(
+        bbox,
+        max(0.0, min(1.0, float(score))),
+        "corner_junctions",
+        output_index,
+        "corner_pair_support",
+        "corner_junctions: aligned pair",
+        {
+            "pair_xy_px": [
+                [round(x1, 2), round(y1, 2)],
+                [round(x2, 2), round(y2, 2)],
+            ],
+            "distance_px": round(distance, 3),
+            "angle_deg": round(angle, 3),
+            "axis_bonus": round(axis_bonus, 4),
+            "pair_padding_px": pad,
+            "working_width": width,
+            "working_height": height,
+        },
+    )
+
+
+def _append_corner_pairs(
+    outputs: list[_ScoredBox],
+    points_xy: list[tuple[float, float]],
+    *,
+    response: np.ndarray,
+    response_max: float,
+    pair_min_px: float,
+    pair_max_px: float,
+    width: int,
+    height: int,
+) -> None:
+    for left_index in range(len(points_xy)):
+        for right_index in range(left_index + 1, len(points_xy)):
+            candidate = _corner_pair_candidate(
+                points_xy,
+                left_index,
+                right_index,
+                response=response,
+                response_max=response_max,
+                pair_min_px=pair_min_px,
+                pair_max_px=pair_max_px,
+                width=width,
+                height=height,
+                output_index=len(outputs),
             )
-            if thing is not None:
-                outputs.append(thing)
-    return _dedupe_cv_things(outputs, threshold=0.62, max_boxes=max_boxes)
+            if candidate is not None:
+                outputs.append(candidate)
+
 
 def _corner_junctions(
     rgb: np.ndarray,
     *,
     working_width: int,
     max_boxes: int,
+    max_corners: int = 600,
+    corner_radius_px: float = 96.0,
+    pair_min_px: float = 24.0,
+    pair_max_px: float = 360.0,
+    prepared: PreparedCueImage | None = None,
 ) -> list[PerceivedThing]:
     """Emit local corner clusters and aligned corner-pair ROIs, not rectangles."""
-    working = _working_rgb(rgb, working_width)
-    gray = cv2.cvtColor(working, cv2.COLOR_RGB2GRAY)
+    prepared = _prepare_cue_image(rgb, working_width, prepared)
+    gray = cv2.cvtColor(prepared.working_rgb(), cv2.COLOR_RGB2GRAY)
     points = cv2.goodFeaturesToTrack(
         gray,
-        maxCorners=600,
+        maxCorners=int(max_corners),
         qualityLevel=0.006,
         minDistance=9,
         blockSize=5,
@@ -307,120 +539,30 @@ def _corner_junctions(
     response = cv2.cornerMinEigenVal(gray, blockSize=5, ksize=3)
     response_max = max(float(np.max(response)), 1e-6)
     height, width = gray.shape[:2]
-    outputs: list[PerceivedThing] = []
-
-    for index, (px, py) in enumerate(points_xy):
-        members = [
-            member_index
-            for member_index, (qx, qy) in enumerate(points_xy)
-            if math.hypot(px - qx, py - qy) <= 96.0
-        ]
-        if len(members) < 3:
-            continue
-        xs = [points_xy[member_index][0] for member_index in members]
-        ys = [points_xy[member_index][1] for member_index in members]
-        x1 = int(math.floor(min(xs) - 20.0))
-        y1 = int(math.floor(min(ys) - 20.0))
-        x2 = int(math.ceil(max(xs) + 20.0))
-        y2 = int(math.ceil(max(ys) + 20.0))
-        box_width = x2 - x1
-        box_height = y2 - y1
-        density = len(members) / max(
-            1.0,
-            (box_width * box_height) / 10000.0,
-        )
-        corner_response = float(response[int(round(py)), int(round(px))]) / response_max
-        score = (
-            0.27
-            + 0.42 * min(1.0, len(members) / 12.0)
-            + 0.18 * min(1.0, density)
-            + 0.13 * min(1.0, corner_response)
-        )
-        bbox = _normalized_xywh(x1, y1, box_width, box_height, width, height)
-        if _bbox_area(bbox) <= 0.00025 or _bbox_area(bbox) > 0.28:
-            continue
-        outputs.append(
-            _cv_box_thing(
-                "corner_junctions",
-                len(outputs),
-                bbox,
-                score,
-                kind="corner_support",
-                label="corner_junctions: local support",
-                properties={
-                    "anchor_xy_px": [round(px, 2), round(py, 2)],
-                    "member_count": len(members),
-                    "cluster_radius_px": 96,
-                    "cluster_padding_px": 20,
-                    "corner_response": round(corner_response, 4),
-                    "working_width": width,
-                    "working_height": height,
-                },
-            )
-        )
-
-    for left_index, (x1, y1) in enumerate(points_xy):
-        for right_index in range(left_index + 1, len(points_xy)):
-            x2, y2 = points_xy[right_index]
-            dx = abs(x2 - x1)
-            dy = abs(y2 - y1)
-            distance = math.hypot(dx, dy)
-            if distance < 24.0 or distance > 360.0:
-                continue
-            angle = abs(math.degrees(math.atan2(y2 - y1, x2 - x1))) % 180.0
-            axis_bonus = max(
-                0.0,
-                1.0 - min(abs(angle), abs(angle - 90.0), abs(angle - 180.0)) / 45.0,
-            )
-            if axis_bonus < 0.06:
-                continue
-            pad = 16
-            box = (
-                int(math.floor(min(x1, x2) - pad)),
-                int(math.floor(min(y1, y2) - pad)),
-                int(math.ceil(max(x1, x2) + pad)),
-                int(math.ceil(max(y1, y2) + pad)),
-            )
-            box_width = box[2] - box[0]
-            box_height = box[3] - box[1]
-            bbox = _normalized_xywh(
-                box[0], box[1], box_width, box_height, width, height
-            )
-            if _bbox_area(bbox) <= 0.00025 or _bbox_area(bbox) > 0.28:
-                continue
-            support = (
-                float(response[int(round(y1)), int(round(x1))])
-                + float(response[int(round(y2)), int(round(x2))])
-            ) / (2.0 * response_max)
-            score = (
-                0.23
-                + 0.28 * axis_bonus
-                + 0.25 * min(1.0, distance / 260.0)
-                + 0.24 * min(1.0, support)
-            )
-            outputs.append(
-                _cv_box_thing(
-                    "corner_junctions",
-                    len(outputs),
-                    bbox,
-                    score,
-                    kind="corner_pair_support",
-                    label="corner_junctions: aligned pair",
-                    properties={
-                        "pair_xy_px": [
-                            [round(x1, 2), round(y1, 2)],
-                            [round(x2, 2), round(y2, 2)],
-                        ],
-                        "distance_px": round(distance, 3),
-                        "angle_deg": round(angle, 3),
-                        "axis_bonus": round(axis_bonus, 4),
-                        "pair_padding_px": pad,
-                        "working_width": width,
-                        "working_height": height,
-                    },
-                )
-            )
-    return _dedupe_cv_things(outputs, threshold=0.56, max_boxes=max_boxes)
+    outputs: list[_ScoredBox] = []
+    radius_px = float(corner_radius_px)
+    reported_radius = _reported_px(radius_px)
+    _append_corner_clusters(
+        outputs,
+        points_xy,
+        response=response,
+        response_max=response_max,
+        radius_px=radius_px,
+        reported_radius=reported_radius,
+        width=width,
+        height=height,
+    )
+    _append_corner_pairs(
+        outputs,
+        points_xy,
+        response=response,
+        response_max=response_max,
+        pair_min_px=pair_min_px,
+        pair_max_px=pair_max_px,
+        width=width,
+        height=height,
+    )
+    return _keep_scored_boxes(outputs, threshold=0.56, max_boxes=max_boxes)
 
 def _quad_score(
     contour: np.ndarray,
@@ -447,10 +589,11 @@ def _quad_rectangularity(
     shared_min_width_px: int = 0,
     shared_min_height_px: int = 0,
     shared_max_vertices: int = 0,
+    prepared: PreparedCueImage | None = None,
 ) -> list[PerceivedThing]:
-    working = _working_rgb(rgb, working_width)
+    prepared = _prepare_cue_image(rgb, working_width, prepared)
     outputs: list[PerceivedThing] = []
-    for channel_name, channel in _gray_variants(working).items():
+    for channel_name, channel in prepared.gray_variants().items():
         for block, constant, morph_size, morph_iter in (
             (31, 5, 3, 1),
             (51, 9, 5, 1),
@@ -542,11 +685,12 @@ def _partial_contour(
     shared_close_kernel: int = 0,
     shared_min_width_px: int = 0,
     shared_min_height_px: int = 0,
+    prepared: PreparedCueImage | None = None,
 ) -> list[PerceivedThing]:
-    working = _working_rgb(rgb, working_width)
-    height, width = working.shape[:2]
+    prepared = _prepare_cue_image(rgb, working_width, prepared)
+    height, width = prepared.working_rgb().shape[:2]
     outputs: list[PerceivedThing] = []
-    for channel_name, channel in _gray_variants(working).items():
+    for channel_name, channel in prepared.gray_variants().items():
         for low, high, blur in ((25, 75, 3), (45, 120, 5), (70, 170, 7)):
             if shared_blur_kernel > 0:
                 blur = shared_blur_kernel
@@ -619,14 +763,81 @@ def _partial_contour(
                 )
     return _dedupe_cv_things(outputs, threshold=0.88, max_boxes=max_boxes)
 
-def _photometric_windows(
-    rgb: np.ndarray,
-    *,
-    working_width: int,
-    max_boxes: int,
-) -> list[PerceivedThing]:
-    working = _working_rgb(rgb, working_width)
-    height, width = working.shape[:2]
+class _PhotometricWindowGrid(NamedTuple):
+    width_fraction: float
+    aspect: float
+    box_width: int
+    box_height: int
+    x: np.ndarray
+    y: np.ndarray
+    x1: np.ndarray
+    y1: np.ndarray
+    ring_x0: np.ndarray
+    ring_y0: np.ndarray
+    ring_x1: np.ndarray
+    ring_y1: np.ndarray
+
+
+class _PhotometricIntegrals(NamedTuple):
+    chromatic: np.ndarray
+    dark: np.ndarray
+    gray: np.ndarray
+
+
+@lru_cache(maxsize=8)
+def _photometric_windows_grid(width: int, height: int) -> tuple[_PhotometricWindowGrid, ...]:
+    grids = []
+    for width_fraction in (0.15, 0.22, 0.30, 0.38, 0.42):
+        box_width = max(24, int(round(width * width_fraction)))
+        for aspect in (0.75, 1.0, 1.25):
+            box_height = max(24, int(round(box_width * aspect)))
+            if box_width >= width or box_height >= height:
+                continue
+            step_x = max(12, int(round(box_width * 0.42)))
+            step_y = max(12, int(round(box_height * 0.42)))
+            xx, yy = np.meshgrid(
+                np.arange(0, width - box_width + 1, step_x),
+                np.arange(0, height - box_height + 1, step_y),
+            )
+            x = xx.ravel()
+            y = yy.ravel()
+            x1 = x + box_width
+            y1 = y + box_height
+            ring_x0 = np.maximum(0, x - box_width // 4)
+            ring_y0 = np.maximum(0, y - box_height // 4)
+            ring_x1 = np.minimum(width, x1 + box_width // 4)
+            ring_y1 = np.minimum(height, y1 + box_height // 4)
+            grids.append(
+                _PhotometricWindowGrid(
+                    width_fraction,
+                    aspect,
+                    box_width,
+                    box_height,
+                    x,
+                    y,
+                    x1,
+                    y1,
+                    ring_x0,
+                    ring_y0,
+                    ring_x1,
+                    ring_y1,
+                )
+            )
+    return tuple(grids)
+
+
+def _integral_mean(
+    integral: np.ndarray,
+    x0: np.ndarray,
+    y0: np.ndarray,
+    x1: np.ndarray,
+    y1: np.ndarray,
+) -> np.ndarray:
+    sums = integral[y1, x1] - integral[y0, x1] - integral[y1, x0] + integral[y0, x0]
+    return sums / ((x1 - x0) * (y1 - y0))
+
+
+def _cardboard_integrals(working: np.ndarray) -> _PhotometricIntegrals:
     hsv = cv2.cvtColor(working, cv2.COLOR_RGB2HSV)
     gray = cv2.cvtColor(working, cv2.COLOR_RGB2GRAY)
     hue = hsv[..., 0]
@@ -645,55 +856,72 @@ def _photometric_windows(
         & (saturation >= 55)
         & (value <= 125)
     )
+    # float64 sums match the integer window totals at every supported frame size.
+    return _PhotometricIntegrals(
+        chromatic=cv2.integral(chromatic.astype(np.uint8), sdepth=cv2.CV_64F),
+        dark=cv2.integral(dark.astype(np.uint8), sdepth=cv2.CV_64F),
+        gray=cv2.integral(gray, sdepth=cv2.CV_64F),
+    )
+
+
+def _append_photometric_window(
+    outputs: list[PerceivedThing],
+    grid: _PhotometricWindowGrid,
+    integrals: _PhotometricIntegrals,
+    *,
+    width: int,
+    height: int,
+) -> None:
+    chromatic_fraction = _integral_mean(integrals.chromatic, grid.x, grid.y, grid.x1, grid.y1)
+    dark_fraction = _integral_mean(integrals.dark, grid.x, grid.y, grid.x1, grid.y1)
+    inside_mean = _integral_mean(integrals.gray, grid.x, grid.y, grid.x1, grid.y1)
+    ring_mean = _integral_mean(
+        integrals.gray, grid.ring_x0, grid.ring_y0, grid.ring_x1, grid.ring_y1
+    )
+    contrast = np.clip((ring_mean - inside_mean) / 90.0, 0.0, 1.0)
+    score = 0.45 * chromatic_fraction + 0.35 * dark_fraction + 0.20 * contrast
+    for index in np.flatnonzero(score >= 0.28):
+        bbox = _normalized_xywh(
+            int(grid.x[index]),
+            int(grid.y[index]),
+            grid.box_width,
+            grid.box_height,
+            width,
+            height,
+        )
+        outputs.append(
+            _cv_box_thing(
+                "photometric_windows",
+                len(outputs),
+                bbox,
+                float(score[index]),
+                kind="photometric_region",
+                label="photometric_windows: cardboard-like region",
+                properties={
+                    "chromatic_fraction": round(float(chromatic_fraction[index]), 4),
+                    "dark_fraction": round(float(dark_fraction[index]), 4),
+                    "inside_ring_contrast": round(float(contrast[index]), 4),
+                    "window_width_fraction": grid.width_fraction,
+                    "aspect": grid.aspect,
+                    "working_width": width,
+                    "working_height": height,
+                },
+            )
+        )
+
+
+def _photometric_windows(
+    rgb: np.ndarray,
+    *,
+    working_width: int,
+    max_boxes: int,
+) -> list[PerceivedThing]:
+    working = _working_rgb(rgb, working_width)
+    height, width = working.shape[:2]
+    integrals = _cardboard_integrals(working)
     outputs: list[PerceivedThing] = []
-    for width_fraction in (0.15, 0.22, 0.30, 0.38, 0.42):
-        box_width = max(24, int(round(width * width_fraction)))
-        for aspect in (0.75, 1.0, 1.25):
-            box_height = max(24, int(round(box_width * aspect)))
-            if box_width >= width or box_height >= height:
-                continue
-            step_x = max(12, int(round(box_width * 0.42)))
-            step_y = max(12, int(round(box_height * 0.42)))
-            for y in range(0, height - box_height + 1, step_y):
-                for x in range(0, width - box_width + 1, step_x):
-                    roi_chromatic = chromatic[y : y + box_height, x : x + box_width]
-                    roi_dark = dark[y : y + box_height, x : x + box_width]
-                    chromatic_fraction = float(np.mean(roi_chromatic))
-                    dark_fraction = float(np.mean(roi_dark))
-                    inside_mean = float(np.mean(gray[y : y + box_height, x : x + box_width]))
-                    ring_x1 = max(0, x - box_width // 4)
-                    ring_y1 = max(0, y - box_height // 4)
-                    ring_x2 = min(width, x + box_width + box_width // 4)
-                    ring_y2 = min(height, y + box_height + box_height // 4)
-                    ring = gray[ring_y1:ring_y2, ring_x1:ring_x2]
-                    if ring.size > roi_chromatic.size:
-                        ring_mean = float(np.mean(ring))
-                    else:
-                        ring_mean = inside_mean
-                    contrast = max(0.0, min(1.0, (ring_mean - inside_mean) / 90.0))
-                    score = 0.45 * chromatic_fraction + 0.35 * dark_fraction + 0.20 * contrast
-                    if score < 0.28:
-                        continue
-                    bbox = _normalized_xywh(x, y, box_width, box_height, width, height)
-                    outputs.append(
-                        _cv_box_thing(
-                            "photometric_windows",
-                            len(outputs),
-                            bbox,
-                            score,
-                            kind="photometric_region",
-                            label="photometric_windows: cardboard-like region",
-                            properties={
-                                "chromatic_fraction": round(chromatic_fraction, 4),
-                                "dark_fraction": round(dark_fraction, 4),
-                                "inside_ring_contrast": round(contrast, 4),
-                                "window_width_fraction": width_fraction,
-                                "aspect": aspect,
-                                "working_width": width,
-                                "working_height": height,
-                            },
-                        )
-                    )
+    for grid in _photometric_windows_grid(width, height):
+        _append_photometric_window(outputs, grid, integrals, width=width, height=height)
     return _dedupe_cv_things(outputs, threshold=0.60, max_boxes=max_boxes)
 
 def _hough_fragments(
@@ -702,10 +930,11 @@ def _hough_fragments(
     working_width: int,
     max_boxes: int,
     shared_blur_kernel: int = 0,
+    prepared: PreparedCueImage | None = None,
 ) -> list[PerceivedThing]:
-    working = _working_rgb(rgb, working_width)
-    height, width = working.shape[:2]
-    gray = cv2.cvtColor(working, cv2.COLOR_RGB2GRAY)
+    prepared = _prepare_cue_image(rgb, working_width, prepared)
+    height, width = prepared.working_rgb().shape[:2]
+    gray = cv2.cvtColor(prepared.working_rgb(), cv2.COLOR_RGB2GRAY)
     blur_kernel = shared_blur_kernel or 5
     gray = cv2.GaussianBlur(gray, (blur_kernel, blur_kernel), 0)
     edges = cv2.Canny(gray, 35, 105, L2gradient=True)

@@ -461,8 +461,8 @@ next cycle without staging it:
 ```
 
 `lightweight_observer` is the production-oriented frame and floor-boundary
-chain. `visual_observer` adds feature-motion tracks and is intentionally much
-slower. Standalone image preprocessing is available through
+chain. `visual_observer` is a diagnostic: it adds feature-motion tracks and is
+intentionally much slower. Standalone image preprocessing is available through
 `scripts/perception/prepare_vlm_image.py`.
 
 ### Plugin inspection
@@ -810,8 +810,9 @@ have the same control semantics on both vehicles. The simulator
 acquires WS input automatically; the onboard host acquires its drivetrain
 output automatically. A separate mode HTTP request is unnecessary.
 
-Perception presets can differ: for example, `sim_debug` supplies image-based
-simulator evidence, while `obstruction_observer` supplies PiCar evidence. Memory,
+Perception presets can differ: for example, `sim_debug` is a diagnostic that
+supplies image-based simulator evidence, while `obstruction_observer` supplies
+PiCar evidence. Memory,
 proposal, plan, and action retain their shared contracts. The existing
 `avoid_recent_obstruction` proposal requests throttle `0.60` and steering away
 from lateral obstruction evidence; without qualifying evidence it requests idle.

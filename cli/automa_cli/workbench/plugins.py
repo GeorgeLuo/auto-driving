@@ -102,10 +102,6 @@ class PluginCatalog:
     def ids(self) -> tuple[str, ...]:
         return tuple(item.plugin_id for item in self.plugins)
 
-    @property
-    def default_ids(self) -> tuple[str, ...]:
-        return tuple(item.plugin_id for item in self.plugins if item.default)
-
     def to_dict(self, *, active_ids: Sequence[str] = ()) -> dict[str, Any]:
         return {
             "schema": PLUGIN_CATALOG_SCHEMA,

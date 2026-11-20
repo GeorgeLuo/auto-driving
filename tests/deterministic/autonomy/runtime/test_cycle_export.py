@@ -24,7 +24,6 @@ from autonomy.decision_cycle.proposal.values import (
     ProposedVehicleCommand,
     SourceRef,
 )
-from autonomy.decision_cycle.records import DecisionRecords
 from autonomy.runtime.control import AutonomyControl
 from autonomy.runtime.execution import ControlApplication
 from autonomy.runtime.recording import RunRecording
@@ -193,7 +192,9 @@ class CycleExportTests(unittest.TestCase):
 
     def test_populated_result_copies_pickles_and_keeps_one_export(self):
         result = _populated_result()
-        self.assertIsNotNone(DecisionRecords.from_cycle(result))
+        self.assertIsInstance(result.proposal, ProposalResult)
+        self.assertIsInstance(result.plan, ActionPlan)
+        self.assertIsInstance(result.action, ActionResult)
         exported = result.export_cycle()
         self.assertEqual(exported["proposal"]["candidates"][0]["metadata"]["nested"]["b"], [1, 2])
         self.assertEqual(exported["plan"]["metadata"]["trace"]["empty"], [])

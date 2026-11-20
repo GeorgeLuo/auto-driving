@@ -303,6 +303,23 @@ Append `--x`, `--z`, `--heading-radians`, or `--steering` with a value to
 override individual map fields. Named steering also overrides positional
 steering. Use an empty output directory if a previous run wrote more frames.
 
+### Offline trajectory datasets (`native-sim-dataset`)
+
+`native-sim-dataset` runs a JSON episode spec offline using `sim_protocol` (no server or WebSocket) and writes `config.json`, `trajectory.jsonl`, and `images/NNNNNN.jpg`. Run from the repository root:
+
+```sh
+cmake --build simulator/native/build --target native-sim-dataset
+simulator/native/build/native-sim-dataset \
+  simulator/native/tools/dataset/example-spec.json /tmp/native-dataset-example
+```
+
+Conventions and sensor/evaluator boundary:
+
+- **Control alignment**: `frame_index = 0` is the initial spawn state (`applied_control: null`, `transition: null`). For every `k >= 1`, `sensor.applied_control` is the exact input applied to the transition `(k - 1) -> k`.
+- **Sign conventions**: `steering` uses Chase's native sign (`+1` turns left, `-1` turns right; Automa flips this at `ChaseSimCar`). `yaw_delta_rad` / `yaw_rate_rad_s` measure unwrapped changes in `atan2(z, x)` (positive = right turn, negative = left turn).
+- **Sensor vs. evaluator boundary**: Model-input loaders read only `config.json["sensor_metadata"]` (FPS and camera intrinsics — excluding camera height and pitch) and `trajectory.jsonl` `identity` + `sensor`. Ground-truth pose, vehicle parameters, camera extrinsics, and transition labels live strictly under `evaluator_metadata` / `evaluator` (`"classification": "non-sensor"`).
+- **Validity flags**: `config.json["summary"]` flags `any_contact_limited`, `any_excessive_step_yaw` (inter-capture yaw exceeding `validation.maxStepYawRadians`, guarding visual overlap), `zero_displacement`, `low_yaw_excitation`, and `valid_for_turn_id`.
+
 ```sh
 cmake --build build --target native-sim-bench
 build/native-sim-bench --full-only --hash

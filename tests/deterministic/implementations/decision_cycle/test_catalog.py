@@ -37,7 +37,9 @@ class DeclaredIdTests(unittest.TestCase):
         with self._clashing("action"):
             with self.assertRaisesRegex(DuplicatePluginIdError, "duplicate action plugin id 'selected'"):
                 catalog.step_plugins("action")
-            self.assertEqual(sorted(catalog.step_plugins("memory")), ["bounded_evidence", "control_runs"])
+            self.assertEqual(
+                sorted(catalog.step_plugins("memory")), ["bounded_evidence", "control_runs", "relativistic_trail"]
+            )
 
     def test_plugins_list_reports_the_clash_and_exits_2(self) -> None:
         with self._clashing("action"), tempfile.TemporaryDirectory() as tmp:
@@ -83,6 +85,17 @@ class PresetActivationTests(unittest.TestCase):
                 with self.subTest(step=step):
                     with self.assertRaisesRegex(ValueError, f"{step} has no presets"):
                         catalog.preset_activation(step, "anything")
+
+    def test_relativistic_search_plugins_load_without_changing_the_defaults(self) -> None:
+        for step, plugin_id, default in (
+            ("memory", "relativistic_trail", "bounded_evidence"),
+            ("proposal", "relativistic_search", "avoid_recent_obstruction"),
+        ):
+            with self.subTest(step=step):
+                activation = catalog.selection_activation(step, plugins=[plugin_id])
+                runner = STEP_RUNNERS[step].from_activation(activation)
+                self.assertEqual(tuple(runner.plugin_ids), (plugin_id,))
+                self.assertEqual(catalog.selection_activation(step).plugins, (default,))
 
     def test_every_preset_selects_cataloged_plugins_and_records_its_name(self) -> None:
         for step, presets in catalog.STEP_PRESETS.items():

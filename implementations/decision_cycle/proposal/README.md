@@ -38,6 +38,15 @@ holds its `propose` function and `AvoidRecentObstruction` class. The plugin
 steers away from lateral obstruction evidence retained in shared memory;
 without usable evidence it proposes no command.
 
+## Relativistic search
+
+Select `proposal/relativistic_search` in place of the default proposal and
+arm `perception/vehicle_dynamics` and `memory/relativistic_trail`. The plugin
+follows the trail's escape directive or projects short arcs to favor less
+visited space and keep clear of recent contacts. Arm `memory/bounded_evidence`
+with a floor or obstruction perception plugin to include lateral clearance
+cues when available.
+
 ## Framework boundary
 
 As in perception and memory, `autonomy/decision_cycle/proposal/` owns the
@@ -49,5 +58,5 @@ contract, rather than to a concrete avoidance strategy.
 Proposal plugins read the cycle context and the host map, not a camera
 feed. `avoid_recent_obstruction` reads the obstruction evidence that the
 `bounded_evidence` memory plugin retains. Proposal needs no `feeds/` directory.
-Library code shared by multiple proposal plugins belongs in `shared/`, as in
-perception and memory; no such shared implementation is needed yet.
+The [shared obstruction helpers](shared/obstruction.py) resolve lateral
+image cues for both search and obstruction avoidance.

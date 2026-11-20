@@ -16,6 +16,11 @@
         "steer_magnitude": 1.0,
         "forward_throttle": 0.6
       }
+    },
+    {
+      "spec": "implementations.decision_cycle.proposal.plugins.relativistic_search.plugin:RelativisticSearch",
+      "description": "Follow trail escape directives and steer smoothly toward less visited space.",
+      "default_config": {}
     }
   ]
 }

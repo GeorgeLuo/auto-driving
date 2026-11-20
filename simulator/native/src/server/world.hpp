@@ -18,6 +18,7 @@ struct World {
     std::string epoch;
     Configuration configuration;
     VehiclePose pose;
+    StepOutcome last_step;
     Input input;
     bool playing = true;
     uint64_t frame = 0, revision = 0, command_sequence = 0, applied_command_sequence = 0;

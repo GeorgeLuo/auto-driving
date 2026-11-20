@@ -64,7 +64,8 @@ static VehiclePose validate_start_poses(const Configuration& configuration) {
 
 World::World(const Json& document, std::shared_ptr<const AssetCatalog> catalog)
     : epoch(new_epoch()), configuration(load_configuration(document,*catalog)),
-      pose(validate_start_poses(configuration)), assets(std::move(catalog)) {}
+      pose(validate_start_poses(configuration)), last_step{pose,0,0,0,1,false},
+      assets(std::move(catalog)) {}
 
 void World::start_tour(const Json& overrides) {
     const auto& document = configuration.document;
@@ -73,6 +74,7 @@ void World::start_tour(const Json& overrides) {
     start.update(overrides);
     const auto [tour_pose,steering] = read_tour_start(start,configuration);
     pose = tour_pose;
+    last_step = {pose,0,0,0,1,false};
     input = {true,false,steering,1};
 }
 
@@ -87,7 +89,8 @@ void World::step() {
         pending_.reset();
         ++revision;
     }
-    pose = step_vehicle(pose,input,configuration.vehicle,*configuration.map);
+    last_step = step_vehicle_detailed(pose,input,configuration.vehicle,*configuration.map);
+    pose = last_step.pose;
     ++frame;
     applied_command_sequence = command_sequence;
     simulation_time += interval;

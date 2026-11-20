@@ -25,6 +25,11 @@
       "spec": "implementations.decision_cycle.memory.plugins.control_runs.plugin:ControlRuns",
       "description": "Retain the last 40 runs of applied control receipts. Observe-only produces no applied runs. Arm by name to append to collection memory.",
       "default_config": {}
+    },
+    {
+      "spec": "implementations.decision_cycle.memory.plugins.relativistic_trail.plugin:RelativisticTrail",
+      "description": "Retain action-time pose, decaying visits, and contact escapes from vehicle dynamics.",
+      "default_config": {}
     }
   ]
 }

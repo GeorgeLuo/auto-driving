@@ -461,7 +461,6 @@ def _expansion_signal(estimate: VisualYawEstimate, response: ThrottleResponseEst
         direction = "stationary"
         if abs(expansion) > MIN_EXPANSION_RATE_PER_S:
             direction = "forward" if expansion > 0.0 else "reverse"
-    ttc = estimate.forward_time_to_contact_s
     return PerceptionSignal(
         "visual_expansion_rate_per_s",
         None if expansion is None else round(expansion, 6),
@@ -469,7 +468,6 @@ def _expansion_signal(estimate: VisualYawEstimate, response: ThrottleResponseEst
         {
             "confident": direction != "unknown",
             "motion_direction": direction,
-            "forward_time_to_contact_s": None if ttc is None else round(ttc, 6),
             "throttle_sign": response.throttle_sign,
             "throttle_sample_count": response.sample_count,
             "throttle_confidence": response.confidence,
@@ -537,7 +535,6 @@ def _build_batch(
             "motion_blocked": blocked,
             **motion,
             "expansion_rate_per_s": expansion_signal.value,
-            "forward_time_to_contact_s": expansion_signal.properties["forward_time_to_contact_s"],
             "throttle_sign": throttle_response.throttle_sign,
             "throttle_sample_count": throttle_response.sample_count,
             "throttle_confidence": throttle_response.confidence,

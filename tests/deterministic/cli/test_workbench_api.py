@@ -114,7 +114,9 @@ class WorkbenchTests(unittest.TestCase):
         post = partial(post_action, base, timeout=2)
 
         catalog = runner.state()["memory_plugin_catalog"]
-        self.assertEqual([item["id"] for item in catalog["plugins"]], ["bounded_evidence", "control_runs"])
+        self.assertEqual(
+            [item["id"] for item in catalog["plugins"]], ["bounded_evidence", "control_runs", "relativistic_trail"]
+        )
         selected = post({
             "action": "select_plugins",
             "step": "memory",

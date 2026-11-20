@@ -42,6 +42,22 @@ first; None means the publication is absent. Host stops close open runs.
 PolicyCycle uses these runs for minimum acting time; executors and prompt
 builders can consume the same history regardless of which plan is armed.
 
+## Relativistic trail
+
+Arm `memory/relativistic_trail` with `perception/vehicle_dynamics` and
+`proposal/relativistic_search` for action-time search. The plugin owns
+`memory.relativistic_trail.state` and publishes the current trail at
+`memory.relativistic_trail`. Use
+[`read_relativistic_trail`](plugins/relativistic_trail/trail.py) to read a
+detached publication. The pose starts at the origin with positive yaw to the
+right. Distance is measured in seconds of unimpeded travel. The publication
+includes decaying visits, recent contacts, learned control polarity and
+response, the last applied steering and travel direction, and an active
+escape directive.
+Applied controls bridge brief gaps in visual motion. Sustained stationary
+tracks or prolonged tracking loss under drive can trigger an escape.
+Reset clears the trail and starts a new origin at the next update.
+
 ## Finding the default business logic
 
 Start at [catalog.json](catalog.json): its `default`, `recency_ledger`, lists

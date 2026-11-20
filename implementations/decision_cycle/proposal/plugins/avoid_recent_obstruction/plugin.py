@@ -22,7 +22,11 @@ from autonomy.decision_cycle.memory.evidence import RetainedEvidence
 from autonomy.fields import require_ascii_id
 from autonomy.decision_cycle.memory.publication import EVIDENCE_KEY
 
-DEFAULT_ACCEPTED_KINDS = ("floor_boundary", "obstacle", "obstruction_evidence")
+from implementations.decision_cycle.proposal.shared.obstruction import (
+    OBSTRUCTION_KINDS, bbox_bottom, has_lateral_cue, lateral_side,
+)
+
+DEFAULT_ACCEPTED_KINDS = OBSTRUCTION_KINDS
 DEFAULT_RETAINED_MAX_AGE_MS = 1000
 DEFAULT_STEER_MAGNITUDE = 1.0
 DEFAULT_FORWARD_THROTTLE = 0.60
@@ -31,96 +35,6 @@ BASE_ASSUMPTIONS = (
     "image_relative_only",
     "single_primary_record",
 )
-
-
-def _bbox_mid_x(record: RetainedEvidence) -> float | None:
-    location = record.location
-    if location is None:
-        return None
-    bbox = location.bbox_xyxy_norm
-    if bbox is None or len(bbox) != 4:
-        return None
-    try:
-        mid_x = (float(bbox[0]) + float(bbox[2])) / 2.0
-    except (TypeError, ValueError):
-        return None
-    if not math.isfinite(mid_x):
-        return None
-    return mid_x
-
-
-# Zones that mean "no explicit left/right" so bbox mid_x may supply the cue.
-# "unknown" is ViewLocation.from_dict's canonical missing-zone value.
-_BBOX_FALLBACK_ZONES = frozenset({None, "", "center", "unknown"})
-_IMAGE_LATERAL_ZONES = {
-    "left": "left",
-    "right": "right",
-    "near_left": "left",
-    "mid_left": "left",
-    "far_left": "left",
-    "near_right": "right",
-    "mid_right": "right",
-    "far_right": "right",
-}
-
-
-def _explicit_lateral_side(record: RetainedEvidence) -> str | None:
-    """Resolve the horizontal side from an image-relative zone, if present."""
-
-    location = record.location
-    if location is None:
-        return None
-    return _IMAGE_LATERAL_ZONES.get(location.zone)
-
-
-def _has_lateral_cue(record: RetainedEvidence) -> bool:
-    """True when a lateral zone or a finite bbox supplies the cue."""
-
-    location = record.location
-    if location is None:
-        return False
-    if _explicit_lateral_side(record) is not None:
-        return True
-    # Bbox mid_x is a cue only for missing / unknown / exact "center".
-    zone = location.zone
-    if zone not in _BBOX_FALLBACK_ZONES:
-        return False
-    return _bbox_mid_x(record) is not None
-
-
-def _lateral_side(record: RetainedEvidence) -> str | None:
-    """Resolved side for command emission; center-band cue yields None (try next)."""
-
-    location = record.location
-    if location is None:
-        return None
-    explicit_side = _explicit_lateral_side(record)
-    if explicit_side is not None:
-        return explicit_side
-    zone = location.zone
-    if zone not in _BBOX_FALLBACK_ZONES:
-        return None
-    mid_x = _bbox_mid_x(record)
-    if mid_x is None:
-        return None
-    if mid_x < 0.45:
-        return "left"
-    if mid_x > 0.55:
-        return "right"
-    return None
-
-
-def _bbox_bottom(record: RetainedEvidence) -> float:
-    """Return the lower image edge for a deterministic foreground tie-break."""
-
-    location = record.location
-    if location is None or location.bbox_xyxy_norm is None:
-        return -1.0
-    try:
-        bottom = float(location.bbox_xyxy_norm[3])
-    except (IndexError, TypeError, ValueError):
-        return -1.0
-    return bottom if math.isfinite(bottom) else -1.0
 
 
 def _is_image_located_accepted_kind(
@@ -139,7 +53,7 @@ def _is_accepted_obstruction_candidate(
 
     if not _is_image_located_accepted_kind(record, accepted_kinds=accepted_kinds):
         return False
-    return _has_lateral_cue(record)
+    return has_lateral_cue(record)
 
 
 def _freshness_class(
@@ -286,12 +200,12 @@ def _steer_away(
     # prefer the foreground cue before the stable record-id tie-break.
     ordered = sorted(
         pool,
-        key=lambda record: (*confidence_rank(record.confidence), -_bbox_bottom(record), record.record_id),
+        key=lambda record: (*confidence_rank(record.confidence), -bbox_bottom(record), record.record_id),
     )
     primary = None
     side = None
     for record in ordered:
-        side = _lateral_side(record)
+        side = lateral_side(record)
         if side is not None:
             primary = record
             break

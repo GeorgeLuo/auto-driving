@@ -180,20 +180,13 @@ class VisualYawTests(unittest.TestCase):
                     expected = math.log(depth / (depth - distance)) / dt_s
                     assert estimate.expansion_rate_per_s is not None
                     self.assertAlmostEqual(estimate.expansion_rate_per_s, expected, delta=1e-5)
-                    if distance > 0.0:
-                        assert estimate.forward_time_to_contact_s is not None
-                        self.assertAlmostEqual(
-                            estimate.forward_time_to_contact_s, (depth - distance) / (distance / dt_s), delta=1e-5
-                        )
-                    else:
-                        self.assertIsNone(estimate.forward_time_to_contact_s)
 
-    def test_straight_approach_ttc_decreases_with_wrong_focal_scale(self) -> None:
+    def test_straight_approach_expansion_increases_with_wrong_focal_scale(self) -> None:
         dt_s, distance = 0.10, 0.20
         true_intrinsics = CameraIntrinsics(320, 240, 82.0, 0.12)
         wrong_intrinsics = CameraIntrinsics(320, 240, 70.0, 0.12)
         x, y = np.meshgrid(np.linspace(-0.28, 0.28, 10), np.linspace(0.26, 0.34, 6))
-        previous_ttc = math.inf
+        previous_expansion = 0.0
         for depth in (1.6, 1.4, 1.2, 1.0, 0.8):
             points = np.column_stack((x.ravel(), y.ravel(), np.full(x.size, depth)))
             flow = _project_planar_arc(
@@ -202,14 +195,12 @@ class VisualYawTests(unittest.TestCase):
             correct = estimate_circular_arc_yaw(flow, true_intrinsics, dt_s)
             wrong = estimate_circular_arc_yaw(flow, wrong_intrinsics, dt_s)
             assert correct.expansion_rate_per_s is not None and wrong.expansion_rate_per_s is not None
-            assert correct.forward_time_to_contact_s is not None and wrong.forward_time_to_contact_s is not None
             self.assertAlmostEqual(correct.expansion_rate_per_s, wrong.expansion_rate_per_s, delta=1e-6)
-            self.assertAlmostEqual(correct.forward_time_to_contact_s, wrong.forward_time_to_contact_s, delta=1e-6)
-            self.assertAlmostEqual(wrong.forward_time_to_contact_s, (depth - distance) / (distance / dt_s), delta=1e-5)
-            self.assertLess(wrong.forward_time_to_contact_s, previous_ttc)
-            previous_ttc = wrong.forward_time_to_contact_s
+            self.assertAlmostEqual(wrong.expansion_rate_per_s, math.log(depth / (depth - distance)) / dt_s, delta=1e-5)
+            self.assertGreater(wrong.expansion_rate_per_s, previous_expansion)
+            previous_expansion = wrong.expansion_rate_per_s
 
-    def test_curved_approach_ttc_uses_foreground_inside_the_chord_corridor(self) -> None:
+    def test_curved_approach_expansion_preserves_the_median_in_mixed_depths(self) -> None:
         rng = np.random.default_rng(51)
         yaw, distance, dt_s = 0.16, 0.14, 0.10
         rays_at_depth = []
@@ -227,11 +218,10 @@ class VisualYawTests(unittest.TestCase):
             intrinsics=CameraIntrinsics(320, 240, 82.0, 0.0),
         )
         estimate = estimate_circular_arc_yaw(flow, CameraIntrinsics(320, 240, 82.0, 0.0), dt_s)
-        assert estimate.expansion_rate_per_s is not None and estimate.forward_time_to_contact_s is not None
+        assert estimate.expansion_rate_per_s is not None
         self.assertAlmostEqual(estimate.expansion_rate_per_s, math.log(2.20 / (2.20 - distance)) / dt_s, delta=1e-5)
-        self.assertAlmostEqual(estimate.forward_time_to_contact_s, (0.90 - distance) / (distance / dt_s), delta=1e-5)
 
-    def test_expansion_abstains_near_foe_and_ttc_requires_corridor_support(self) -> None:
+    def test_expansion_abstains_near_the_focus_of_expansion(self) -> None:
         intrinsics = CameraIntrinsics(320, 240, 82.0, 0.0)
         for center_x, has_expansion in ((0.0, False), (0.62, True)):
             x, y = np.meshgrid(np.linspace(center_x - 0.03, center_x + 0.03, 6), np.linspace(0.035, 0.065, 5))
@@ -242,7 +232,6 @@ class VisualYawTests(unittest.TestCase):
             estimate = estimate_circular_arc_yaw(flow, intrinsics, dt_s=0.10)
             self.assertTrue(estimate.confident)
             self.assertEqual(estimate.expansion_rate_per_s is not None, has_expansion)
-            self.assertIsNone(estimate.forward_time_to_contact_s)
 
     def test_throttle_response_abstains_with_insufficient_or_conflicting_votes(self) -> None:
         fit = fit_throttle_response([(1.0, 0.8), (-1.0, 0.8)] * 2 + [(1.0, 0.01), (0.0, 1.0)])
@@ -454,7 +443,7 @@ class VehicleDynamicsPluginTests(unittest.TestCase):
                     self.assertEqual(signal.properties["motion_direction"], direction)
                     self.assertEqual(signal.properties["throttle_sign"], label if index >= 4 else "unknown")
                     self.assertEqual(signal.properties["throttle_sample_count"], min(index, 5))
-                    self.assertEqual(signal.properties["forward_time_to_contact_s"] is not None, wiring == 1)
+                    self.assertGreater(wiring * float(signal.value), 0.0)
 
                 memory = shared_memory_from_document(json.loads(json.dumps(shared_memory_document(memory))))
                 with mock.patch(

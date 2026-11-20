@@ -15,6 +15,11 @@
         "retained_max_age_ms": 1000,
         "steer_magnitude": 1.0
       }
+    },
+    {
+      "spec": "implementations.decision_cycle.proposal.plugins.relativistic_search.plugin:RelativisticSearch",
+      "description": "Follow trail escape directives and steer smoothly toward less visited space.",
+      "default_config": {}
     }
   ]
 }

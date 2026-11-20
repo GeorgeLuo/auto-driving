@@ -52,7 +52,6 @@ class VisualYawEstimate:
     inlier_ratio: float
     median_px_shift: float = 0.0
     expansion_rate_per_s: float | None = None
-    forward_time_to_contact_s: float | None = None
 
 
 @dataclass(frozen=True)
@@ -78,11 +77,17 @@ class TurnResponseEstimate:
     confidence: float
 
     def predict_yaw_rate(self, steering: float, signed_throttle: float) -> float:
-        if self.kind == "ackermann_tan":
-            return self.gain_per_s * signed_throttle * math.tan(self.max_angle_rad * steering)
-        if self.kind == "linear":
-            return self.gain_per_s * signed_throttle * steering
-        return 0.0
+        return predict_yaw_rate(self.kind, self.gain_per_s, self.max_angle_rad, steering, signed_throttle)
+
+
+def predict_yaw_rate(
+    kind: str, gain_per_s: float, max_angle_rad: float, steering: float, signed_throttle: float,
+) -> float:
+    if kind == "ackermann_tan":
+        return gain_per_s * signed_throttle * math.tan(max_angle_rad * steering)
+    if kind == "linear":
+        return gain_per_s * signed_throttle * steering
+    return 0.0
 
 
 @dataclass(frozen=True)
@@ -283,38 +288,28 @@ def _wrap_angle(angle: float) -> float:
     return math.atan2(math.sin(angle), math.cos(angle))
 
 
-def _chord_ray_components(
+def _chord_depth_and_radius(
     rays: np.ndarray, cos_h: float, sin_h: float,
-) -> tuple[np.ndarray, np.ndarray, np.ndarray]:
+) -> tuple[np.ndarray, np.ndarray]:
     x = cos_h * rays[:, 0] + sin_h * rays[:, 2]
     z = -sin_h * rays[:, 0] + cos_h * rays[:, 2]
-    return x, z, np.hypot(x, rays[:, 1])
+    return z, np.hypot(x, rays[:, 1])
 
 
 def _mid_arc_expansion(
     u1: np.ndarray, u2: np.ndarray, pitch: float, yaw: float, dt_s: float,
-) -> tuple[float | None, float | None]:
+) -> float | None:
     w1, w2 = _rotate_pitch(u1, u2, pitch)
     cos_h, sin_h = math.cos(yaw / 2.0), math.sin(yaw / 2.0)
     # Express both rays in the chord frame, where translation is along +Z or -Z.
-    _, z1, radius1 = _chord_ray_components(w1, cos_h, -sin_h)
-    x2, z2, radius2 = _chord_ray_components(w2, cos_h, sin_h)
+    z1, radius1 = _chord_depth_and_radius(w1, cos_h, -sin_h)
+    z2, radius2 = _chord_depth_and_radius(w2, cos_h, sin_h)
     valid = (z1 > 0.15) & (z2 > 0.15) & (radius1 > 0.12 * z1) & (radius2 > 0.12 * z2)
     if np.count_nonzero(valid) < 8:
-        return None, None
+        return None
 
     log_expansion = np.log((radius2[valid] * z1[valid]) / (radius1[valid] * z2[valid]))
-    expansion_rate = float(np.median(log_expansion)) / dt_s
-    if expansion_rate <= MIN_EXPANSION_RATE_PER_S:
-        return expansion_rate, None
-    corridor = log_expansion[(np.abs(x2[valid]) <= 0.45 * z2[valid]) & (log_expansion > 0.0)]
-    if len(corridor) < 6:
-        return expansion_rate, None
-    looming = float(np.quantile(corridor, 0.75))
-    # At constant chord speed, r2/r1 = 1 + dt/TTC at the second capture.
-    if not math.isfinite(looming) or looming < math.log1p(dt_s * MIN_EXPANSION_RATE_PER_S):
-        return expansion_rate, None
-    return expansion_rate, dt_s / math.expm1(looming)
+    return float(np.median(log_expansion)) / dt_s
 
 
 def estimate_circular_arc_yaw(
@@ -363,11 +358,10 @@ def estimate_circular_arc_yaw(
             None, None, phi_hat, False, "abstain_low_inliers", flow.num_tracked, inlier_ratio, flow.median_px_shift
         )
     inliers = sampson <= sampson_thresh
-    expansion_rate, ttc = _mid_arc_expansion(u1[inliers], u2[inliers], phi_hat, theta_hat, dt_s)
+    expansion_rate = _mid_arc_expansion(u1[inliers], u2[inliers], phi_hat, theta_hat, dt_s)
     return VisualYawEstimate(
         theta_hat, theta_hat / dt_s, phi_hat, True, mode_label, flow.num_tracked, inlier_ratio, flow.median_px_shift,
         expansion_rate_per_s=expansion_rate,
-        forward_time_to_contact_s=ttc,
     )
 
 
